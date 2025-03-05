@@ -13,7 +13,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 from obspy import UTCDateTime, Stream
 from obspy.clients.filesystem.sds import Client
 from obspy.clients.fdsn import Client as FDSNClient
@@ -28,6 +28,7 @@ from acoustics.octave import Octave
 from numpy import isnan, interp
 from obspy.signal.cross_correlation import correlate, xcorr_max
 from numpy.typing import NDArray
+from matplotlib.colors import LogNorm
 
 
 class sixdegrees():
@@ -93,7 +94,8 @@ class sixdegrees():
             self.station_longitude = conf['station_lon']
             self.station_latitude = conf['station_lat']
         else:
-            print("-> no station coordinates given!")
+            self.station_longitude = None
+            self.station_latitude = None
 
         # define project name
         if 'project' in conf.keys():
@@ -166,6 +168,12 @@ class sixdegrees():
         else:
             self.mseed_file = False
 
+        # rotate_zne
+        if 'rotate_zne' in conf.keys():
+            self.rotate_zne = conf['rotate_zne']
+        else:
+            self.rotate_zne = False
+
         # output type for remove response
         self.tra_output = "ACC"
 
@@ -175,6 +183,14 @@ class sixdegrees():
     # ____________________________________________________
 
     def attributes(self) -> List[str]:
+        """
+        Get list of instance attributes
+        
+        Returns:
+        --------
+        List[str]
+            List of attribute names
+        """
         return [a for a in dir(self) if not a.startswith('__')]
 
     def check_path(self, dir_to_check: str):
@@ -188,7 +204,7 @@ class sixdegrees():
 
         if not path.isdir(dir_to_check):
             mkdir(dir_to_check)
-            sixdegrees.check_path(self, dir_to_check)
+            self.check_path(self, dir_to_check)
         else:
             print(f" -> {dir_to_check} exists")
 
@@ -240,17 +256,17 @@ class sixdegrees():
         except Exception as e:
             print(f"Error converting origin time: {e}")
             return {}
-        
+
         self.base_catalog = base_catalog
+
+        #initialize FDSN client for chosen catalog
+        client = Client(self.base_catalog)
 
         try:
             # Check if station coordinates are available
             if not hasattr(self, 'station_latitude') or not hasattr(self, 'station_longitude'):
-                print("Station coordinates not set. Please set station_latitude and station_longitude.")
+                print("Station coordinates not set. Please set station_latitude and station_longitude or load data and inventory first..")
                 return {}
-
-            # Initialize FDSN client for chosen catalog
-            client = Client(self.base_catalog)
             
             # Search for events
             catalog = client.get_events(
@@ -581,71 +597,102 @@ class sixdegrees():
 
         t1, t2 = UTCDateTime(t1), UTCDateTime(t2)
 
+        # Load translation data
+        tra = Stream()
         client = FDSNClient(self.fdsn_client_tra)
-        net, sta, loc, cha = self.tra_seed.split('.')
 
-        try:
-            if self.data_source.lower() == 'sds':
-                # read from local SDS archive
-                tra = sixdegrees.read_from_sds(self.tra_sds, self.tra_seed, t1-1, t2+1)
+        for tseed in self.tra_seed:
+            net, sta, loc, cha = tseed.split('.')
 
-            elif self.data_source.lower() == 'fdsn':
-                # read from FDSN web service
+            try:
+                if self.data_source.lower() == 'sds':
+                    # read from local SDS archive
+                    tra += self.read_from_sds(self.tra_sds, tseed, t1-1, t2+1)
+                elif self.data_source.lower() == 'fdsn':
+                    # read from FDSN web service
 
-                tra = client.get_waveforms(network=net, station=sta, location=loc, channel=cha,
-                                            starttime=t1-1, endtime=t2+1)
+                    tra += client.get_waveforms(network=net, station=sta,
+                                                location=loc, channel=cha,
+                                                starttime=t1-1, endtime=t2+1)
 
-            elif self.data_source.lower() == 'mseed_file':
-                # read directly from mseed file
-                if self.mseed_file is None:
-                    raise ValueError("No mseed file path provided")
-                tra = read(self.mseed_file)
-                tra = tra.select(station=self.tra_seed.split('.')[1], channel="*H*")
-                tra = tra.trim(t1-1, t2+1)
-            
-            else:
-                raise ValueError(f"Unknown data source: {self.data_source}. Use 'sds' or 'fdsn'.")
+                elif self.data_source.lower() == 'mseed_file':
+                    # read directly from mseed file
+                    if self.mseed_file is None:
+                        raise ValueError("No mseed file path provided")
+                    tra0 = read(self.mseed_file)
+                    tra += tra0.select(channel=cha)
+                    tra = tra.trim(t1-1, t2+1)
+                
+                else:
+                    raise ValueError(f"Unknown data source: {self.data_source}. Use 'sds' or 'fdsn'.")
 
-        except Exception as e:
-            print(f" -> loading translational data failed!")
+            except Exception as e:
+                print(f" -> loading translational data failed!")
+                if self.verbose:
+                    print(e)
+
             if self.verbose:
-                print(e)
+                print(tra)
 
-        if self.verbose:
-            print(tra)
-
+        # Process translation data
         try:
             # detrend
             tra = tra.detrend("linear")
 
             # remove response
             if self.tra_inv is not None:
-                print(f"-> translation inventory provided: {self.tra_inv}")
-
-            if self.data_source.lower() == 'mseed_file':
                 if self.verbose:
-                    print(f"-> removing no response")
+                    print(f"-> translation inventory provided: {self.tra_inv}")
 
-            elif self.data_source.lower() == 'sds':
-                # remove response
-                tra = tra.remove_response(self.tra_inv, output=self.tra_output)
+                if self.data_source.lower() == 'mseed_file':
+                    if self.verbose:
+                        print(f"-> skipping response removal for mseed file")
+
+                elif self.data_source.lower() == 'sds':
+                    try:
+                        # remove response
+                        tra = tra.remove_response(self.tra_inv, output=self.tra_output)
+                        if self.verbose:
+                            print("-> successfully removed response")
+                    except Exception as e:
+                        print(f"-> warning: failed to remove response: {str(e)}")
 
             elif self.data_source.lower() == 'fdsn':
-                # get inventory from FDSN
-                self.tra_inv = client.get_stations(network=net, station=sta,
-                                                   location=loc, channel=cha,
-                                                   starttime=t1, endtime=t2,
-                                                   level="response",
-                                                   )
+                try:
+                    # get inventory from FDSN
+                    self.tra_inv = client.get_stations(network=net, station=sta,
+                                                        starttime=t1, endtime=t2,
+                                                        level="response",
+                                                        )
+                except Exception as e:
+                    print(f"-> warning: failed to get inventory: {str(e)}")
 
-                # remove response
-                tra = tra.remove_response(self.tra_inv, output=self.tra_output)
+                try:
+                    # remove response
+                    tra = tra.remove_response(self.tra_inv, output=self.tra_output)
+                    if self.verbose:
+                        print("-> successfully removed response")
+
+                except Exception as e:
+                    print(f"-> warning: failed to remove response: {str(e)}")
 
             # rotate components
             if not self.data_source.lower() == 'mseed_file':
-                if self.verbose:
-                    print(f"-> rotating translational data to ZNE")
-                tra = tra.rotate(method="->ZNE", inventory=self.tra_inv)
+
+                # rotate to ZNE
+                if self.rotate_zne:
+                    if self.verbose:
+                        print(f"-> rotating translational data to ZNE")
+                    tra = tra.rotate(method="->ZNE", inventory=self.tra_inv)
+
+                # Get station coordinates
+                if self.station_latitude is None and self.station_longitude is None:
+                    try:
+                        coords = self.tra_inv.get_coordinates(self.tra_seed[0])
+                        self.station_latitude = coords['latitude']
+                        self.station_longitude = coords['longitude']
+                    except Exception as e:
+                        print(f"-> warning: failed to get station coordinates: {str(e)}")
 
         except Exception as e:
             print(f" -> removing response failed!")
@@ -655,70 +702,93 @@ class sixdegrees():
         # add to stream
         st0 += tra
 
-        # rotation data
+        # Load rotation data
+        rot = Stream()
         client = FDSNClient(self.fdsn_client_rot)
-        net, sta, loc, cha = self.rot_seed.split('.')
 
-        try:
-            if self.data_source.lower() == 'sds':
-                # read from local SDS archive
-                rot = sixdegrees.read_from_sds(self.rot_sds, self.rot_seed, t1-1, t2+1)
+        for rseed in self.rot_seed:
+            net, sta, loc, cha = rseed.split('.')
 
-            elif self.data_source.lower() == 'fdsn':
-                # read from FDSN web service
+            try:
+                if self.data_source.lower() == 'sds':
+                    # read from local SDS archive
+                    rot += self.read_from_sds(self.rot_sds, rseed, t1-1, t2+1)
 
-                rot = client.get_waveforms(net, sta, loc, cha, t1-1, t2+1)
- 
-            elif self.data_source.lower() == 'mseed_file':
-                # read directly from mseed file
-                if self.mseed_file is None:
-                    raise ValueError("No mseed file path provided")
-                rot = read(self.mseed_file)
-                rot = rot.select(station=self.rot_seed.split('.')[1], channel="*J*")
-                rot = rot.trim(t1-1, t2+1)
+                elif self.data_source.lower() == 'fdsn':
+                    # read from FDSN web service
+                    rot += client.get_waveforms(net, sta, loc, cha, t1-1, t2+1)
 
-            else:
-                raise ValueError(f"Unknown data source: {self.data_source}. Use 'sds' or 'fdsn'.")
-        except Exception as e:
-            print(f" -> loading rotational data failed!")
-            if self.verbose:
-                print(e)
+                elif self.data_source.lower() == 'mseed_file':
+                    # read directly from mseed file
+                    if self.mseed_file is None:
+                        raise ValueError("No mseed file path provided")
+                    rot0 = read(self.mseed_file)
+                    rot += rot0.select(channel=cha)
+                    rot = rot.trim(t1-1, t2+1)
+                else:
+                    raise ValueError(f"Unknown data source: {self.data_source}. Use 'sds' or 'fdsn'.")
+            except Exception as e:
+                print(f" -> loading rotational data failed!")
+                if self.verbose:
+                    print(e)
 
+        # Process rotation data
         try:
             # detrend
             rot = rot.detrend("linear")
 
             # remove response
             if self.rot_inv is not None:
-                print(f"-> rotation inventory provided: {self.rot_inv}")
-
-            if self.data_source.lower() == 'mseed_file':
                 if self.verbose:
-                    print(f"-> removing no response")
+                    print(f"-> rotation inventory provided: {self.rot_inv}")
 
-            elif self.data_source.lower() == 'sds':
-                # remove response
-                rot = rot.remove_sensitivity(self.rot_inv)
+                if self.data_source.lower() == 'mseed_file':
+                    if self.verbose:
+                        print(f"-> skipping sensitivity removal for mseed file")
+
+                elif self.data_source.lower() == 'sds':
+                    try:
+                        # remove sensitivity
+                        rot = rot.remove_sensitivity(self.rot_inv)
+                        if self.verbose:
+                            print("-> successfully removed sensitivity")
+                    except Exception as e:
+                        print(f"-> warning: failed to remove sensitivity: {str(e)}")
 
             elif self.data_source.lower() == 'fdsn':
-                # get inventory from FDSN
-                self.rot_inv = client.get_stations(network=net, station=sta, location=loc, channel=cha,
-                                                    starttime=t1-1, endtime=t2+1,
-                                                    level="response",
-                                                    )
-                # remove response
-                rot = rot.remove_sensitivity(self.rot_inv)
+                try:
+                    # get inventory from FDSN
+                    self.rot_inv = client.get_stations(network=net, station=sta,
+                                                        starttime=t1-1, endtime=t2+1,
+                                                        level="response")
+                except Exception as e:
+                    print(f"-> warning: failed to get inventory: {str(e)}")
 
-            # rotate components
-            if not self.data_source.lower() == 'mseed_file':
+                try:
+                    # remove sensitivity
+                    rot = rot.remove_sensitivity(self.rot_inv)
+                    if self.verbose:
+                        print("-> successfully removed sensitivity")
+
+                except Exception as e:
+                    print(f"-> warning: failed to remove sensitivity: {str(e)}")
+
+        except Exception as e:
+            print(f"-> error processing rotation data: {str(e)}")
+
+        if not self.data_source.lower() == 'mseed_file':
+
+            # rotate to ZNE
+            if self.rotate_zne:
                 if self.verbose:
                     print(f"-> rotating rotational data to ZNE")
                 rot = rot.rotate(method="->ZNE", inventory=self.rot_inv)
 
-        except Exception as e:
-            print(f" -> removing sensitivity failed!")
-            if self.verbose:
-                print(e)
+            # assign station coordinates
+            if self.station_latitude is None and self.station_longitude is None:
+                coords = self.rot_inv.get_coordinates(self.rot_seed[0])
+                self.station_latitude = coords['latitude']
+                self.station_longitude = coords['longitude']
 
         # add to stream
         st0 += rot
@@ -727,14 +797,14 @@ class sixdegrees():
             print(rot)
 
         # check if stream has correct length
-        if len(st0) < 6:
+        if len(st0) < (len(self.tra_seed) + len(self.rot_seed)):
             print(f" -> missing stream data")
 
        # check if merging is required
-        if len(st0) > 6:
+        if len(st0) > (len(self.tra_seed) + len(self.rot_seed)):
             st0 = st0.merge(method=1, fill_value=0)
 
-        # change seed id
+        # Update stream IDs
         for tr in st0:
             tr.stats.network = self.net
             tr.stats.station = self.sta
@@ -840,8 +910,235 @@ class sixdegrees():
         if os.path.isfile(name+".pkl"):
             print(f" -> stored: {name}.pkl")
 
-    def compute_backazimuth(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, baz_win_sec_overlap: float=0.5,
-                           out: bool=False) -> Dict:
+    def optimize_parameters(self, wave_type: str='love', overlap: float=0.5, twin_min: float=1,
+                          fbands: Dict=None, baz_step: int=1, bandwidth_factor: float=6) -> Dict:
+        """
+        Optimize parameters for wave analysis by maximizing cross-correlation
+        """
+        import numpy as np
+        from obspy.signal.cross_correlation import correlate, xcorr_max
+        from obspy.signal.rotate import rotate_ne_rt
+
+        def filter_stream(stream: Stream, fmin: float, fmax: float) -> Stream:
+            stream = stream.detrend('linear')
+            stream = stream.taper(max_percentage=0.01)
+            stream.filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
+            stream = stream.detrend('linear')
+            return stream
+
+        # Default frequency bands if not provided
+        if fbands is None:
+            fbands = {
+                'fmin': 0.01,
+                'fmax': 1.0,
+                'octave_fraction': 3
+            }
+
+        # Generate frequency bands
+        flower, fupper, fcenter = self.get_octave_bands(
+            fmin=fbands['fmin'],
+            fmax=fbands['fmax'],
+            faction_of_octave=fbands['octave_fraction']
+        )
+        
+        # Get streams and sampling rate
+        rot = self.get_stream("rotation", raw=True).copy()
+        acc = self.get_stream("translation", raw=True).copy()
+        df = self.sampling_rate
+        n_samples = len(rot[0].data)
+        
+        # Generate backazimuth values
+        baz_values = np.arange(0, 360, baz_step)
+        
+        # Initialize results dictionary for each frequency band
+        results_by_freq = []
+        
+        # Loop through frequency bands first
+        for freq_idx, (fl, fu, fc) in enumerate(zip(flower, fupper, fcenter)):
+            # Calculate window size based on frequency
+            f_bandwidht = fu - fl
+            win_time_s_freq = max(twin_min, bandwidth_factor/f_bandwidht)
+            win_samples = int(win_time_s_freq * df)
+            step = int(win_samples * (1 - overlap))
+            n_windows = (n_samples - win_samples) // step + 1
+            
+            if n_windows < 1:
+                continue
+                
+            # Filter data for this frequency band
+            rot_filt = rot.copy()
+            acc_filt = acc.copy()
+            
+            rot_filt = filter_stream(rot_filt, fl, fu)
+            acc_filt = filter_stream(acc_filt, fl, fu)
+            
+            # Initialize arrays for this frequency
+            times = np.zeros(n_windows)
+            baz_optimal = np.zeros(n_windows)
+            cc_optimal = np.zeros(n_windows)
+            cc_matrix = np.zeros((n_windows, len(baz_values)))
+            
+            # Loop through windows
+            for win_idx in range(n_windows):
+                i1 = win_idx * step
+                i2 = i1 + win_samples
+                times[win_idx] = rot[0].times()[i1]
+                
+                # Get vertical components
+                rot_z = rot_filt.select(channel='*Z')[0].data[i1:i2]
+                acc_z = acc_filt.select(channel='*Z')[0].data[i1:i2]
+                
+                max_cc = -1
+                
+                # Loop through backazimuths
+                for baz_idx, baz in enumerate(baz_values):
+                    # Rotate components
+                    rot_r, rot_t = rotate_ne_rt(
+                        rot_filt.select(channel='*N')[0].data[i1:i2],
+                        rot_filt.select(channel='*E')[0].data[i1:i2],
+                        baz
+                    )
+                    acc_r, acc_t = rotate_ne_rt(
+                        acc_filt.select(channel='*N')[0].data[i1:i2],
+                        acc_filt.select(channel='*E')[0].data[i1:i2],
+                        baz
+                    )
+                    
+                    # Compute correlation based on wave type
+                    if wave_type.lower() == 'love':
+                        cc = xcorr_max(correlate(rot_z, acc_t, 0))[1]
+                    elif wave_type.lower() == 'rayleigh':
+                        cc = xcorr_max(correlate(rot_t, acc_z, 0))[1]
+                    else:
+                        raise ValueError(f"Invalid wave type: {wave_type}")
+                    
+                    cc_matrix[win_idx, baz_idx] = cc
+                    
+                    # Update optimal parameters if better correlation found
+                    if cc > max_cc:
+                        max_cc = cc
+                        baz_optimal[win_idx] = baz
+                        cc_optimal[win_idx] = cc
+            
+            # Store results for this frequency band
+            results_by_freq.append({
+                'frequency': {
+                    'min': fl,
+                    'max': fu,
+                    'center': fc
+                },
+                'times': times,
+                'backazimuth': baz_optimal,
+                'cc_matrix': cc_matrix,
+                'cc_optimal': cc_optimal,
+                'window_samples': win_samples,
+                'step': step
+            })
+        
+        # Find optimal frequency band for each time window by comparing cc values
+        n_total_windows = max(len(r['times']) for r in results_by_freq)
+        final_times = np.zeros(n_total_windows)
+        final_baz = np.zeros(n_total_windows)
+        final_fmin = np.zeros(n_total_windows)
+        final_fmax = np.zeros(n_total_windows)
+        final_fcenter = np.zeros(n_total_windows)
+        final_cc = np.zeros(n_total_windows)
+        final_velocities = np.zeros(n_total_windows)
+        
+        # For each window, find the frequency band with highest cc
+        for win_idx in range(n_total_windows):
+            max_cc = -1
+            for freq_result in results_by_freq:
+                if win_idx < len(freq_result['times']):
+                    cc = freq_result['cc_optimal'][win_idx]
+                    if cc > max_cc:
+                        max_cc = cc
+                        final_times[win_idx] = freq_result['times'][win_idx]
+                        final_baz[win_idx] = freq_result['backazimuth'][win_idx]
+                        final_fmin[win_idx] = freq_result['frequency']['min']
+                        final_fmax[win_idx] = freq_result['frequency']['max']
+                        final_fcenter[win_idx] = freq_result['frequency']['center']
+                        final_cc[win_idx] = cc
+        
+        # Compute velocities using optimal parameters
+        for i in range(n_total_windows):
+            # Filter and rotate with optimal parameters
+            rot_opt = rot.copy()
+            acc_opt = acc.copy()
+            
+            rot_opt = filter_stream(rot_opt, final_fmin[i], final_fmax[i])
+            acc_opt = filter_stream(acc_opt, final_fmin[i], final_fmax[i])
+
+            # Calculate window indices based on optimal frequency
+            win_samples = int(max(twin_min, 1/final_fcenter[i]) * df)
+            step = int(win_samples * (1 - overlap))
+            i1 = i * step
+            i2 = i1 + win_samples
+            
+            if i2 > n_samples:
+                final_velocities[i] = np.nan
+                continue
+            
+            # Get components and rotate
+            rot_z = rot_opt.select(channel='*Z')[0].data[i1:i2]
+            acc_z = acc_opt.select(channel='*Z')[0].data[i1:i2]
+            
+            rot_r, rot_t = rotate_ne_rt(
+                rot_opt.select(channel='*N')[0].data[i1:i2],
+                rot_opt.select(channel='*E')[0].data[i1:i2],
+                final_baz[i]
+            )
+            acc_r, acc_t = rotate_ne_rt(
+                acc_opt.select(channel='*N')[0].data[i1:i2],
+                acc_opt.select(channel='*E')[0].data[i1:i2],
+                final_baz[i]
+            )
+            
+            # Compute velocity
+            if wave_type.lower() == 'love':
+                vel_result = self.compute_odr(
+                    x_array=rot_z,
+                    y_array=0.5*acc_t,
+                    zero_intercept=True
+                )
+            elif wave_type.lower() == 'rayleigh':
+                vel_result = self.compute_odr(
+                    x_array=rot_t,
+                    y_array=acc_z,
+                    zero_intercept=True
+                )
+            
+            final_velocities[i] = vel_result['slope']
+        
+        return {
+            'times': final_times,
+            'backazimuth': {
+                'values': baz_values,
+                'optimal': final_baz
+            },
+            'frequency': {
+                'min': final_fmin,
+                'max': final_fmax,
+                'center': final_fcenter,
+                'bands': {
+                    'lower': flower,
+                    'upper': fupper,
+                    'center': fcenter
+                }
+            },
+            'cross_correlation': {
+                'optimal': final_cc
+            },
+            'velocity': final_velocities,
+            'parameters': {
+                'wave_type': wave_type,
+                'overlap': overlap,
+                'sampling_rate': df
+            }
+        }
+
+    def compute_backazimuth(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, 
+                           baz_win_sec_overlap: float=0.5, out: bool=False) -> Dict:
         """
         Estimate backazimuth for Love or Rayleigh waves
         
@@ -862,7 +1159,6 @@ class sixdegrees():
         --------
         Dict : Backazimuth estimation results
         """
-
         from obspy.signal.rotate import rotate_ne_rt
         from obspy.signal.cross_correlation import correlate, xcorr_max
         from numpy import linspace, ones, array, nan, meshgrid, arange
@@ -872,9 +1168,9 @@ class sixdegrees():
                    'station_latitude', 'station_longitude']
 
         for key in keywords:
-            if key not in sixdegrees.attributes(self):
+            if key not in self.attributes():
                 print(f" -> {key} is missing in config!\n")
-                return
+                return {}  # Return empty dict instead of None
 
         # Store window parameters and ensure baz_step is integer
         self.baz_step = int(baz_step)
@@ -886,14 +1182,15 @@ class sixdegrees():
         ROT = self.get_stream("rotation").copy()
 
         if wave_type.lower() == "tangent":
-            # revert polarity if applied (here we need original polarity for vertical component)
-            if self.pol_applied:
-                for tr in ACC.select(channel="*Z"):
-                    if tr.stats.channel[1:] in self.pol_dict.keys():
-                        tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
-                for tr in ROT.select(channel="*Z"):
-                    if tr.stats.channel[1:] in self.pol_dict.keys():
-                        tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
+            # revert polarity if applied
+            if hasattr(self, 'pol_applied') and self.pol_applied:
+                if hasattr(self, 'pol_dict') and self.pol_dict is not None:
+                    for tr in ACC.select(channel="*Z"):
+                        if tr.stats.channel[1:] in self.pol_dict:
+                            tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
+                    for tr in ROT.select(channel="*Z"):
+                        if tr.stats.channel[1:] in self.pol_dict:
+                            tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
 
         # Get amount of samples for data
         n_samples = len(ROT.select(channel="*Z")[0])
@@ -1358,23 +1655,27 @@ class sixdegrees():
             else:
                 raise ValueError("No backazimuth provided or available")
         
-        # Rotate components to radial-transverse
-        rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
-                                  rot.select(channel='*E')[0].data,
-                                  baz)
-        acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
-                                  acc.select(channel='*E')[0].data,
-                                  baz)
-        
-        # Get vertical components
-        rot_z = rot.select(channel="*Z")[0].data
-        acc_z = acc.select(channel="*Z")[0].data
-        
+        # Get Z component and rotate components to radial-transverse
+        if wave_type == 'rayleigh':
+            acc_z = acc.select(channel="*Z")[0].data
+            rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
+                                    rot.select(channel='*E')[0].data,
+                                    baz)
+            n_samples = len(acc_z)
+
+        elif wave_type == 'love':
+            rot_z = rot.select(channel="*Z")[0].data
+            acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
+                                    acc.select(channel='*E')[0].data,
+                                    baz)
+            n_samples = len(rot_z)
+
         # Calculate window parameters
         win_samples = int(win_time_s * df)
         overlap_samples = int(win_samples * overlap)
         step = win_samples - overlap_samples
-        n_windows = int((len(rot_z) - win_samples) / step) + 1
+
+        n_windows = int((n_samples - win_samples) / step) + 1
         
         # Initialize arrays
         times = np.zeros(n_windows)
@@ -1442,6 +1743,172 @@ class sixdegrees():
             }
         }
         
+        return results
+
+    def compute_velocities_in_windows(self, wave_type: str="love", overlap: float=0.5, win_time_s: float=None,
+                                      cc_threshold: float=0.2, adjusted_baz: bool=False, baz: float=None,
+                                      method: str='odr', fmin: float=None, fmax: float=None) -> Dict:
+        """
+        Compute phase velocities in time intervals for Love or Rayleigh waves
+        
+        Parameters:
+        -----------
+        wave_type : str
+            Type of wave to analyze ('love' or 'rayleigh')
+        win_time_s : float or None
+            Window length in seconds. If None, uses 1/fmin
+        overlap : float
+            Window overlap in percent (0-1)
+        cc_threshold : float
+            Minimum cross-correlation coefficient threshold
+        baz : float or None
+            Backazimuth in degrees. If None, uses theoretical or estimated BAZ
+            
+        Returns:
+        --------
+        Dict
+            Dictionary containing:
+            - time: array of time points
+            - velocity: array of phase velocities
+            - ccoef: array of cross-correlation coefficients
+            - terr: array of time window lengths
+        """
+        import numpy as np
+        from obspy.signal.rotate import rotate_ne_rt
+        from obspy.signal.cross_correlation import correlate, xcorr_max
+        
+        # Get and process streams
+        if fmin is not None and fmax is not None:
+            rot = self.get_stream("rotation", raw=True).copy()
+            acc = self.get_stream("translation", raw=True).copy()
+            rot = rot.detrend('linear').filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
+            acc = acc.detrend('linear').filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
+        else:
+            rot = self.get_stream("rotation").copy()
+            acc = self.get_stream("translation").copy()
+            
+        # Get sampling rate
+        df = self.sampling_rate
+        
+        # Set window length if not provided
+        if win_time_s is None:
+            win_time_s = 1/self.fmin
+
+        # select mode of operation
+        if not adjusted_baz:
+            # Rotate components to radial-transverse
+            rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
+                                    rot.select(channel='*E')[0].data,
+                                    baz)
+            acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
+                                    acc.select(channel='*E')[0].data,
+                                    baz)
+        else:
+            # compute backazimuth for windows
+            baz_results = self.compute_backazimuth(
+                wave_type=wave_type,
+                baz_step=1,
+                baz_win_sec=win_time_s,
+                baz_win_sec_overlap=overlap,
+                out=True
+            )
+
+        # Get vertical components
+        rot_z = rot.select(channel="*Z")[0].data
+        acc_z = acc.select(channel="*Z")[0].data
+        
+        # Calculate window parameters
+        win_samples = int(win_time_s * df)
+        overlap_samples = int(win_samples * overlap)
+        step = win_samples - overlap_samples
+
+        # number of windows
+        n_windows = len(rot_z) // win_samples
+
+        # Initialize arrays
+        times = np.zeros(n_windows)
+        velocities = np.zeros(n_windows)
+        cc_coeffs = np.zeros(n_windows)
+        
+        # Loop through windows
+        for i in range(n_windows):
+            i1 = i * step
+            i2 = i1 + win_samples
+            
+            if adjusted_baz:
+                # Rotate components to radial-transverse
+                rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
+                                        rot.select(channel='*E')[0].data,
+                                        baz_results['cc_max_y'][i])
+                acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
+                                        acc.select(channel='*E')[0].data,
+                                        baz_results['cc_max_y'][i])
+            
+            # compute cross-correlation coefficient
+            if wave_type.lower() == 'love':
+                # For Love waves: use transverse acceleration and vertical rotation
+                cc = xcorr_max(correlate(rot_z[i1:i2], acc_t[i1:i2], 0))[1]
+
+            elif wave_type.lower() == 'rayleigh':
+                # For Rayleigh waves: use vertical acceleration and transverse rotation
+                cc = xcorr_max(correlate(rot_t[i1:i2], acc_z[i1:i2], 0))[1]
+            else:
+                raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+
+            # Compute velocity using amplitude ratio
+            if abs(cc) >= cc_threshold:
+                if wave_type.lower() == 'love':
+                    # get velocity from amplitude ratio via regression
+                    if method.lower() == 'odr':
+                        velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
+                    elif method.lower() == 'ransac':
+                        velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], method='ransac', zero_intercept=True)['slope']
+
+                elif wave_type.lower() == 'rayleigh':
+                    # get velocity from amplitude ratio via regression
+                    if method.lower() == 'odr':
+                        velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
+                    elif method.lower() == 'ransac':
+                        velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], method='ransac', zero_intercept=True)['slope']
+                else:
+                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+            
+                # add central time of window
+                times[i] = (i1 + win_samples/2) / df
+                
+                # add cross-correlation coefficient 
+                cc_coeffs[i] = abs(cc)
+            else:
+                times[i] = (i1 + win_samples/2) / df
+                velocities[i] = np.nan
+                cc_coeffs[i] = abs(cc)
+        
+        # center time of window
+        times_center = np.ones_like(times) * win_time_s/2
+
+        # Create output dictionary
+        results = {
+            'time': times,
+            'velocity': velocities,
+            'ccoef': cc_coeffs,
+            'terr': times_center,
+            'parameters': {
+                'wave_type': wave_type,
+                'win_time_s': win_time_s,
+                'overlap': overlap,
+                'cc_threshold': cc_threshold,
+                'baz': baz,
+                'fmin': self.fmin,
+                'fmax': self.fmax
+            }
+        }
+        
+        # add backazimuth if adjusted mode
+        if adjusted_baz:
+            results['backazimuth'] = baz_results['cc_max_y']
+        else:
+            results['backazimuth'] = baz*np.ones_like(times)
+
         return results
 
     def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
@@ -1689,7 +2156,7 @@ class sixdegrees():
          - stream
 
         EXAMPLE:
-        >>> st = __read_sds(path_to_archive, seed, tbeg, tend, data_format="MSEED")
+        >>> st = read_sds(path_to_archive, seed, tbeg, tend, data_format="MSEED")
         """
 
         import os
@@ -1771,7 +2238,9 @@ class sixdegrees():
         return frequencies[0:n//2], magnitude[0:n//2], phase[0:n//2]
 
     @staticmethod
-    def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: float, fmax: float, pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, twin_sec: int=5, twin_overlap: float=0.5) -> plt.Figure:
+    def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: float, fmax: float, wave_type: str="both",
+                         pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
+                         twin_sec: int=5, twin_overlap: float=0.5) -> plt.Figure:
 
         from obspy.signal.cross_correlation import correlate
         from obspy.signal.rotate import rotate_ne_rt
@@ -1811,11 +2280,28 @@ class sixdegrees():
         rot = rot0.copy()
         acc = acc0.copy()
 
-        # Change number of rows from 3 to 2
-        Nrow, Ncol = 2, 1
+        # get sampling rate
+        dt = rot[0].stats.delta
 
-        fig, ax = plt.subplots(Nrow, Ncol, figsize=(15, 5), sharex=True)
+        # define polarity
+        pol = {"HZ":1,"HN":1,"HE":1,"HR":1,"HT":1,
+               "JZ":1,"JN":1,"JE":1,"JR":1,"JT":1,
+              }
+        # update polarity dictionary
+        if pol_dict is not None:
+            for k in pol_dict.keys():
+                pol[k] = pol_dict[k]
 
+        # Change number of rows based on wave type
+        if wave_type == "both":
+            Nrow, Ncol = 2, 1
+            fig, axes = plt.subplots(Nrow, Ncol, figsize=(15, 5*Nrow), sharex=True)
+            ax = axes  # axes is already an array for multiple subplots
+        else:
+            Nrow, Ncol = 1, 1
+            fig, axes = plt.subplots(Nrow, Ncol, figsize=(15, 5), sharex=True)
+            ax = [axes]  # wrap single axes in list for consistent indexing
+        
         # define scaling factors
         acc_scaling, acc_unit = 1e3, f"mm/s$^2$"
         rot_scaling, rot_unit = 1e6, f"$\mu$rad/s"
@@ -1824,118 +2310,148 @@ class sixdegrees():
         lw = 1
         font = 12
 
+        cc = []
+        cc_all = []
+
         # Get vertical and rotated components
-        acc_z = acc.select(channel="*Z")[0].data
-        rot_z = rot.select(channel="*Z")[0].data
+        if wave_type == "both" or wave_type == "love":
+            # get vertical component
+            rot_z = rot.select(channel="*Z")[0].data
+            # rotate components
+            acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data, acc.select(channel="*E")[0].data, baz)
+            # apply scaling
+            rot_z *= rot_scaling
+            acc_r *= acc_scaling
+            acc_t *= acc_scaling
+            # calculate max values
+            acc_r_max = max([abs(min(acc_r)), abs(max(acc_r))])
+            acc_t_max = max([abs(min(acc_t)), abs(max(acc_t))])
+            rot_z_max = max([abs(min(rot_z)), abs(max(rot_z))])
+            # update polarity
+            rot0, acc0, rot0_lbl, acc0_lbl = pol['JZ']*rot_z, pol['HT']*acc_t, f"{pol['JZ']}x ROT-Z", f"{pol['HT']}x ACC-T"
+            # calculate cross-correlation
+            tt0, cc0 = __cross_correlation_windows(rot0, acc0, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
+            cc.append(cc0)
+            cc_all.append(max(correlate(rot0, acc0, 0, demean=True, normalize='naive', method='fft')))
 
-        # rotate components
-        acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data, acc.select(channel="*E")[0].data, baz)
-        rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data, rot.select(channel="*E")[0].data, baz)
+        if wave_type == "both" or wave_type == "rayleigh":
+            # get vertical component
+            acc_z = acc.select(channel="*Z")[0].data
+            # rotate components
+            rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data, rot.select(channel="*E")[0].data, baz)
+            # apply scaling
+            acc_z *= acc_scaling
+            rot_r *= rot_scaling
+            rot_t *= rot_scaling
+            # calculate max values
+            acc_z_max = max([abs(min(acc_z)), abs(max(acc_z))])
+            rot_r_max = max([abs(min(rot_r)), abs(max(rot_r))])
+            rot_t_max = max([abs(min(rot_t)), abs(max(rot_t))])
+            # update polarity
+            rot1, acc1, rot1_lbl, acc1_lbl = pol['JT']*rot_t, pol['HZ']*acc_z, f"{pol['JT']}x ROT-T", f"{pol['HZ']}x ACC-Z"
+            # calculate cross-correlation
+            tt1, cc1 = __cross_correlation_windows(rot1, acc1, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
+            cc.append(cc1)
+            cc_all.append(max(correlate(rot1, acc1, 0, demean=True, normalize='naive', method='fft')))
 
-        # Apply scaling
-        rot_z *= rot_scaling
-        rot_r *= rot_scaling
-        rot_t *= rot_scaling
-
-        acc_z *= acc_scaling
-        acc_r *= acc_scaling
-        acc_t *= acc_scaling
-
-        # Calculate max values for scaling
-        acc_z_max = max([abs(min(acc_z)), abs(max(acc_z))])
-        acc_r_max = max([abs(min(acc_r)), abs(max(acc_r))])
-        acc_t_max = max([abs(min(acc_t)), abs(max(acc_t))])
-
-        rot_z_max = max([abs(min(rot_z)), abs(max(rot_z))])
-        rot_r_max = max([abs(min(rot_r)), abs(max(rot_r))])
-        rot_t_max = max([abs(min(rot_t)), abs(max(rot_t))])
-
-        dt = rot[0].stats.delta
-
-        # define polarity
-        pol = {"HZ":1,"HN":1,"HE":1,"HR":1,"HT":1,
-               "JZ":1,"JN":1,"JE":1,"JR":1,"JT":1,
-              }
-        
-        # update polarity dictionary
-        if pol_dict is not None:
-            for k in pol_dict.keys():
-                pol[k] = pol_dict[k]
-
-        rot0, acc0, rot0_lbl, acc0_lbl = pol['JZ']*rot_z, pol['HT']*acc_t, f"{pol['JZ']}x ROT-Z", f"{pol['HT']}x ACC-T"
-        rot1, acc1, rot1_lbl, acc1_lbl = pol['JT']*rot_t, pol['HZ']*acc_z, f"{pol['JT']}x ROT-T", f"{pol['HZ']}x ACC-Z"
-        rot2, acc2, rot2_lbl, acc2_lbl = pol['JZ']*rot_z, pol['HR']*acc_r, f"{pol['JZ']}x ROT-Z", f"{pol['HR']}x ACC-R"
-
-        tt0, cc0 = __cross_correlation_windows(rot0, acc0, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
-        tt1, cc1 = __cross_correlation_windows(rot1, acc1, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
-        tt2, cc2 = __cross_correlation_windows(rot2, acc2, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
+        # rot2, acc2, rot2_lbl, acc2_lbl = pol['JZ']*rot_z, pol['HR']*acc_r, f"{pol['JZ']}x ROT-Z", f"{pol['HR']}x ACC-R"
+        # tt2, cc2 = __cross_correlation_windows(rot2, acc2, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
 
         cmap = plt.get_cmap("coolwarm", 12)
 
-        ax[0].plot(rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
-        ax00 = ax[0].twinx()
-        ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
-        ax01 = ax[0].twinx()
-        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, label="")
+        if wave_type == "love":
+            ax[0].plot(rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
+            ax00 = ax[0].twinx()
+            ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
+            ax01 = ax[0].twinx()
+            cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, label="")
 
-        ax[0].set_ylim(-rot_z_max, rot_z_max)
-        ax00.set_ylim(-acc_t_max, acc_t_max)
-        ax01.set_ylim(-1, 1)
-        ax01.yaxis.set_visible(False)
+            ax[0].set_ylim(-rot_z_max, rot_z_max)
+            ax00.set_ylim(-acc_t_max, acc_t_max)
+            ax01.set_ylim(-1, 1)
+            ax01.yaxis.set_visible(False)
 
-        ax[1].plot(rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
-        ax11 = ax[1].twinx()
-        ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
-        ax12 = ax[1].twinx()
-        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, label="")
+            twinaxs = [ax00]
+            cms = [cm1]
 
-        ax[1].set_ylim(-rot_t_max, rot_t_max)
-        ax11.set_ylim(-acc_z_max, acc_z_max)
-        ax12.set_ylim(-1, 1)
-        ax12.yaxis.set_visible(False)
+        elif wave_type == "rayleigh":
+            ax[0].plot(rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
+            ax11 = ax[0].twinx()
+            ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
+            ax12 = ax[0].twinx()
+            cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, label="")
 
-        # Calculate cross-correlations
-        cc0 = round(correlate(rot0, acc0, 0, demean=True, normalize='naive', method='auto')[0], 2)
-        cc1 = round(correlate(rot1, acc1, 0, demean=True, normalize='naive', method='auto')[0], 2)
-        cc2 = round(correlate(rot2, acc2, 0, demean=True, normalize='naive', method='auto')[0], 2)
-        cc = [cc0, cc1, cc2]
+            ax[0].set_ylim(-rot_t_max, rot_t_max)
+            ax11.set_ylim(-acc_z_max, acc_z_max)
+            ax12.set_ylim(-1, 1)
+            ax12.yaxis.set_visible(False)
+
+            twinaxs = [ax11]
+            cms = [cm2]
+
+        elif wave_type == "both":
+            # First subplot
+            ax[0].plot(rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
+            ax00 = ax[0].twinx()
+            ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
+            ax01 = ax[0].twinx()
+            cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, label="")
+
+            ax[0].set_ylim(-rot_z_max, rot_z_max)
+            ax00.set_ylim(-acc_t_max, acc_t_max)
+            ax01.set_ylim(-1, 1)
+            ax01.yaxis.set_visible(False)
+
+            # Second subplot
+            ax[1].plot(rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
+            ax11 = ax[1].twinx()
+            ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
+            ax12 = ax[1].twinx()
+            cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, label="")
+
+            ax[1].set_ylim(-rot_t_max, rot_t_max)
+            ax11.set_ylim(-acc_z_max, acc_z_max)
+            ax12.set_ylim(-1, 1)
+            ax12.yaxis.set_visible(False)
+
+            twinaxs = [ax00, ax11]
+            cms = [cm1, cm2]
 
         # Sync twinx axes
         ax[0].set_yticks(linspace(ax[0].get_yticks()[0], ax[0].get_yticks()[-1], len(ax[0].get_yticks())))
-        ax00.set_yticks(linspace(ax00.get_yticks()[0], ax00.get_yticks()[-1], len(ax[0].get_yticks())))
+        twinaxs[0].set_yticks(linspace(twinaxs[0].get_yticks()[0], twinaxs[0].get_yticks()[-1], len(ax[0].get_yticks())))
 
-        ax[1].set_yticks(linspace(ax[1].get_yticks()[0], ax[1].get_yticks()[-1], len(ax[1].get_yticks())))
-        ax11.set_yticks(linspace(ax11.get_yticks()[0], ax11.get_yticks()[-1], len(ax[1].get_yticks())))
+        if wave_type == "both":
+            ax[1].set_yticks(linspace(ax[1].get_yticks()[0], ax[1].get_yticks()[-1], len(ax[1].get_yticks())))
+            twinaxs[1].set_yticks(linspace(twinaxs[1].get_yticks()[0], twinaxs[1].get_yticks()[-1], len(ax[1].get_yticks())))
 
         # Set labels and grid
-        for i in range(2):
+        for i in range(Nrow):
             ax[i].legend(loc=1, ncols=4)
             ax[i].grid(which="both", alpha=0.5)
             ax[i].set_ylabel(f"$\Omega$ ({rot_unit})", fontsize=font)
-            ax[i].text(0.05, 0.9, f"CC={cc[i]}", ha='left', va='top', transform=ax[i].transAxes, fontsize=font-1)
+            ax[i].text(0.05, 0.9, f"CC={cc_all[i]}", ha='left', va='top', transform=ax[i].transAxes, fontsize=font-1)
 
-        for _ax in [ax00, ax11]:
+        for _ax in twinaxs:
             _ax.legend(loc=4)
             _ax.set_ylabel(f"$a$ ({acc_unit})", fontsize=font)
 
-        # add colorbar for cross-correlation
+        # Add colorbar
         cax = ax[Nrow-1].inset_axes([0.8, -0.35, 0.2, 0.1], transform=ax[Nrow-1].transAxes)
         
         # Create a ScalarMappable for the colorbar
         norm = plt.Normalize(-1, 1)
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
-        
-        # Create colorbar
         cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal")
         cbar.set_label("Cross-correlation", fontsize=font-1, loc="left", labelpad=-43, color="k")
         
         # Set limits for scatter plots
-        cm1.set_clim(-1, 1)
-        cm2.set_clim(-1, 1)
+        for cm in cms:
+            cm.set_clim(-1, 1)
 
-        # Add xlabel to the second subplot
-        ax[1].set_xlabel("Time (s)", fontsize=font)
+        # Add xlabel to bottom subplot
+        ax[Nrow-1].set_xlabel("Time (s)", fontsize=font)
 
         # Set title
         tbeg = acc[0].stats.starttime
@@ -2212,7 +2728,7 @@ class sixdegrees():
         }
 
     @staticmethod
-    def plot_cwt_all(rot: Stream, acc: Stream,  cwt_output: Dict, clog: bool=False, 
+    def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False, 
                      ylim: Union[float, None]=None) -> plt.Figure:
         """
         Plot continuous wavelet transform analysis for all components of rotation and translation
@@ -2244,24 +2760,21 @@ class sixdegrees():
         cmap = plt.get_cmap("viridis")
         rot_scale = 1e6
         acc_scale = 1e3
+
+        # Count total components and calculate needed subplots
+        n_components = len(rot) + len(acc)
         
-        # Create figure with GridSpec for 12 subplots (6 pairs)
-        fig = plt.figure(figsize=(15, 16))
-        gs = GridSpec(18, 1, figure=fig, hspace=0.1)
-        
-        # Create subplots for each component
-        axes = []
-        for i in range(6):
-            axes.extend([
-                fig.add_subplot(gs[i*3, :]),     # Waveform
-                fig.add_subplot(gs[i*3+1:i*3+3, :])  # CWT
-            ])
-        
+        # Create figure with GridSpec
+        # Each component needs 2 rows - one for waveform and one for CWT
+        fig = plt.figure(figsize=(15, 4*n_components))
+        gs = GridSpec(2*n_components, 1, figure=fig, height_ratios=[1, 3]*n_components, hspace=0.3)
+
         # Component mapping
-        components = [
-            ('Z', 'Rotation'), ('N', 'Rotation'), ('E', 'Rotation'),
-            ('Z', 'Translation'), ('N', 'Translation'), ('E', 'Translation')
-        ]
+        components = []
+        for tr in rot:
+            components.append((tr.stats.channel[-1], 'Rotation'))
+        for tr in acc:
+            components.append((tr.stats.channel[-1], 'Translation'))
         
         # Set colormap limits
         if clog:
@@ -2271,20 +2784,23 @@ class sixdegrees():
             
         # Plot each component
         for i, (comp, data_type) in enumerate(components):
-            wave_ax = axes[i*2]
-            cwt_ax = axes[i*2 + 1]
+            wave_ax = fig.add_subplot(gs[2*i])
+            cwt_ax = fig.add_subplot(gs[2*i+1])
             
             # Get data and scale
             if data_type == 'Rotation':
-                data = rot.select(channel=f"*{comp}")[0].data * rot_scale
+                tr = rot.select(channel=f"*{comp}")[0]
+                data = tr.data * rot_scale
                 unit = r"$\mu$rad"
                 label = f"$\Omega_{comp}$"
             else:
-                data = acc.select(channel=f"*{comp}")[0].data * acc_scale
+                tr = acc.select(channel=f"*{comp}")[0]
+                data = tr.data * acc_scale
                 unit = r"mm/s$^2$"
                 label = f"$a_{comp}$"
             
-            times = rot.select(channel=f"*{comp}")[0].times() * tscale
+            # Get times from the current trace instead of rotation stream
+            times = tr.times() * tscale
             
             # Plot waveform
             wave_ax.plot(times, data, color="k", label=label, lw=1)
@@ -2292,6 +2808,7 @@ class sixdegrees():
             wave_ax.legend(loc=1)
             wave_ax.set_xticklabels([])
             wave_ax.set_ylabel(f"{label}\n({unit})", fontsize=font)
+            wave_ax.grid(True, alpha=0.3)
             
             # Plot CWT
             key = f"{comp}_{data_type}"
@@ -2302,7 +2819,8 @@ class sixdegrees():
                 cmap=cmap,
                 vmin=vmin,
                 vmax=vmax,
-                norm=norm
+                norm=norm,
+                rasterized=True
             )
             
             # Add cone of influence
@@ -2310,7 +2828,8 @@ class sixdegrees():
                 cwt_output[key]['times'] * tscale,
                 cwt_output[key]['cone'],
                 color="white",
-                ls="--"
+                ls="--",
+                alpha=0.7
             )
             cwt_ax.fill_between(
                 cwt_output[key]['times'] * tscale,
@@ -2327,9 +2846,15 @@ class sixdegrees():
             else:
                 cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
             
-            cwt_ax.set_ylabel("Frequency\n(Hz)", fontsize=font)
-            if i < 5:  # Not the last subplot
-                cwt_ax.set_xticklabels([])
+            cwt_ax.set_yscale('log')
+            cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)
+            cwt_ax.grid(True, alpha=0.3)
+            
+            # Only add xlabel to bottom subplot
+            if i == len(components) - 1:
+                cwt_ax.set_xlabel(f"Time (s) from {rot[0].stats.starttime.date} "
+                                f"{str(rot[0].stats.starttime.time).split('.')[0]} UTC",
+                                fontsize=font)
             
             # Add subplot labels
             wave_ax.text(.005, .97, f"({chr(97+i*2)})", ha='left', va='top',
@@ -2337,20 +2862,14 @@ class sixdegrees():
             cwt_ax.text(.005, .97, f"({chr(98+i*2)})", ha='left', va='top',
                         transform=cwt_ax.transAxes, fontsize=font+2, color="w")
         
-        # Add x-label to bottom subplot
-        axes[-1].set_xlabel(f"Time (s) from {rot[0].stats.starttime.date} "
-                          f"{str(rot[0].stats.starttime.time).split('.')[0]} UTC",
-                          fontsize=font)
-        
         # Add colorbar
-        cbar_ax = fig.add_axes([0.92, 0.11, 0.01, 0.77])
-        cb = plt.colorbar(im, cax=cbar_ax, extend="max")
-        cb.set_label("norm. continuous wavelet transform power", 
-                    fontsize=font, labelpad=-55, color="black")
+        cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.8])
+        cb = plt.colorbar(im, cax=cbar_ax)
+        cb.set_label("Normalized CWT Power", fontsize=font)
         
-        plt.tight_layout()
+        plt.subplots_adjust(right=0.9)
         return fig
-
+    
     def plot_backazimuth_results(self, baz_results: Dict, wave_type: str='love', 
                                 baz_theo: float=None, baz_theo_margin: float=10, 
                                 cc_threshold: float=None, minors: bool=True) -> plt.Figure:
@@ -2406,17 +2925,23 @@ class sixdegrees():
         acc = self.get_stream("translation").copy()
 
         # Get components
-        hz = acc.select(channel="*HZ")[0].data
-        hn = acc.select(channel="*HN")[0].data
-        he = acc.select(channel="*HE")[0].data
-        jz = rot.select(channel="*JZ")[0].data
-        jn = rot.select(channel="*JN")[0].data
-        je = rot.select(channel="*JE")[0].data
+        if wave_type == "love":
+            hn = acc.select(channel="*HN")[0].data
+            he = acc.select(channel="*HE")[0].data
+            jz = rot.select(channel="*JZ")[0].data
+        elif wave_type == "rayleigh":
+            hz = acc.select(channel="*HZ")[0].data
+            je = rot.select(channel="*JE")[0].data
+            jn = rot.select(channel="*JN")[0].data
+        else:
+            raise ValueError(f"Invalid wave_type: {wave_type}. Use 'love' or 'rayleigh'.")
         
         # Rotate to radial-transverse
         if baz_theo is not None:
-            hr, ht = rotate_ne_rt(hn, he, baz_theo)
-            jr, jt = rotate_ne_rt(jn, je, baz_theo)
+            if wave_type == "love":
+                hr, ht = rotate_ne_rt(hn, he, baz_theo)
+            elif wave_type == "rayleigh":
+                jr, jt = rotate_ne_rt(jn, je, baz_theo)
         else:
             print("No theoretical backazimuth provided")
             return
@@ -2438,21 +2963,21 @@ class sixdegrees():
         if wave_type == "love":
 
             # Plot translational data
-            ax_wave.plot(times, ht*trans_scale, 'black', label=f"{self.tra_seed.split('.')[1]}.T", lw=lw)
+            ax_wave.plot(times, ht*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.T", lw=lw)
             ax_wave.set_ylim(-max(abs(ht*trans_scale)), max(abs(ht*trans_scale)))
 
             # Add rotational data on twin axis
             ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, jz*rot_scale, 'darkred', label=f"{self.rot_seed.split('.')[1]}.Z", lw=lw)
+            ax_wave2.plot(times, jz*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.Z", lw=lw)
             ax_wave2.set_ylim(-max(abs(jz*rot_scale)), max(abs(jz*rot_scale)))
     
         elif wave_type == "rayleigh":
-            ax_wave.plot(times, hz*trans_scale, 'black', label=f"{self.tra_seed.split('.')[1]}.Z", lw=lw)
+            ax_wave.plot(times, hz*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.Z", lw=lw)
             ax_wave.set_ylim(-max(abs(hz*trans_scale)), max(abs(hz*trans_scale)))
 
             # Add rotational data on twin axis
             ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, jt*rot_scale, 'darkred', label=f"{self.rot_seed.split('.')[1]}.T", lw=lw)
+            ax_wave2.plot(times, jt*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.T", lw=lw)
             ax_wave2.set_ylim(-max(abs(jt*rot_scale)), max(abs(jt*rot_scale)))
             
         # Configure waveform axes
@@ -2521,6 +3046,9 @@ class sixdegrees():
         title = f"{self.tbeg.date} {str(self.tbeg.time).split('.')[0]} UTC"
         if self.fmin is not None and self.fmax is not None:
             title += f" | {self.fmin}-{self.fmax} Hz"
+        if cc_threshold is not None:
+            title += f" | cc >= {cc_threshold}"
+
         fig.suptitle(title, fontsize=font+2, y=0.93)
         
         ax_baz.set_xlabel("time (s)", fontsize=font)
@@ -2538,7 +3066,7 @@ class sixdegrees():
 
         return fig
 
-    def plot_velocities(self, velocity_results: Dict, vmax: float=None, minors: bool=True) -> plt.Figure:
+    def plot_velocities(self, velocity_results: Dict, vmax: float=None, minors: bool=True, cc_threshold: float=None) -> plt.Figure:
         """
         Plot waveforms and velocity estimates
         
@@ -2550,7 +3078,8 @@ class sixdegrees():
             Maximum velocity for plot scaling
         minors : bool
             Add minor ticks to axes if True
-            
+        cc_threshold : float, optional
+            Minimum cross-correlation coefficient threshold
         Returns:
         --------
         matplotlib.figure.Figure
@@ -2559,6 +3088,8 @@ class sixdegrees():
         from matplotlib.gridspec import GridSpec
         import numpy as np
         
+        wave_type = velocity_results['parameters']['wave_type'].lower()
+
         # Create figure
         fig = plt.figure(figsize=(15, 8))
         gs = GridSpec(4, 8, figure=fig, hspace=0.2)
@@ -2570,8 +3101,8 @@ class sixdegrees():
         # Plot settings
         font = 12
         lw = 1.0
-        rot_scale, rot_unit = 1e6, r"$\mu$rad/s"
-        trans_scale, trans_unit = 1e3, r"mm/s$^2$"
+        rot_scale, rot_unit = 1e9, r"nrad/s"
+        tra_scale, tra_unit = 1e6, r"$\mu$m/s$^2$"
         
         # Get time vector
         times = np.arange(len(self.st[0])) / self.sampling_rate
@@ -2582,48 +3113,57 @@ class sixdegrees():
 
         # scale waveforms
         for tr in acc:
-            tr.data *= trans_scale
+            tr.data *= tra_scale
         for tr in rot:
             tr.data *= rot_scale
 
         # rotate waveforms
-        acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data,
-                                    acc.select(channel="*E")[0].data,
-                                    velocity_results['parameters']['baz'])
-        rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data,
-                                    rot.select(channel="*E")[0].data,
-                                    velocity_results['parameters']['baz'])
-        
-        acc_z = acc.select(channel="*Z")[0].data
-        rot_z = 2*rot.select(channel="*Z")[0].data # times two for velocity scaling (plotting only)
+        if wave_type == "love":
+            rot_z = 2*rot.select(channel="*Z")[0].data # times two for velocity scaling (plotting only)
+            acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data,
+                                        acc.select(channel="*E")[0].data,
+                                        velocity_results['parameters']['baz'])
+            
+
+        elif wave_type == "rayleigh":
+            acc_z = acc.select(channel="*Z")[0].data
+            rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data,
+                                        rot.select(channel="*E")[0].data,
+                                        velocity_results['parameters']['baz'])
+
+        # prepare mask
+        if cc_threshold is not None:
+            mask = velocity_results['ccoef'] >= cc_threshold
+        else:
+            mask = velocity_results['ccoef'] >= 0
 
         # Plot waveforms based on wave type
-        if velocity_results['parameters']['wave_type'].lower() == 'love':
+        if  wave_type == 'love':
 
             # Plot transverse acceleration
             ax_wave.plot(times, acc_t, 'black', 
-                        label=f"{self.tra_seed.split('.')[1]}.T", lw=lw)
+                        label=f"{self.tra_seed[0].split('.')[1]}.T", lw=lw)
             
             # Plot vertical rotation on twin axis
             ax_wave2 = ax_wave.twinx()
             ax_wave2.plot(times, rot_z, 'darkred',
-                         label=f"2x {self.rot_seed.split('.')[1]}.Z", lw=lw)
+                         label=f"2x {self.rot_seed[0].split('.')[1]}.Z", lw=lw)
             
-        elif velocity_results['parameters']['wave_type'].lower() == 'rayleigh':
+        elif wave_type == 'rayleigh':
 
             # Plot vertical acceleration
             ax_wave.plot(times, acc_z, 'black',
-                        label=f"{self.tra_seed.split('.')[1]}.Z", lw=lw)
+                        label=f"{self.tra_seed[0].split('.')[1]}.Z", lw=lw)
             
             # Plot transverse rotation on twin axis
             ax_wave2 = ax_wave.twinx()
             ax_wave2.plot(times, rot_t, 'darkred',
-                         label=f"{self.rot_seed.split('.')[1]}.T", lw=lw)
+                         label=f"{self.rot_seed[0].split('.')[1]}.T", lw=lw)
 
         # Configure waveform axes
         ax_wave.grid(True, which='both', ls='--', alpha=0.3)
         ax_wave.legend(loc=1)
-        ax_wave.set_ylabel(f"acceleration ({trans_unit})", fontsize=font)
+        ax_wave.set_ylabel(f"acceleration ({tra_unit})", fontsize=font)
         ax_wave2.tick_params(axis='y', colors="darkred")
         ax_wave2.set_ylabel(f"rotation rate ({rot_unit})", color="darkred", fontsize=font)
         ax_wave2.legend(loc=4)
@@ -2632,16 +3172,16 @@ class sixdegrees():
         
         # Plot velocities
         cmap = plt.get_cmap("viridis", 10)
-        scatter = ax_vel.scatter(velocity_results['time'], 
-                               velocity_results['velocity'],
-                               c=velocity_results['ccoef'], 
+        scatter = ax_vel.scatter(velocity_results['time'][mask], 
+                               velocity_results['velocity'][mask],
+                               c=velocity_results['ccoef'][mask], 
                                cmap=cmap, s=70, alpha=1.0,
                                vmin=0, vmax=1, edgecolors="k", lw=1, zorder=2)
         
         # Add error bars
-        ax_vel.errorbar(velocity_results['time'], 
-                       velocity_results['velocity'],
-                       xerr=velocity_results['terr'],
+        ax_vel.errorbar(velocity_results['time'][mask], 
+                       velocity_results['velocity'][mask],
+                       xerr=velocity_results['terr'][mask],
                        color='black', alpha=0.4, ls='none', zorder=1)
         
         # Configure velocity axis
@@ -2652,6 +3192,9 @@ class sixdegrees():
             ax_vel.set_ylim(top=vmax)
         ax_vel.grid(True, which='both', ls='--', alpha=0.3)
         
+        for a in [ax_vel, ax_wave]:
+            a.set_xlim(0, times.max())
+
         if minors:
             ax_wave.minorticks_on()
             ax_vel.minorticks_on()
@@ -2668,404 +3211,13 @@ class sixdegrees():
                  f" | {self.fmin}-{self.fmax} Hz"
                  f" | T = {velocity_results['parameters']['win_time_s']:.1f} s"
                  f" | {velocity_results['parameters']['overlap']*100:.0f}% overlap")
+        if cc_threshold is not None:
+            title += f" | cc >= {cc_threshold}"
         fig.suptitle(title, fontsize=font+2, y=0.95)
         
         # plt.tight_layout()
         plt.show()
         return fig
-
-    def compute_velocities_in_windows(self, wave_type: str="love", overlap: float=0.5, win_time_s: float=None,
-                                      cc_threshold: float=0.2, adjusted_baz: bool=False, baz: float=None,
-                                      method: str='odr', fmin: float=None, fmax: float=None) -> Dict:
-        """
-        Compute phase velocities in time intervals for Love or Rayleigh waves
-        
-        Parameters:
-        -----------
-        wave_type : str
-            Type of wave to analyze ('love' or 'rayleigh')
-        win_time_s : float or None
-            Window length in seconds. If None, uses 1/fmin
-        overlap : float
-            Window overlap in percent (0-1)
-        cc_threshold : float
-            Minimum cross-correlation coefficient threshold
-        baz : float or None
-            Backazimuth in degrees. If None, uses theoretical or estimated BAZ
-            
-        Returns:
-        --------
-        Dict
-            Dictionary containing:
-            - time: array of time points
-            - velocity: array of phase velocities
-            - ccoef: array of cross-correlation coefficients
-            - terr: array of time window lengths
-        """
-        import numpy as np
-        from obspy.signal.rotate import rotate_ne_rt
-        from obspy.signal.cross_correlation import correlate, xcorr_max
-        
-        # Get and process streams
-        if fmin is not None and fmax is not None:
-            rot = self.get_stream("rotation", raw=True).copy()
-            acc = self.get_stream("translation", raw=True).copy()
-            rot = rot.detrend('linear').filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
-            acc = acc.detrend('linear').filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
-        else:
-            rot = self.get_stream("rotation").copy()
-            acc = self.get_stream("translation").copy()
-            
-        # Get sampling rate
-        df = self.sampling_rate
-        
-        # Set window length if not provided
-        if win_time_s is None:
-            win_time_s = 1/self.fmin
-
-        # select mode of operation
-        if not adjusted_baz:
-            # Rotate components to radial-transverse
-            rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
-                                    rot.select(channel='*E')[0].data,
-                                    baz)
-            acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
-                                    acc.select(channel='*E')[0].data,
-                                    baz)
-        else:
-            # compute backazimuth for windows
-            baz_results = self.compute_backazimuth(
-                wave_type=wave_type,
-                baz_step=1,
-                baz_win_sec=win_time_s,
-                baz_win_sec_overlap=overlap,
-                out=True
-            )
-
-        # Get vertical components
-        rot_z = rot.select(channel="*Z")[0].data
-        acc_z = acc.select(channel="*Z")[0].data
-        
-        # Calculate window parameters
-        win_samples = int(win_time_s * df)
-        overlap_samples = int(win_samples * overlap)
-        step = win_samples - overlap_samples
-
-        # number of windows
-        n_windows = len(rot_z) // win_samples
-
-        # Initialize arrays
-        times = np.zeros(n_windows)
-        velocities = np.zeros(n_windows)
-        cc_coeffs = np.zeros(n_windows)
-        
-        # Loop through windows
-        for i in range(n_windows):
-            i1 = i * step
-            i2 = i1 + win_samples
-            
-            if adjusted_baz:
-                # Rotate components to radial-transverse
-                rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
-                                        rot.select(channel='*E')[0].data,
-                                        baz_results['cc_max_y'][i])
-                acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
-                                        acc.select(channel='*E')[0].data,
-                                        baz_results['cc_max_y'][i])
-            
-            # compute cross-correlation coefficient
-            if wave_type.lower() == 'love':
-                # For Love waves: use transverse acceleration and vertical rotation
-                cc = xcorr_max(correlate(rot_z[i1:i2], acc_t[i1:i2], 0))[1]
-
-            elif wave_type.lower() == 'rayleigh':
-                # For Rayleigh waves: use vertical acceleration and transverse rotation
-                cc = xcorr_max(correlate(rot_t[i1:i2], acc_z[i1:i2], 0))[1]
-            else:
-                raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
-
-            # Compute velocity using amplitude ratio
-            if abs(cc) >= cc_threshold:
-                if wave_type.lower() == 'love':
-                    # get velocity from amplitude ratio via regression
-                    if method.lower() == 'odr':
-                        velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
-                    elif method.lower() == 'ransac':
-                        velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], method='ransac', zero_intercept=True)['slope']
-
-                elif wave_type.lower() == 'rayleigh':
-                    # get velocity from amplitude ratio via regression
-                    if method.lower() == 'odr':
-                        velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
-                    elif method.lower() == 'ransac':
-                        velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], method='ransac', zero_intercept=True)['slope']
-                else:
-                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
-            
-                # add central time of window
-                times[i] = (i1 + win_samples/2) / df
-                
-                # add cross-correlation coefficient 
-                cc_coeffs[i] = abs(cc)
-            else:
-                times[i] = (i1 + win_samples/2) / df
-                velocities[i] = np.nan
-                cc_coeffs[i] = abs(cc)
-        
-        # center time of window
-        times_center = np.ones_like(times) * win_time_s/2
-
-        # Create output dictionary
-        results = {
-            'time': times,
-            'velocity': velocities,
-            'ccoef': cc_coeffs,
-            'terr': times_center,
-            'parameters': {
-                'wave_type': wave_type,
-                'win_time_s': win_time_s,
-                'overlap': overlap,
-                'cc_threshold': cc_threshold,
-                'baz': baz,
-                'fmin': self.fmin,
-                'fmax': self.fmax
-            }
-        }
-        
-        # add backazimuth if adjusted mode
-        if adjusted_baz:
-            results['backazimuth'] = baz_results['cc_max_y']
-        else:
-            results['backazimuth'] = baz*np.ones_like(times)
-
-        return results
-
-    def optimize_parameters(self, wave_type: str='love', overlap: float=0.5, twin_min: float=1,
-                          fbands: Dict=None, baz_step: int=1, bandwidth_factor: float=6) -> Dict:
-        """
-        Optimize parameters for wave analysis by maximizing cross-correlation
-        """
-        import numpy as np
-        from obspy.signal.cross_correlation import correlate, xcorr_max
-        from obspy.signal.rotate import rotate_ne_rt
-
-        def filter_stream(stream: Stream, fmin: float, fmax: float) -> Stream:
-            stream = stream.detrend('linear')
-            stream = stream.taper(max_percentage=0.01)
-            stream.filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
-            stream = stream.detrend('linear')
-            return stream
-
-        # Default frequency bands if not provided
-        if fbands is None:
-            fbands = {
-                'fmin': 0.01,
-                'fmax': 1.0,
-                'octave_fraction': 3
-            }
-
-        # Generate frequency bands
-        flower, fupper, fcenter = self.get_octave_bands(
-            fmin=fbands['fmin'],
-            fmax=fbands['fmax'],
-            faction_of_octave=fbands['octave_fraction']
-        )
-        
-        # Get streams and sampling rate
-        rot = self.get_stream("rotation", raw=True).copy()
-        acc = self.get_stream("translation", raw=True).copy()
-        df = self.sampling_rate
-        n_samples = len(rot[0].data)
-        
-        # Generate backazimuth values
-        baz_values = np.arange(0, 360, baz_step)
-        
-        # Initialize results dictionary for each frequency band
-        results_by_freq = []
-        
-        # Loop through frequency bands first
-        for freq_idx, (fl, fu, fc) in enumerate(zip(flower, fupper, fcenter)):
-            # Calculate window size based on frequency
-            f_bandwidht = fu - fl
-            win_time_s_freq = max(twin_min, bandwidth_factor/f_bandwidht)
-            win_samples = int(win_time_s_freq * df)
-            step = int(win_samples * (1 - overlap))
-            n_windows = (n_samples - win_samples) // step + 1
-            
-            if n_windows < 1:
-                continue
-                
-            # Filter data for this frequency band
-            rot_filt = rot.copy()
-            acc_filt = acc.copy()
-            
-            rot_filt = filter_stream(rot_filt, fl, fu)
-            acc_filt = filter_stream(acc_filt, fl, fu)
-            
-            # Initialize arrays for this frequency
-            times = np.zeros(n_windows)
-            baz_optimal = np.zeros(n_windows)
-            cc_optimal = np.zeros(n_windows)
-            cc_matrix = np.zeros((n_windows, len(baz_values)))
-            
-            # Loop through windows
-            for win_idx in range(n_windows):
-                i1 = win_idx * step
-                i2 = i1 + win_samples
-                times[win_idx] = rot[0].times()[i1]
-                
-                # Get vertical components
-                rot_z = rot_filt.select(channel='*Z')[0].data[i1:i2]
-                acc_z = acc_filt.select(channel='*Z')[0].data[i1:i2]
-                
-                max_cc = -1
-                
-                # Loop through backazimuths
-                for baz_idx, baz in enumerate(baz_values):
-                    # Rotate components
-                    rot_r, rot_t = rotate_ne_rt(
-                        rot_filt.select(channel='*N')[0].data[i1:i2],
-                        rot_filt.select(channel='*E')[0].data[i1:i2],
-                        baz
-                    )
-                    acc_r, acc_t = rotate_ne_rt(
-                        acc_filt.select(channel='*N')[0].data[i1:i2],
-                        acc_filt.select(channel='*E')[0].data[i1:i2],
-                        baz
-                    )
-                    
-                    # Compute correlation based on wave type
-                    if wave_type.lower() == 'love':
-                        cc = xcorr_max(correlate(rot_z, acc_t, 0))[1]
-                    elif wave_type.lower() == 'rayleigh':
-                        cc = xcorr_max(correlate(rot_t, acc_z, 0))[1]
-                    else:
-                        raise ValueError(f"Invalid wave type: {wave_type}")
-                    
-                    cc_matrix[win_idx, baz_idx] = cc
-                    
-                    # Update optimal parameters if better correlation found
-                    if cc > max_cc:
-                        max_cc = cc
-                        baz_optimal[win_idx] = baz
-                        cc_optimal[win_idx] = cc
-            
-            # Store results for this frequency band
-            results_by_freq.append({
-                'frequency': {
-                    'min': fl,
-                    'max': fu,
-                    'center': fc
-                },
-                'times': times,
-                'backazimuth': baz_optimal,
-                'cc_matrix': cc_matrix,
-                'cc_optimal': cc_optimal,
-                'window_samples': win_samples,
-                'step': step
-            })
-        
-        # Find optimal frequency band for each time window by comparing cc values
-        n_total_windows = max(len(r['times']) for r in results_by_freq)
-        final_times = np.zeros(n_total_windows)
-        final_baz = np.zeros(n_total_windows)
-        final_fmin = np.zeros(n_total_windows)
-        final_fmax = np.zeros(n_total_windows)
-        final_fcenter = np.zeros(n_total_windows)
-        final_cc = np.zeros(n_total_windows)
-        final_velocities = np.zeros(n_total_windows)
-        
-        # For each window, find the frequency band with highest cc
-        for win_idx in range(n_total_windows):
-            max_cc = -1
-            for freq_result in results_by_freq:
-                if win_idx < len(freq_result['times']):
-                    cc = freq_result['cc_optimal'][win_idx]
-                    if cc > max_cc:
-                        max_cc = cc
-                        final_times[win_idx] = freq_result['times'][win_idx]
-                        final_baz[win_idx] = freq_result['backazimuth'][win_idx]
-                        final_fmin[win_idx] = freq_result['frequency']['min']
-                        final_fmax[win_idx] = freq_result['frequency']['max']
-                        final_fcenter[win_idx] = freq_result['frequency']['center']
-                        final_cc[win_idx] = cc
-        
-        # Compute velocities using optimal parameters
-        for i in range(n_total_windows):
-            # Filter and rotate with optimal parameters
-            rot_opt = rot.copy()
-            acc_opt = acc.copy()
-            
-            rot_opt = filter_stream(rot_opt, final_fmin[i], final_fmax[i])
-            acc_opt = filter_stream(acc_opt, final_fmin[i], final_fmax[i])
-
-            # Calculate window indices based on optimal frequency
-            win_samples = int(max(twin_min, 1/final_fcenter[i]) * df)
-            step = int(win_samples * (1 - overlap))
-            i1 = i * step
-            i2 = i1 + win_samples
-            
-            if i2 > n_samples:
-                final_velocities[i] = np.nan
-                continue
-            
-            # Get components and rotate
-            rot_z = rot_opt.select(channel='*Z')[0].data[i1:i2]
-            acc_z = acc_opt.select(channel='*Z')[0].data[i1:i2]
-            
-            rot_r, rot_t = rotate_ne_rt(
-                rot_opt.select(channel='*N')[0].data[i1:i2],
-                rot_opt.select(channel='*E')[0].data[i1:i2],
-                final_baz[i]
-            )
-            acc_r, acc_t = rotate_ne_rt(
-                acc_opt.select(channel='*N')[0].data[i1:i2],
-                acc_opt.select(channel='*E')[0].data[i1:i2],
-                final_baz[i]
-            )
-            
-            # Compute velocity
-            if wave_type.lower() == 'love':
-                vel_result = self.compute_odr(
-                    x_array=rot_z,
-                    y_array=0.5*acc_t,
-                    zero_intercept=True
-                )
-            elif wave_type.lower() == 'rayleigh':
-                vel_result = self.compute_odr(
-                    x_array=rot_t,
-                    y_array=acc_z,
-                    zero_intercept=True
-                )
-            
-            final_velocities[i] = vel_result['slope']
-        
-        return {
-            'times': final_times,
-            'backazimuth': {
-                'values': baz_values,
-                'optimal': final_baz
-            },
-            'frequency': {
-                'min': final_fmin,
-                'max': final_fmax,
-                'center': final_fcenter,
-                'bands': {
-                    'lower': flower,
-                    'upper': fupper,
-                    'center': fcenter
-                }
-            },
-            'cross_correlation': {
-                'optimal': final_cc
-            },
-            'velocity': final_velocities,
-            'parameters': {
-                'wave_type': wave_type,
-                'overlap': overlap,
-                'sampling_rate': df
-            }
-        }
 
     def plot_optimization_results(self, params: Dict, wave_type: str='love', vel_max_threshold: float=5000, cc_threshold: float=0.8, baz_theo: float=None) -> plt.Figure:
         """
@@ -3188,3 +3340,194 @@ class sixdegrees():
         print(f"Number of points: {np.sum(vel_mask)} / {len(vel_mask)}")
         
         return fig
+
+    def regression(self, features: List[str], target: str, reg: str = "theilsen", 
+              zero_intercept: bool = False, verbose: bool = True) -> Dict:
+        """
+        Perform regression analysis using various methods.
+        
+        Args:
+            features: List of feature columns
+            target: Target variable column
+            reg: Regression method ('ols', 'ransac', 'theilsen', 'odr')
+            zero_intercept: Force intercept through zero if True
+            verbose: Print regression results if True
+        
+        Returns:
+            Dictionary containing regression results including:
+            - model: Fitted regression model
+            - r2: R-squared score
+            - tp: Time points
+            - dp: Model predictions
+            - slope: Regression slope(s)
+            - inter: Y-intercept (0 if zero_intercept=True)
+        """
+        from sklearn import linear_model
+        from sklearn.linear_model import LinearRegression, RANSACRegressor, HuberRegressor, TheilSenRegressor
+        from scipy import odr
+        from numpy import array, std, ones, sum, mean, ones_like
+        import pandas as pd
+
+        # Validate regression method
+        valid_methods = ['ols', 'ransac', 'theilsen', 'odr']
+        if reg.lower() not in valid_methods:
+            raise ValueError(f"Invalid regression method. Must be one of {valid_methods}")
+
+        # Create DataFrame if needed
+        if isinstance(features, pd.DataFrame):
+            _df = features.copy()
+        else:
+            # Create DataFrame from stream data
+            data = {}
+            for tr in self.st:
+                data[tr.stats.channel] = tr.data
+            _df = pd.DataFrame(data)
+            _df['time'] = self.st[0].times()
+
+        # Remove time and target from features if present
+        if target in features:
+            features.remove(target)
+        if "time" in features:
+            features.remove("time")
+
+        # Define x and y data
+        X = _df[features].values.reshape(-1, len(features))
+        y = _df[target].values
+
+        # Initialize predictions list and model
+        model_predict = []
+        model = None
+
+        # Rest of regression code remains the same as in baroseis...
+        if reg.lower() == "ols":
+            model = linear_model.LinearRegression(fit_intercept=not zero_intercept)
+            model.fit(X, y)
+            if verbose:
+                print("R2:", model.score(X, y))
+                if not zero_intercept:
+                    print("X0:", model.intercept_)
+                print("Coef: ", model.coef_)
+                for _f, _c in zip(features, model.coef_):
+                    print(f"{_f} : {_c}")
+            
+            # Make predictions
+            for o, row in _df[features].iterrows():
+                x_pred = array([row[feat] for feat in features]).reshape(-1, len(features))
+                model_predict.append(model.predict(x_pred)[0])
+
+        elif reg.lower() == "ransac":
+            try:
+                model = RANSACRegressor(
+                    estimator=LinearRegression(fit_intercept=not zero_intercept),
+                    random_state=1
+                ).fit(X, y)
+            except TypeError:
+                model = RANSACRegressor(
+                    base_estimator=LinearRegression(fit_intercept=not zero_intercept),
+                    random_state=1
+                ).fit(X, y)
+                
+            if verbose:
+                print("R2:", model.score(X, y))
+                if not zero_intercept:
+                    print("IC: ", model.estimator_.intercept_)
+                print("Coef: ", model.estimator_.coef_)
+                for _f, _c in zip(features, model.estimator_.coef_):
+                    print(f"{_f} : {_c}")
+            
+            # Make predictions
+            for o, row in _df[features].iterrows():
+                x_pred = array([row[feat] for feat in features]).reshape(-1, len(features))
+                model_predict.append(model.predict(x_pred)[0])
+
+        elif reg.lower() == "theilsen":
+            model = TheilSenRegressor(fit_intercept=not zero_intercept).fit(X, y)
+            if verbose:
+                print("R2:", model.score(X, y))
+                if not zero_intercept:
+                    print("X0:", model.intercept_)
+                print("Coef: ", model.coef_)
+                for _f, _c in zip(features, model.coef_):
+                    print(f"{_f} : {_c}")
+            
+            # Make predictions
+            for o, row in _df[features].iterrows():
+                x_pred = array([row[feat] for feat in features]).reshape(-1, len(features))
+                model_predict.append(model.predict(x_pred)[0])
+
+        elif reg.lower() == "odr":
+            # Define ODR model function for single feature
+            def f(B, x):
+                if zero_intercept:
+                    return B[0] * x
+                return B[0] * x + B[1]
+            
+            # Create ODR model
+            linear = odr.Model(f)
+            
+            # Prepare data for ODR (ensure correct shapes)
+            X_odr = X.reshape(-1)  # Flatten for single feature
+            
+            # Estimate data uncertainties if not provided
+            sx = std(X_odr) * ones_like(X_odr)
+            sy = std(y) * ones_like(y)
+            
+            # Create ODR data object
+            data = odr.RealData(X_odr, y, sx=sx, sy=sy)
+            
+            # Set initial parameter guess
+            if zero_intercept:
+                beta0 = [1.0]
+            else:
+                beta0 = [1.0, 0.0]
+            
+            # Create ODR object and fit
+            odr_obj = odr.ODR(data, linear, beta0=beta0)
+            model = odr_obj.run()
+            
+            if verbose:
+                print("R2:", 1 - (model.sum_square / sum((y - mean(y))**2)))
+                print("Parameters:", model.beta)
+                print("Parameter errors:", model.sd_beta)
+                if not zero_intercept:
+                    print("Intercept:", model.beta[1])
+                print(f"Slope: {model.beta[0]}")
+
+            # Make predictions for ODR
+            for o, row in _df[features].iterrows():
+                x_pred = array([row[feat] for feat in features]).reshape(-1)[0]  # Get single value
+                if zero_intercept:
+                    pred = model.beta[0] * x_pred
+                else:
+                    pred = model.beta[0] * x_pred + model.beta[1]
+                model_predict.append(pred)
+
+        # Verify model was created
+        if model is None:
+            raise RuntimeError("Failed to create regression model")
+
+        # Prepare output dictionary
+        out = {
+            'model': model,
+            'r2': (1 - (model.sum_square / sum((y - mean(y))**2))) if reg.lower() == "odr" 
+                  else model.score(X, y),
+            'tp': _df.time,
+            'dp': model_predict
+        }
+
+        # Add slope and intercept based on regression method
+        if reg.lower() == "ransac":
+            out['slope'] = model.estimator_.coef_[0]
+            out['inter'] = 0.0 if zero_intercept else model.estimator_.intercept_
+        elif reg.lower() == "theilsen":
+            out['slope'] = model.coef_[0]
+            out['inter'] = 0.0 if zero_intercept else model.intercept_
+        elif reg.lower() == "ols":
+            out['slope'] = model.coef_[0]
+            out['inter'] = 0.0 if zero_intercept else model.intercept_
+        elif reg.lower() == "odr":
+            out['slope'] = model.beta[0]
+            out['inter'] = 0.0 if zero_intercept else model.beta[1]
+
+        return out
+
