@@ -12,9 +12,10 @@ import pickle
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+import os.path  # Add explicit import for os.path
 
 from typing import Dict, List, Tuple, Union, Optional, Any
-from obspy import UTCDateTime, Stream
+from obspy import UTCDateTime, Stream, Inventory
 from obspy.clients.filesystem.sds import Client
 from obspy.clients.fdsn import Client as FDSNClient
 from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
@@ -105,45 +106,45 @@ class sixdegrees():
 
         # define working directory
         if 'workdir' in conf.keys():
-            self.workdir = conf['workdir']
+            self.workdir = os.path.normpath(conf['workdir'])
         else:
-            self.workdir = "./"
+            self.workdir = os.path.normpath("./")
 
         # define directory for output data
         if 'path_to_data_out' in conf.keys():
-            self.path_to_data_out = conf['path_to_data_out']
+            self.path_to_data_out = os.path.normpath(conf['path_to_data_out'])
         else:
-            self.path_to_data_out = self.workdir+"output/"
+            self.path_to_data_out = os.path.normpath(os.path.join(self.workdir, "output"))
 
         # define directory for figure output
         if 'path_to_figs_out' in conf.keys():
-            self.path_to_figs_out = conf['path_to_figs_out']
+            self.path_to_figs_out = os.path.normpath(conf['path_to_figs_out'])
         else:
-            self.path_to_figs_out = self.workdir+"figures/"
+            self.path_to_figs_out = os.path.normpath(os.path.join(self.workdir, "figures"))
 
         if self.data_source == 'sds':
             # path to SDS file structure for rotation data
             if 'path_to_sds_rot' in conf.keys():
-                self.rot_sds = conf['path_to_sds_rot']
+                self.rot_sds = os.path.normpath(conf['path_to_sds_rot'])
             else:
                 print("-> no path to SDS file structure for rotation data given!")
 
             # path to SDS file structure for translaton data
             if 'path_to_sds_tra' in conf.keys():
-                self.tra_sds = conf['path_to_sds_tra']
+                self.tra_sds = os.path.normpath(conf['path_to_sds_tra'])
             else:
                 print("-> no path to SDS file structure for translaton data given!")
 
             # path to translation station inventory
             if 'path_to_inv_tra' in conf.keys():
-                self.tra_inv = conf['path_to_inv_tra']
+                self.tra_inv = os.path.normpath(conf['path_to_inv_tra'])
             else:
                 print("-> no path to translation station inventory given!")
                 self.tra_inv = None
 
             # path to rotation station inventory
             if 'path_to_inv_rot' in conf.keys():
-                self.rot_inv = conf['path_to_inv_rot']
+                self.rot_inv = os.path.normpath(conf['path_to_inv_rot'])
             else:
                 print("-> no path to rotation station inventory given!")
                 self.rot_inv = None
@@ -163,8 +164,7 @@ class sixdegrees():
 
         # path to mseed file if using direct file input
         if 'path_to_mseed_file' in conf.keys():
-            self.mseed_file = conf['path_to_mseed_file']
-
+            self.mseed_file = os.path.normpath(conf['path_to_mseed_file'])
         else:
             self.mseed_file = False
 
@@ -183,6 +183,10 @@ class sixdegrees():
         # Add new attributes
         self.rot_components = None  # Components to rotate from (e.g., 'ZUV')
         self.rot_target = 'ZNE'     # Target components (e.g., 'ZNE')
+
+        # Add ROMY rotation options
+        self.use_romy_zne = conf.get('use_romy_zne', False)
+        self.keep_z = conf.get('keep_z', True)
 
     # ____________________________________________________
 
@@ -596,25 +600,75 @@ class sixdegrees():
 
         t1, t2 = UTCDateTime(t1), UTCDateTime(t2)
 
+        if len(self.tra_seed) > 0:
+            # add to stream
+            st0 += self._load_translation_data(t1, t2)
+
+        if len(self.rot_seed) > 0:
+            # add to stream
+            st0 += self._load_rotation_data(t1, t2)
+
+        # check if stream has correct length
+        if len(st0) < (len(self.tra_seed) + len(self.rot_seed)):
+            print(f" -> missing stream data")
+
+       # check if merging is required
+        if len(st0) > (len(self.tra_seed) + len(self.rot_seed)):
+            st0 = st0.merge(method=1, fill_value=0)
+
+        # Update stream IDs
+        for tr in st0:
+            tr.stats.network = self.net
+            tr.stats.station = self.sta
+            tr.stats.location = self.loc
+
+        # assign stream to object
+        self.st = st0
+
+        # assign stream as raw stream
+        self.st0 = st0
+
+        # Check if all traces have the same sampling rate and add as attribute
+        if len(self.st) > 0:
+            sampling_rates = set(tr.stats.sampling_rate for tr in self.st)
+            if len(sampling_rates) == 1:
+                self.sampling_rate = sampling_rates.pop()
+            else:
+                print(" -> Warning: Not all traces have the same sampling rate!")
+                if self.verbose:
+                    print(f"Sampling rates found: {sampling_rates}")
+
+
+    def _load_translation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime]):
+        '''
+        Load translation data
+        '''
+
         # Load translation data
         tra = Stream()
         client = FDSNClient(self.fdsn_client_tra)
 
         for tseed in self.tra_seed:
-            
+
             net, sta, loc, cha = tseed.split('.')
 
             try:
                 if self.data_source.lower() == 'sds':
+                    if self.verbose:
+                        print(f"-> fetching {tseed} data from SDS")
                     # read from local SDS archive
                     tra += self.read_from_sds(self.tra_sds, tseed, t1-1, t2+1)
                 elif self.data_source.lower() == 'fdsn':
                     # read from FDSN web service
+                    if self.verbose:
+                        print(f"-> fetching {tseed} data from FDSN")
                     tra += client.get_waveforms(network=net, station=sta,
                                                 location=loc, channel=cha,
                                                 starttime=t1-1, endtime=t2+1)
 
                 elif self.data_source.lower() == 'mseed_file':
+                    if self.verbose:
+                        print(f"-> fetching {tseed} data from mseed file")
                     # read directly from mseed file
                     if self.mseed_file is None:
                         raise ValueError("No mseed file path provided")
@@ -629,9 +683,6 @@ class sixdegrees():
                 print(f" -> loading translational data failed!")
                 if self.verbose:
                     print(e)
-
-            if self.verbose:
-                print(tra)
 
         # Process translation data
         try:
@@ -698,9 +749,15 @@ class sixdegrees():
             if self.verbose:
                 print(e)
 
-        # add to stream
-        st0 += tra
+        if self.verbose:
+            print(tra)
+        
+        return tra
 
+    def _load_rotation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime]):
+        '''
+        Load rotation data
+        '''
         # Load rotation data
         rot = Stream()
         client = FDSNClient(self.fdsn_client_rot)
@@ -714,14 +771,26 @@ class sixdegrees():
             try:
                 if self.data_source.lower() == 'sds':
                     # read from local SDS archive
+                    if self.verbose:
+                        print(f"-> fetching {rseed} data from SDS")
                     rot += self.read_from_sds(self.rot_sds, rseed, t1-1, t2+1)
 
                 elif self.data_source.lower() == 'fdsn':
                     # read from FDSN web service
-                    rot += client.get_waveforms(net, sta, loc, cha[:2]+channel_raw[cha[2]], t1-1, t2+1)
+                    if self.verbose:
+                        print(f"-> fetching {rseed} data from FDSN")
+                    if sta == "BSPF":
+                        rot += client.get_waveforms(net, sta, loc, cha[:2]+channel_raw[cha[2]], t1-1, t2+1)
+                    elif sta == "ROMY":
+                        cl = FDSNClient(base_url=self.fdsn_client_rot)
+                        rot += cl.get_waveforms(net, sta, loc, cha, t1-1, t2+1)
+                    else:
+                        rot += client.get_waveforms(net, sta, loc, cha, t1-1, t2+1)
 
                 elif self.data_source.lower() == 'mseed_file':
                     # read directly from mseed file
+                    if self.verbose:
+                        print(f"-> fetching {rseed} data from mseed file")
                     if self.mseed_file is None:
                         raise ValueError("No mseed file path provided")
                     rot0 = read(self.mseed_file)
@@ -778,70 +847,43 @@ class sixdegrees():
         except Exception as e:
             print(f"-> error processing rotation data: {str(e)}")
 
-        if not self.data_source.lower() == 'mseed_file':
-
-            # rotate to ZNE
-            if self.rotate_zne:
+        # rotate to ZNE
+        if self.rotate_zne:
+            # check if ROMY data is present
+            if any("ROMY" in rseed for rseed in self.rot_seed):
+                # Add option to use rotate_romy_zne for ROMY data
+                if self.use_romy_zne and self.rot_inv:
+                    try:
+                        if self.verbose:
+                            print(f"-> rotated ROMY data using rotate_romy_zne (keep_z={self.keep_z})")
+                        # get components
+                        components = [tr.stats.channel[-1] for tr in rot]
+                        # rotate
+                        print("rotating")
+                        rot = self.rotate_romy_zne(
+                            rot, 
+                            self.rot_inv,
+                            use_components=components,
+                            keep_z=self.keep_z
+                        )
+                    except Exception as e:
+                        print(f"-> warning: ROMY ZNE rotation failed: {str(e)}")
+            else:
                 if self.verbose:
                     print(f"-> rotating rotational data to ZNE")
-                if "ROMY" in self.rot_seed:
-                    # Add rotation option after loading rotation data
-                    if hasattr(self, 'rot_components') and self.rot_components:
-                        try:
-                            rot = self.rotate_romy(
-                                components=self.rot_components,
-                                target=self.rot_target,
-                                keep_z=True
-                            )
-                            if self.verbose:
-                                print(f"-> rotated from {self.rot_components} to {self.rot_target}")
-                        except Exception as e:
-                            print(f"-> warning: rotation failed: {str(e)}")
-                else:
-                    rot = rot.rotate(method="->ZNE", inventory=self.rot_inv)
+                # general rotation
+                rot = rot.rotate(method="->ZNE", inventory=self.rot_inv)
 
-            # assign station coordinates
-            if self.station_latitude is None and self.station_longitude is None:
-                coords = self.rot_inv.get_coordinates(self.rot_seed[0])
-                self.station_latitude = coords['latitude']
-                self.station_longitude = coords['longitude']
-
-        # add to stream
-        st0 += rot
+        # assign station coordinates
+        if self.station_latitude is None and self.station_longitude is None:
+            coords = self.rot_inv.get_coordinates(self.rot_seed[0])
+            self.station_latitude = coords['latitude']
+            self.station_longitude = coords['longitude']
 
         if self.verbose:
             print(rot)
-
-        # check if stream has correct length
-        if len(st0) < (len(self.tra_seed) + len(self.rot_seed)):
-            print(f" -> missing stream data")
-
-       # check if merging is required
-        if len(st0) > (len(self.tra_seed) + len(self.rot_seed)):
-            st0 = st0.merge(method=1, fill_value=0)
-
-        # Update stream IDs
-        for tr in st0:
-            tr.stats.network = self.net
-            tr.stats.station = self.sta
-            tr.stats.location = self.loc
-
-        # assign stream to object
-        self.st = st0
-
-        # assign stream as raw stream
-        self.st0 = st0
-
-        # Check if all traces have the same sampling rate and add as attribute
-        if len(self.st) > 0:
-            sampling_rates = set(tr.stats.sampling_rate for tr in self.st)
-            if len(sampling_rates) == 1:
-                self.sampling_rate = sampling_rates.pop()
-            else:
-                print(" -> Warning: Not all traces have the same sampling rate!")
-                if self.verbose:
-                    print(f"Sampling rates found: {sampling_rates}")
-
+        
+        return rot
 
     def filter_data(self, fmin: float=0.1, fmax: float=0.5, output: bool=False):
 
@@ -2447,7 +2489,7 @@ class sixdegrees():
             ax[i].legend(loc=1, ncols=4)
             ax[i].grid(which="both", alpha=0.5)
             ax[i].set_ylabel(f"$\Omega$ ({rot_unit})", fontsize=font)
-            ax[i].text(0.05, 0.9, f"CC={cc_all[i]}", ha='left', va='top', transform=ax[i].transAxes, fontsize=font-1)
+            ax[i].text(0.05, 0.9, f"CC={cc_all[i]:.2f}", ha='left', va='top', transform=ax[i].transAxes, fontsize=font-1)
 
         for _ax in twinaxs:
             _ax.legend(loc=4)
@@ -3548,75 +3590,92 @@ class sixdegrees():
 
         return out
 
-    def rotate_romy(self, components='ZUV', target='ZNE', keep_z=False):
+    def rotate_romy_zne(self, st: Stream, inv: Inventory, use_components: List[str] = ["Z", "U", "V"], keep_z: bool = True) -> Stream:
         """
-        Rotate ROMY data from specified components to target orientation
+        Rotate ROMY data from specified components to ZNE orientation
         
         Parameters
         ----------
-        components : str
-            Source components (e.g., 'ZUV', 'ZUVW')
-        target : str
-            Target components (e.g., 'ZNE')
+        st : Stream
+            Input stream containing ROMY components
+        inv : Inventory
+            Station inventory with orientation information
+        use_components : List[str]
+            Components to use for rotation (default: ["Z", "U", "V"])
         keep_z : bool
-            Whether to keep original Z component
+            Whether to keep original Z component (default: True)
         
         Returns
         -------
-        obspy.Stream
-            Rotated stream
+        Stream
+            Rotated stream with ZNE components
         """
-
+        
         from obspy.signal.rotate import rotate2zne
 
-        if not self.rot_inv:
-            raise ValueError("Rotation inventory required for rotation")
-            
-        # Get orientations
-        ori_dict = {}
-        for comp in components:
+        if not inv:
+            raise ValueError("Inventory required for rotation")
+
+        locs = {"Z":"10", "U":"", "V":"", "W":""}
+
+        # Make dictionary for components with data, azimuth and dip
+        components = {}
+        for comp in use_components:
+            loc = locs[comp]
             try:
-                ori_dict[comp] = self.rot_inv.get_orientation(f"BW.ROMY..BJ{comp}")
+                tr = st.select(component=comp)
+                if not tr:
+                    raise ValueError(f"Component {comp} not found in stream")
+                    
+                orientation = inv.get_orientation(f"BW.ROMY.{loc}.BJ{comp}")
+                if not orientation:
+                    raise ValueError(f"Could not get orientation for component {comp}")
+                    
+                components[comp] = {
+                    'data': tr[0].data,
+                    'azimuth': orientation['azimuth'],
+                    'dip': orientation['dip']
+                }
             except Exception as e:
-                print(f"Warning: Could not get orientation for component {comp}: {e}")
-                return self.st
-                
-        # Get data for each component
-        data_dict = {}
-        for comp in components:
-            try:
-                data_dict[comp] = self.st.select(channel=f"*{comp}")[0].data
-            except IndexError:
-                print(f"Warning: Component {comp} not found in stream")
-                return self.st
-                
-        # Perform rotation
-        rotated_data = {}
-        if len(components) == 3:  # ZUV case
-            rotated_data['Z'], rotated_data['N'], rotated_data['E'] = rotate2zne(
-                data_dict['Z'], ori_dict['Z']['azimuth'], ori_dict['Z']['dip'],
-                data_dict['U'], ori_dict['U']['azimuth'], ori_dict['U']['dip'],
-                data_dict['V'], ori_dict['V']['azimuth'], ori_dict['V']['dip'],
+                print(f"Warning: Error processing component {comp}: {e}")
+                return st
+
+        # Rotate to ZNE
+        try:
+            romy_z, romy_n, romy_e = rotate2zne(
+                components[use_components[0]]['data'], 
+                components[use_components[0]]['azimuth'], 
+                components[use_components[0]]['dip'],
+                components[use_components[1]]['data'], 
+                components[use_components[1]]['azimuth'], 
+                components[use_components[1]]['dip'],
+                components[use_components[2]]['data'], 
+                components[use_components[2]]['azimuth'], 
+                components[use_components[2]]['dip'],
                 inverse=False
             )
-        elif len(components) == 4:  # ZUVW case
-            # Implement ZUVW rotation if needed
-            pass
+        except Exception as e:
+            print(f"Warning: Rotation failed: {e}")
+            return st
+
+        # Create new stream with ZNE components
+        st_new = st.copy()
+
+        # Update channel codes and data
+        try:
+            for c, tr in zip(['Z', 'N', 'E'], st_new):
+                tr.stats.channel = tr.stats.channel[:2] + c
             
-        # Create new rotated stream
-        st_rotated = self.get_stream('rotation').copy() 
-        
-        print(st_rotated)
-        # Update component data and channel names
-        for old_comp, new_comp in zip(components, target):
-            if old_comp == 'Z' and keep_z:
-                continue
-            try:
-                tr = st_rotated.select(channel=f"*{old_comp}")[0]
-                tr.data = rotated_data[new_comp]
-                tr.stats.channel = tr.stats.channel.replace(old_comp, new_comp)
-            except (IndexError, KeyError) as e:
-                print(f"Warning: Error updating component {old_comp}: {e}")
-        print(st_rotated)
-        return st_rotated
+            if keep_z and 'Z' in use_components:
+                st_new.select(component='Z')[0].data = components['Z']['data']
+            else:
+                st_new.select(component='Z')[0].data = romy_z
+
+            st_new.select(component='N')[0].data = romy_n
+            st_new.select(component='E')[0].data = romy_e
+        except Exception as e:
+            print(f"Warning: Error updating rotated data: {e}")
+            return st
+
+        return st_new
 
