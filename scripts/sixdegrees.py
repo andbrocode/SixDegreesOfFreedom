@@ -15,7 +15,7 @@ import numpy as np
 import os.path  # Add explicit import for os.path
 
 from typing import Dict, List, Tuple, Union, Optional, Any
-from obspy import UTCDateTime, Stream, Inventory
+from obspy import UTCDateTime, Stream, Inventory, read
 from obspy.clients.filesystem.sds import Client
 from obspy.clients.fdsn import Client as FDSNClient
 from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
@@ -1846,6 +1846,9 @@ class sixdegrees():
             rot = self.get_stream("rotation").copy()
             acc = self.get_stream("translation").copy()
             
+        if not adjusted_baz and baz is None:
+            raise ValueError("Backazimuth must be provided if adjusted_baz is False")
+        
         # Get sampling rate
         df = self.sampling_rate
         
@@ -3678,4 +3681,210 @@ class sixdegrees():
             return st
 
         return st_new
+
+    def plot_velocity_method_comparison(self, love_velocities_ransac: Dict, love_velocities_odr: Dict, 
+                           cc_threshold: float = 0.75, figsize: Tuple[int, int] = (12, 8)) -> plt.Figure:
+        """
+        Create comparison plot of RANSAC and ODR velocity estimates
+        
+        Parameters
+        ----------
+        love_velocities_ransac : Dict
+            Dictionary containing RANSAC velocity results
+        love_velocities_odr : Dict
+            Dictionary containing ODR velocity results  
+        cc_threshold : float, optional
+            Cross-correlation threshold for filtering (default: 0.75)
+        figsize : Tuple[int, int], optional
+            Figure size (width, height) in inches (default: (12, 8))
+        
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The generated figure
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import ListedColormap, BoundaryNorm
+        from matplotlib.lines import Line2D
+        
+        # Create figure with subplots
+        fig = plt.figure(figsize=figsize)
+        gs = plt.GridSpec(3, 2, width_ratios=[1, 0.03], height_ratios=[1, 1, 1], 
+                          hspace=0.2, wspace=0.05)
+
+        # Create subplots
+        ax1 = fig.add_subplot(gs[0, 0])
+        cax1 = fig.add_subplot(gs[0, 1])
+        ax2 = fig.add_subplot(gs[1, 0], sharex=ax1)
+        cax2 = fig.add_subplot(gs[1, 1])
+        ax3 = fig.add_subplot(gs[2, 0], sharex=ax1)
+
+        # Create mask based on correlation threshold
+        mask = love_velocities_ransac['ccoef'] >= cc_threshold
+
+        # Create colormap
+        vmin, vmax, vstep = 0.5, 1.0, 0.05
+        levels = np.arange(vmin, vmax + vstep, vstep)
+        n_bins = len(levels) - 1
+        viridis = plt.cm.get_cmap('viridis')
+        colors = viridis(np.linspace(0, 1, n_bins))
+        cmap = ListedColormap(colors)
+        norm = BoundaryNorm(levels, ncolors=len(levels)-1)
+
+        # Plot RANSAC velocities
+        cm1 = ax1.scatter(love_velocities_ransac['time'][mask],
+                          love_velocities_ransac['velocity'][mask],
+                          c=love_velocities_ransac['ccoef'][mask],
+                          cmap=cmap, norm=norm, label='RANSAC', alpha=0.9,
+                          edgecolors='black', linewidths=0.5)
+        plt.colorbar(cm1, cax=cax1, label='Cross-Correlation Coefficient')
+
+        # Plot ODR velocities
+        cm2 = ax2.scatter(love_velocities_odr['time'][mask],
+                          love_velocities_odr['velocity'][mask],
+                          c=love_velocities_odr['ccoef'][mask],
+                          cmap=cmap, norm=norm, label='ODR', alpha=0.9, zorder=2,
+                          edgecolors='black', linewidths=0.5)
+        plt.colorbar(cm2, cax=cax2, label='Cross-Correlation Coefficient')
+
+        # Plot velocity differences
+        ax3.plot([love_velocities_odr['time'][mask], love_velocities_odr['time'][mask]],
+                 [np.zeros(len(love_velocities_odr['time'][mask])), 
+                  love_velocities_odr['velocity'][mask] - love_velocities_ransac['velocity'][mask]],
+                 alpha=0.9, color='black', zorder=2)
+
+        # Add reference line for differences
+        ax3.plot([love_velocities_odr['time'][mask][0], love_velocities_odr['time'][mask][0]],
+                 [love_velocities_odr['time'][mask][0], 
+                  love_velocities_odr['velocity'][mask][0] - love_velocities_ransac['velocity'][mask][0]],
+                 label='ODR - RANSAC', alpha=0.9, color='black', zorder=2)
+
+        # Create custom legend elements
+        legend_elements1 = [Line2D([0], [0], marker='.', color='w', markerfacecolor=viridis(0.5),
+                                  label='RANSAC', markersize=10)]
+        legend_elements2 = [Line2D([0], [0], marker='.', color='w', markerfacecolor=viridis(0.5),
+                                  label='ODR', markersize=10)]
+        legend_elements3 = [Line2D([0], [0], marker='.', color='w', markerfacecolor='black',
+                                  label='ODR - RANSAC', markersize=10)]
+
+        # Add legends
+        ax1.legend(handles=legend_elements1)
+        ax2.legend(handles=legend_elements2)
+        ax3.legend(handles=legend_elements3)
+
+        # Configure axes
+        for ax in [ax1, ax2, ax3]:
+            ax.set_ylabel('Phase Velocity (m/s)')
+            ax.grid(which='both', zorder=0, alpha=0.3)
+            ax.minorticks_on()
+
+        # Set y-limits
+        for ax in [ax1, ax2]:
+            ax.set_ylim(0, 6000)
+
+        # Configure difference plot
+        ax3.set_ylabel('Velocity Difference (m/s)')
+        max_diff = np.nanmax(abs(love_velocities_odr['velocity'][mask] - 
+                                love_velocities_ransac['velocity'][mask]))
+        ax3.set_ylim(-max_diff, max_diff)
+
+        # Add title and adjust layout
+        plt.suptitle('Love Wave Velocity Estimates: RANSAC vs ODR', y=0.92)
+        plt.tight_layout()
+
+        return fig
+
+    def plot_velocities_win(self, results_velocities: Dict, cc_threshold: float = 0.0, 
+                           baz_theo: Union[float, None] = None, figsize: Tuple[int, int] = (12, 8)) -> plt.Figure:
+        """
+        Plot Love wave velocity and backazimuth estimates with correlation coefficient coloring
+        
+        Parameters
+        ----------
+        results_velocities : Dict
+            Dictionary containing velocity analysis results with keys:
+            'time', 'backazimuth', 'velocity', 'ccoef'
+        cc_threshold : float, optional
+            Cross-correlation threshold for filtering (default: 0.0)
+        baz_theo : float, optional
+            Theoretical backazimuth to plot as reference line (default: None)
+        figsize : Tuple[int, int], optional
+            Figure size (width, height) in inches (default: (12, 8))
+            
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The generated figure
+        """
+        from numpy import array
+
+        # Convert arrays if needed
+        times = array(results_velocities['time'])
+        baz = array(results_velocities['backazimuth'])
+        vel = array(results_velocities['velocity'])
+        cc = array(results_velocities['ccoef'])
+
+        # Apply threshold mask
+        mask = cc >= cc_threshold
+
+        # Create figure with space for colorbar
+        fig = plt.figure(figsize=figsize)
+        gs = fig.add_gridspec(2, 2, width_ratios=[15, 0.5], hspace=0.1)
+
+        # Create subplots
+        ax1 = fig.add_subplot(gs[0, 0])
+        ax2 = fig.add_subplot(gs[1, 0], sharex=ax1)
+        cax = fig.add_subplot(gs[:, 1])  # colorbar axis
+
+        # Plot backazimuth estimates
+        sc1 = ax1.scatter(results_velocities['time'][mask], 
+                         results_velocities['backazimuth'][mask], 
+                         c=results_velocities['ccoef'][mask], 
+                         cmap='viridis', 
+                         alpha=1, 
+                         label='Estimated BAZ', 
+                         zorder=2, 
+                         vmin=0, 
+                         vmax=1,
+                         edgecolors='black', 
+                         linewidths=0.5)
+        
+        # Add theoretical backazimuth line if provided
+        if baz_theo is not None:
+            ax1.axhline(y=baz_theo, color='r', ls='--', label='Theoretical BAZ', zorder=0)
+
+        # Plot velocity estimates
+        sc2 = ax2.scatter(results_velocities['time'][mask], 
+                         results_velocities['velocity'][mask], 
+                         c=results_velocities['ccoef'][mask], 
+                         cmap='viridis', 
+                         alpha=1, 
+                         label='Phase Velocity', 
+                         zorder=2, 
+                         vmin=0, 
+                         vmax=1, 
+                         edgecolors='black', 
+                         linewidths=0.5)
+
+        # Configure axes
+        ax1.set_ylim(0, 360)
+        ax1.set_ylabel('Backazimuth (°)')
+        ax1.grid(which='both', zorder=0, alpha=0.5)
+        ax1.legend()
+
+        ax2.set_ylim(0, 5000)
+        ax2.set_xlabel('Time (s)')
+        ax2.set_ylabel('Velocity (m/s)')
+        ax2.grid(which='both', zorder=0, alpha=0.5)
+        ax2.legend()
+
+        # Add minor ticks
+        for ax in [ax1, ax2]:
+            ax.minorticks_on()
+
+        # Add colorbar
+        cb = plt.colorbar(sc1, cax=cax, label='Cross-Correlation Coefficient')
+
+        plt.tight_layout()
+        return fig
 
