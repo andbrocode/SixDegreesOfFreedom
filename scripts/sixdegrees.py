@@ -13,11 +13,11 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Tuple, Union, Optional, Any
 from obspy import UTCDateTime, Stream
 from obspy.clients.filesystem.sds import Client
 from obspy.clients.fdsn import Client as FDSNClient
-from obspy.geodetics.base import gps2dist_azimuth
+from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
 from obspy.signal.cross_correlation import correlate, xcorr_max
 from obspy.signal.rotate import rotate_ne_rt
 from obspy.geodetics.base import gps2dist_azimuth, kilometers2degrees
@@ -180,6 +180,10 @@ class sixdegrees():
         # polarity dictionary
         self.pol_dict = None
 
+        # Add new attributes
+        self.rot_components = None  # Components to rotate from (e.g., 'ZUV')
+        self.rot_target = 'ZNE'     # Target components (e.g., 'ZNE')
+
     # ____________________________________________________
 
     def attributes(self) -> List[str]:
@@ -193,18 +197,12 @@ class sixdegrees():
         """
         return [a for a in dir(self) if not a.startswith('__')]
 
-    def check_path(self, dir_to_check: str):
-        '''
-        Check if directory exists
-
-        @param dir_to_check: path to directory to check
-        @type dir_to_check: str
-        '''
-        from os import path, mkdir
-
-        if not path.isdir(dir_to_check):
-            mkdir(dir_to_check)
-            self.check_path(self, dir_to_check)
+    def check_path(self, dir_to_check):
+        """Check if directory exists and create if not"""
+        if not os.path.isdir(dir_to_check):
+            os.makedirs(dir_to_check)
+            # Fix: Remove extra self parameter
+            self.check_path(dir_to_check)
         else:
             print(f" -> {dir_to_check} exists")
 
@@ -348,6 +346,7 @@ class sixdegrees():
                 print("No event information available. Run get_event_info first.")
                 return None
                 
+            # Get arrivals
             arrivals = model.get_travel_times(
                 source_depth_in_km=self.event_info['depth_km'],
                 distance_in_degree=self.event_info['distance_deg'],
@@ -602,6 +601,7 @@ class sixdegrees():
         client = FDSNClient(self.fdsn_client_tra)
 
         for tseed in self.tra_seed:
+            
             net, sta, loc, cha = tseed.split('.')
 
             try:
@@ -610,7 +610,6 @@ class sixdegrees():
                     tra += self.read_from_sds(self.tra_sds, tseed, t1-1, t2+1)
                 elif self.data_source.lower() == 'fdsn':
                     # read from FDSN web service
-
                     tra += client.get_waveforms(network=net, station=sta,
                                                 location=loc, channel=cha,
                                                 starttime=t1-1, endtime=t2+1)
@@ -706,6 +705,9 @@ class sixdegrees():
         rot = Stream()
         client = FDSNClient(self.fdsn_client_rot)
 
+        # raw channel order
+        channel_raw = {"Z": "3", "N": "2", "E": "1"}
+
         for rseed in self.rot_seed:
             net, sta, loc, cha = rseed.split('.')
 
@@ -716,7 +718,7 @@ class sixdegrees():
 
                 elif self.data_source.lower() == 'fdsn':
                     # read from FDSN web service
-                    rot += client.get_waveforms(net, sta, loc, cha, t1-1, t2+1)
+                    rot += client.get_waveforms(net, sta, loc, cha[:2]+channel_raw[cha[2]], t1-1, t2+1)
 
                 elif self.data_source.lower() == 'mseed_file':
                     # read directly from mseed file
@@ -782,7 +784,21 @@ class sixdegrees():
             if self.rotate_zne:
                 if self.verbose:
                     print(f"-> rotating rotational data to ZNE")
-                rot = rot.rotate(method="->ZNE", inventory=self.rot_inv)
+                if "ROMY" in self.rot_seed:
+                    # Add rotation option after loading rotation data
+                    if hasattr(self, 'rot_components') and self.rot_components:
+                        try:
+                            rot = self.rotate_romy(
+                                components=self.rot_components,
+                                target=self.rot_target,
+                                keep_z=True
+                            )
+                            if self.verbose:
+                                print(f"-> rotated from {self.rot_components} to {self.rot_target}")
+                        except Exception as e:
+                            print(f"-> warning: rotation failed: {str(e)}")
+                else:
+                    rot = rot.rotate(method="->ZNE", inventory=self.rot_inv)
 
             # assign station coordinates
             if self.station_latitude is None and self.station_longitude is None:
@@ -825,6 +841,7 @@ class sixdegrees():
                 print(" -> Warning: Not all traces have the same sampling rate!")
                 if self.verbose:
                     print(f"Sampling rates found: {sampling_rates}")
+
 
     def filter_data(self, fmin: float=0.1, fmax: float=0.5, output: bool=False):
 
@@ -3530,4 +3547,76 @@ class sixdegrees():
             out['inter'] = 0.0 if zero_intercept else model.beta[1]
 
         return out
+
+    def rotate_romy(self, components='ZUV', target='ZNE', keep_z=False):
+        """
+        Rotate ROMY data from specified components to target orientation
+        
+        Parameters
+        ----------
+        components : str
+            Source components (e.g., 'ZUV', 'ZUVW')
+        target : str
+            Target components (e.g., 'ZNE')
+        keep_z : bool
+            Whether to keep original Z component
+        
+        Returns
+        -------
+        obspy.Stream
+            Rotated stream
+        """
+
+        from obspy.signal.rotate import rotate2zne
+
+        if not self.rot_inv:
+            raise ValueError("Rotation inventory required for rotation")
+            
+        # Get orientations
+        ori_dict = {}
+        for comp in components:
+            try:
+                ori_dict[comp] = self.rot_inv.get_orientation(f"BW.ROMY..BJ{comp}")
+            except Exception as e:
+                print(f"Warning: Could not get orientation for component {comp}: {e}")
+                return self.st
+                
+        # Get data for each component
+        data_dict = {}
+        for comp in components:
+            try:
+                data_dict[comp] = self.st.select(channel=f"*{comp}")[0].data
+            except IndexError:
+                print(f"Warning: Component {comp} not found in stream")
+                return self.st
+                
+        # Perform rotation
+        rotated_data = {}
+        if len(components) == 3:  # ZUV case
+            rotated_data['Z'], rotated_data['N'], rotated_data['E'] = rotate2zne(
+                data_dict['Z'], ori_dict['Z']['azimuth'], ori_dict['Z']['dip'],
+                data_dict['U'], ori_dict['U']['azimuth'], ori_dict['U']['dip'],
+                data_dict['V'], ori_dict['V']['azimuth'], ori_dict['V']['dip'],
+                inverse=False
+            )
+        elif len(components) == 4:  # ZUVW case
+            # Implement ZUVW rotation if needed
+            pass
+            
+        # Create new rotated stream
+        st_rotated = self.get_stream('rotation').copy() 
+        
+        print(st_rotated)
+        # Update component data and channel names
+        for old_comp, new_comp in zip(components, target):
+            if old_comp == 'Z' and keep_z:
+                continue
+            try:
+                tr = st_rotated.select(channel=f"*{old_comp}")[0]
+                tr.data = rotated_data[new_comp]
+                tr.stats.channel = tr.stats.channel.replace(old_comp, new_comp)
+            except (IndexError, KeyError) as e:
+                print(f"Warning: Error updating component {old_comp}: {e}")
+        print(st_rotated)
+        return st_rotated
 
