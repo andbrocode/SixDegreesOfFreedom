@@ -178,7 +178,8 @@ class sixdegrees():
         self.tra_output = "ACC"
 
         # polarity dictionary
-        self.pol_dict = None
+        self.pol_applied = False
+        self.pol_dict = {}
 
         # Add new attributes
         self.rot_components = None  # Components to rotate from (e.g., 'ZUV')
@@ -213,19 +214,28 @@ class sixdegrees():
     def get_stream(self, stream_type: str="all", raw: bool=False) -> Stream:
         if stream_type == "rotation":
             if raw:
-                return self.st0.select(channel="*J*")
+                return self.st0.select(channel="*J*").copy()
             else:
-                return self.st.select(channel="*J*")
+                return self.st.select(channel="*J*").copy()
         elif stream_type == "translation":
             if raw:
-                return self.st0.select(channel="*H*")
+                # return only traces with H in central channel position
+                stx = Stream()
+                for tr in self.st0.select(channel="*H*"):
+                    if tr.stats.channel[1] == "H":
+                        stx.append(tr)
+                return stx
             else:
-                return self.st.select(channel="*H*")
+                stx = Stream()
+                for tr in self.st.select(channel="*H*"):
+                    if tr.stats.channel[1] == "H":
+                        stx.append(tr)
+                return stx
         elif stream_type == "all":
             if raw:
-                return self.st0
+                return self.st0.copy()
             else:
-                return self.st
+                return self.st.copy()
         else:
             raise ValueError(f"Invalid stream type: {stream_type}. Use 'rotation' or 'translation'.")
 
@@ -318,7 +328,8 @@ class sixdegrees():
                 print(f"Magnitude: {self.event_info['magnitude']} {self.event_info['magnitude_type']}")
                 print(f"Location: {self.event_info['latitude']:.3f}°N, {self.event_info['longitude']:.3f}°E")
                 print(f"Depth: {self.event_info['depth_km']:.1f} km")
-                print(f"Distance: {self.event_info['distance_deg']:.1f}°")
+                print(f"Epicentral Distance: {self.event_info['distance_km']:.1f} km")
+                print(f"Epicentral Distance: {self.event_info['distance_deg']:.1f}°")
                 print(f"Backazimuth: {self.event_info['backazimuth']:.1f}°")
             
             return self.event_info
@@ -505,7 +516,7 @@ class sixdegrees():
         # Convert to time
         lag_time_h = lag_samples_h / self.get_stream("rotation")[0].stats.sampling_rate
 
-        print(f"ROT-T & ACC-Z:  lag_time: {lag_time_h}, lag_samples: {lag_samples_h}, cc_max: {cc_max_h}")
+        print(f"ROT-T & ACC-Z:  lag_time: {lag_time_h} s, lag_samples: {lag_samples_h}, cc_max: {cc_max_h:.2f}")
 
         # Compute cross-correlation
         cc = correlate(tra_t, rot_z, len(rot_z), normalize=normalize)
@@ -514,7 +525,7 @@ class sixdegrees():
         # Convert to time
         lag_time_z = lag_samples_z / self.get_stream("rotation")[0].stats.sampling_rate
 
-        print(f"ROT-Z & ACC-T:  lag_time: {lag_time_z}, lag_samples: {lag_samples_z}, cc_max: {cc_max_z}")
+        print(f"ROT-Z & ACC-T:  lag_time: {lag_time_z} s, lag_samples: {lag_samples_z}, cc_max: {cc_max_z:.2f}")
        
         # shift rotataion waveforms
         if correct:
@@ -526,17 +537,34 @@ class sixdegrees():
                 if tr.stats.channel.endswith("N") or tr.stats.channel.endswith("E"):
                     # tr.data = roll(tr.data, lag_samples)
                     tr.stats.starttime = tr.stats.starttime + lag_time_h
+
+        # shift rotataion waveforms for raw stream
+        rot_raw = self.get_stream("rotation", raw=True)
+        if correct:
+            for tr in rot_raw:
+                if tr.stats.channel.endswith("Z"):
+                    # tr.data = roll(tr.data, lag_samples)
+                    tr.stats.starttime = tr.stats.starttime + lag_time_z
+            
+                if tr.stats.channel.endswith("N") or tr.stats.channel.endswith("E"):
+                    # tr.data = roll(tr.data, lag_samples)
+                    tr.stats.starttime = tr.stats.starttime + lag_time_h
               
         # update and trim raw stream
         if correct:
             # reassign raw stream
-            self.st0 = rot + tra
+            self.st0 = rot_raw + self.get_stream("translation", raw=True)
             # trim stream
             self.st0.trim(self.tbeg, self.tend)
             # avoid overlaps
             self.st0 = self.st0.merge(method=1)
+
             # reassign stream
-            self.st = self.st0.copy()
+            self.st = rot + tra
+            # trim stream
+            self.st.trim(self.tbeg, self.tend)
+            # avoid overlaps
+            self.st = self.st.merge(method=1)
 
     def write_to_sds(self, stream, sds_path: str, format: str="MSEED") -> None:
         """
@@ -637,7 +665,6 @@ class sixdegrees():
                 print(" -> Warning: Not all traces have the same sampling rate!")
                 if self.verbose:
                     print(f"Sampling rates found: {sampling_rates}")
-
 
     def _load_translation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime]):
         '''
@@ -885,7 +912,7 @@ class sixdegrees():
         
         return rot
 
-    def filter_data(self, fmin: float=0.1, fmax: float=0.5, output: bool=False):
+    def filter_data(self, fmin: Optional[float]=0.1, fmax: Optional[float]=0.5, output: bool=False):
 
         # reset stream to raw stream
         self.st = self.st0.copy()
@@ -896,6 +923,8 @@ class sixdegrees():
 
         # detrend and filter
         self.st = self.st.detrend("linear")
+        self.st = self.st.detrend("demean")
+        self.st = self.st.taper(0.05)
 
         if fmin is not None and fmax is not None:
             self.st = self.st.filter("bandpass", freqmin=fmin, freqmax=fmax, corners=4, zerophase=True) 
@@ -949,6 +978,13 @@ class sixdegrees():
         '''
         Modify polarity of data
         '''
+        if self.pol_applied:
+            if self.pol_dict == pol_dict:
+                print("-> polarity already applied. Exiting...")
+                return
+            else:
+                print("-> polarity already applied. Applying new polarity...")
+
         for tr in self.st:
             if tr.stats.channel[1:] in pol_dict.keys():
                 tr.data = tr.data * pol_dict[tr.stats.channel[1:]]
@@ -1241,6 +1277,7 @@ class sixdegrees():
         ROT = self.get_stream("rotation").copy()
 
         if wave_type.lower() == "tangent":
+
             # revert polarity if applied
             if hasattr(self, 'pol_applied') and self.pol_applied:
                 if hasattr(self, 'pol_dict') and self.pol_dict is not None:
@@ -2300,13 +2337,13 @@ class sixdegrees():
         return frequencies[0:n//2], magnitude[0:n//2], phase[0:n//2]
 
     @staticmethod
-    def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: float, fmax: float, wave_type: str="both",
+    def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[float]=None, fmax: Optional[float]=None, wave_type: str="both",
                          pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
                          twin_sec: int=5, twin_overlap: float=0.5) -> plt.Figure:
 
         from obspy.signal.cross_correlation import correlate
         from obspy.signal.rotate import rotate_ne_rt
-        from numpy import linspace, ones
+        from numpy import linspace, ones, array
         import matplotlib.pyplot as plt
 
         def __cross_correlation_windows(arr1: array, arr2: array, dt: float, Twin: float, overlap: float=0, lag: int=0, demean: bool=True, plot: bool=False) -> Tuple[array, array]:
