@@ -26,3 +26,9 @@ demonstration of the usage of vertical rotation rate G ring data as 4 DoF analys
 
 6) XROMY_Analysis_demo1:
 demonstration of how to use ROMY ring laser data (this is not yet public data, therefore cannot be obtained using FSDN web services)
+- loads data from local .mseed files
+
+7) XROMY_Analysis_demo2:
+demonstration of how to use ROMY ring laser data (this is not yet public data, therefore cannot be obtained using FSDN web services)
+- loads data from internal server using FDSN clients
+
