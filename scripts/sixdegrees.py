@@ -15,7 +15,7 @@ import numpy as np
 import os.path  # Add explicit import for os.path
 
 from typing import Dict, List, Tuple, Union, Optional, Any
-from obspy import UTCDateTime, Stream, Inventory, read
+from obspy import UTCDateTime, Stream, Inventory, read, read_inventory
 from obspy.clients.filesystem.sds import Client
 from obspy.clients.fdsn import Client as FDSNClient
 from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
@@ -144,10 +144,13 @@ class sixdegrees():
 
             # path to rotation station inventory
             if 'path_to_inv_rot' in conf.keys():
-                self.rot_inv = os.path.normpath(conf['path_to_inv_rot'])
+                self.rot_inv_file = os.path.normpath(conf['path_to_inv_rot'])
             else:
                 print("-> no path to rotation station inventory given!")
-                self.rot_inv = None
+                self.rot_inv_file = None
+
+            # rotation inventory
+            self.rot_inv = None
 
         elif self.data_source == 'fdsn':
             # path to FDSN client for rotation data
@@ -836,15 +839,21 @@ class sixdegrees():
             rot = rot.detrend("linear")
 
             # remove response
-            if self.rot_inv is not None:
+            if self.rot_inv_file is not None:
                 if self.verbose:
-                    print(f"-> rotation inventory provided: {self.rot_inv}")
+                    print(f"-> rotation inventory provided: {self.rot_inv_file}")
 
                 if self.data_source.lower() == 'mseed_file':
                     if self.verbose:
                         print(f"-> skipping sensitivity removal for mseed file")
 
                 elif self.data_source.lower() == 'sds':
+
+                    try:
+                        self.rot_inv = read_inventory(self.rot_inv_file)
+                    except Exception as e:
+                        print(f"-> warning: failed to read inventory: {str(e)}")
+
                     try:
                         # remove sensitivity
                         rot = rot.remove_sensitivity(self.rot_inv)
@@ -3666,8 +3675,9 @@ class sixdegrees():
                 tr = st.select(component=comp)
                 if not tr:
                     raise ValueError(f"Component {comp} not found in stream")
-                    
+
                 orientation = inv.get_orientation(f"BW.ROMY.{loc}.BJ{comp}")
+
                 if not orientation:
                     raise ValueError(f"Could not get orientation for component {comp}")
                     
@@ -3710,9 +3720,15 @@ class sixdegrees():
                 st_new.select(component='Z')[0].data = components['Z']['data']
             else:
                 st_new.select(component='Z')[0].data = romy_z
-
+            
+            # set location to empty string
+            for tr in st_new:
+                tr.stats.location = ""
+            
+            # set data for channel N and E
             st_new.select(component='N')[0].data = romy_n
             st_new.select(component='E')[0].data = romy_e
+        
         except Exception as e:
             print(f"Warning: Error updating rotated data: {e}")
             return st
@@ -3925,3 +3941,407 @@ class sixdegrees():
         plt.tight_layout()
         return fig
 
+    def estimate_and_plot_backazimuth_simple(self, wave_types=['love', 'rayleigh'], 
+                                            event_info=None, baz_step=1, 
+                                            baz_win_sec=20.0, baz_win_sec_overlap=0.5,
+                                            cc_threshold=0.5, map_projection='orthographic') -> tuple:
+        """
+        Simple backazimuth estimation with 2D spherical map and histogram visualization
+        
+        Parameters:
+        -----------
+        wave_types : list
+            List of wave types to analyze ['love', 'rayleigh']
+        event_info : dict, optional
+            Dictionary containing event information with keys:
+            'latitude', 'longitude', 'backazimuth'
+        baz_step : int
+            Step size for backazimuth search in degrees
+        baz_win_sec : float
+            Window length in seconds
+        baz_win_sec_overlap : float
+            Window overlap fraction
+        cc_threshold : float
+            Minimum cross-correlation threshold
+        map_projection : str
+            Map projection type: 'orthographic' (sphere) or 'platecarree' (flat)
+            
+        Returns:
+        --------
+        tuple : (figure, results_dict)
+            Figure object and dictionary with estimation results
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+        import scipy.stats as sts
+        from numpy import histogram, average, std, argmax, arange
+        
+        # Get station coordinates from config
+        station_lat = self.config.get('station_lat', 48.162941)
+        station_lon = self.config.get('station_lon', 11.275476)
+        
+        # Compute backazimuth for each wave type
+        results = {}
+        baz_estimates = {}
+        
+        for wave_type in wave_types:
+            if wave_type in ['love', 'rayleigh']:
+                print(f"Computing {wave_type} wave backazimuth...")
+                baz_result = self.compute_backazimuth(
+                    wave_type=wave_type,
+                    baz_step=baz_step,
+                    baz_win_sec=baz_win_sec,
+                    baz_win_sec_overlap=baz_win_sec_overlap,
+                    out=True
+                )
+                
+                # Apply threshold filter
+                if 'cc_max' in baz_result:
+                    mask = baz_result['cc_max'] >= cc_threshold
+                    if np.any(mask):
+                        results[wave_type] = {
+                            'baz': baz_result['cc_max_y'][mask],
+                            'cc': baz_result['cc_max'][mask],
+                            'time': baz_result['cc_max_t'][mask]
+                        }
+                        
+                        # Compute KDE and find maximum
+                        baz = results[wave_type]['baz']
+                        cc = results[wave_type]['cc']
+                        
+                        if len(baz) > 1:
+                            kde = sts.gaussian_kde(baz, weights=cc)
+                            angle_fine = arange(0, 360, 1)
+                            baz_max = angle_fine[argmax(kde.pdf(angle_fine))]
+                            baz_estimates[wave_type] = baz_max
+                        else:
+                            baz_estimates[wave_type] = baz[0]
+                    else:
+                        print(f"No {wave_type} data above threshold")
+                        continue
+                else:
+                    print(f"No valid {wave_type} results")
+                    continue
+        
+        if not results:
+            print("No valid results for any wave type")
+            return None, {}
+        
+        # Create figure with two subplots
+        fig = plt.figure(figsize=(16, 8))
+        
+        # Determine histogram layout
+        num_wave_types = len(results)
+        if num_wave_types == 1:
+            gs = GridSpec(1, 2, figure=fig, width_ratios=[1, 1], wspace=0.3)
+            ax_map = self._create_map_subplot(fig, gs[0, 0], map_projection)
+            ax_hist = fig.add_subplot(gs[0, 1])
+            ax_hist2 = None
+        else:
+            gs = GridSpec(2, 2, figure=fig, width_ratios=[1, 1], hspace=0.3, wspace=0.3)
+            ax_map = self._create_map_subplot(fig, gs[:, 0], map_projection)
+            ax_hist = fig.add_subplot(gs[0, 1])
+            ax_hist2 = fig.add_subplot(gs[1, 1])
+        
+        # Plot the spherical map
+        if event_info:
+            self._plot_spherical_map_backazimuth(ax_map, event_info, baz_estimates, 
+                                            station_lat, station_lon, map_projection)
+        
+        # Plot histograms
+        colors = {'love': 'blue', 'rayleigh': 'red'}
+        angles = arange(0, 360, 5)  # 5-degree bins
+        angle_fine = arange(0, 360, 1)  # 1-degree resolution for KDE
+        
+        wave_types_list = list(results.keys())
+        
+        for i, wave_type in enumerate(wave_types_list):
+            data = results[wave_type]
+            baz = data['baz']
+            cc = data['cc']
+            
+            # Select appropriate axis
+            if num_wave_types == 1:
+                ax = ax_hist
+                title = f'{wave_type.upper()} Wave Backazimuth Distribution'
+            else:
+                ax = ax_hist if i == 0 else ax_hist2
+                title = f'{wave_type.upper()} Waves'
+            
+            # Compute statistics
+            baz_mean = average(baz, weights=cc)
+            baz_std = np.sqrt(np.average((baz - baz_mean)**2, weights=cc))
+            baz_max = baz_estimates[wave_type]
+            
+            # Plot histogram
+            ax.hist(baz, bins=len(angles)-1, range=[0, 360], weights=cc,
+                    alpha=0.7, color=colors[wave_type], density=True, 
+                    edgecolor='black', linewidth=0.5, label=f'N={len(baz)}')
+            
+            # Plot KDE overlay
+            if len(baz) > 1:
+                kde = sts.gaussian_kde(baz, weights=cc)
+                kde_values = kde.pdf(angle_fine)
+                ax.plot(angle_fine, kde_values, color='black', linewidth=2, label='KDE')
+            
+            # Mark estimated maximum
+            ax.axvline(baz_max, color='black', linestyle='--', linewidth=2, 
+                    label=f'Est: {baz_max:.1f}°')
+            
+            # Mark theoretical BAZ if available
+            if event_info and 'backazimuth' in event_info:
+                ax.axvline(event_info['backazimuth'], color='green', 
+                        linestyle=':', linewidth=3, label=f"Theo: {event_info['backazimuth']:.1f}°")
+                
+                # Calculate deviation
+                dev = abs(baz_max - event_info['backazimuth'])
+                if dev > 180:
+                    dev = 360 - dev
+                
+                # Add statistics text
+                stats_text = (f"Mean: {baz_mean:.1f}° ± {baz_std:.1f}°\n"
+                            f"Max: {baz_max:.1f}°\n"
+                            f"Deviation: {dev:.1f}°")
+            else:
+                stats_text = (f"Mean: {baz_mean:.1f}° ± {baz_std:.1f}°\n"
+                            f"Max: {baz_max:.1f}°")
+            
+            # Add statistics text box
+            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+                    verticalalignment='top', fontsize=10,
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            # Configure histogram axis
+            ax.set_title(title, fontsize=12, fontweight='bold')
+            ax.set_xlabel('Backazimuth (°)')
+            ax.set_ylabel('Density')
+            ax.set_xlim(0, 360)
+            ax.set_xticks([0, 90, 180, 270, 360])
+            ax.legend(loc='upper right')
+            ax.grid(True, alpha=0.3)
+        
+        # Overall title
+        title = f"Backazimuth Analysis"
+        if hasattr(self, 'tbeg') and self.tbeg:
+            title += f" - {self.tbeg.date}"
+        fig.suptitle(title, fontsize=16, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Compile results dictionary
+        final_results = {
+            'estimates': baz_estimates,
+            'detailed_results': results,
+            'event_info': event_info
+        }
+        
+        return fig, final_results
+
+    def _create_map_subplot(self, fig, gridspec, projection):
+        """Create map subplot with appropriate projection"""
+        try:
+            import cartopy.crs as ccrs
+            if projection == 'orthographic':
+                ax = fig.add_subplot(gridspec, projection=ccrs.Orthographic())
+            else:
+                ax = fig.add_subplot(gridspec, projection=ccrs.PlateCarree())
+            return ax
+        except ImportError:
+            # Fallback to regular matplotlib
+            print("Cartopy not available, using matplotlib for map")
+            return fig.add_subplot(gridspec)
+
+    def _plot_spherical_map_backazimuth(self, ax, event_info, baz_estimates, station_lat, station_lon, 
+                                    projection='orthographic'):
+        """Plot 2D spherical map with backazimuth information"""
+        import numpy as np
+        
+        try:
+            import cartopy.crs as ccrs
+            import cartopy.feature as cfeature
+            use_cartopy = True
+        except ImportError:
+            use_cartopy = False
+            print("Cartopy not available, using basic matplotlib mapping")
+        
+        if use_cartopy:
+            # Add map features
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
+            ax.add_feature(cfeature.BORDERS, linewidth=0.5, alpha=0.7)
+            ax.add_feature(cfeature.OCEAN, color='lightblue', alpha=0.6)
+            ax.add_feature(cfeature.LAND, color='lightgray', alpha=0.8)
+            
+            # Add gridlines for orthographic projection
+            if projection == 'orthographic':
+                ax.gridlines(alpha=0.5)
+                # Set the view to center on the station for better visualization
+                ax.set_global()
+            else:
+                gl = ax.gridlines(draw_labels=True, alpha=0.5)
+                gl.top_labels = False
+                gl.right_labels = False
+            
+            transform = ccrs.PlateCarree()
+        else:
+            # Basic matplotlib circular plot for sphere-like appearance
+            if projection == 'orthographic':
+                # Create a circular boundary
+                theta = np.linspace(0, 2*np.pi, 100)
+                ax.plot(np.cos(theta), np.sin(theta), 'k-', linewidth=2)
+                ax.set_xlim(-1.1, 1.1)
+                ax.set_ylim(-1.1, 1.1)
+                ax.set_aspect('equal')
+                ax.axis('off')
+            else:
+                ax.set_xlim(-180, 180)
+                ax.set_ylim(-90, 90)
+                ax.set_xlabel('Longitude (°)')
+                ax.set_ylabel('Latitude (°)')
+                ax.grid(True, alpha=0.5)
+            transform = None
+        
+        # Plot station
+        if use_cartopy:
+            ax.plot(station_lon, station_lat, marker='^', color='red', markersize=15,
+                    label='Station', markeredgecolor='black', markeredgewidth=2,
+                    transform=transform, zorder=5)
+        else:
+            if projection == 'orthographic':
+                # Convert to sphere coordinates for visualization
+                x_st, y_st = self._project_to_sphere(station_lat, station_lon, station_lat, station_lon)
+                ax.plot(x_st, y_st, marker='^', color='red', markersize=15,
+                        label='Station', markeredgecolor='black', markeredgewidth=2, zorder=5)
+            else:
+                ax.plot(station_lon, station_lat, marker='^', color='red', markersize=15,
+                        label='Station', markeredgecolor='black', markeredgewidth=2, zorder=5)
+        
+        # Event location and great circles
+        if 'latitude' in event_info and 'longitude' in event_info:
+            event_lat = event_info['latitude']
+            event_lon = event_info['longitude']
+            
+            # Plot event
+            if use_cartopy:
+                ax.plot(event_lon, event_lat, marker='*', color='yellow', markersize=20,
+                        label='Event', markeredgecolor='black', markeredgewidth=2,
+                        transform=transform, zorder=5)
+            else:
+                if projection == 'orthographic':
+                    x_ev, y_ev = self._project_to_sphere(event_lat, event_lon, station_lat, station_lon)
+                    ax.plot(x_ev, y_ev, marker='*', color='yellow', markersize=20,
+                            label='Event', markeredgecolor='black', markeredgewidth=2, zorder=5)
+                else:
+                    ax.plot(event_lon, event_lat, marker='*', color='yellow', markersize=20,
+                            label='Event', markeredgecolor='black', markeredgewidth=2, zorder=5)
+            
+            # Plot great circle paths
+            colors = {'love': 'blue', 'rayleigh': 'red'}
+            
+            # Theoretical great circle
+            if 'backazimuth' in event_info:
+                if use_cartopy:
+                    gc_lons, gc_lats = self._great_circle_path_2d(
+                        station_lat, station_lon, event_info['backazimuth'])
+                    ax.plot(gc_lons, gc_lats, color='green', linewidth=4, 
+                        linestyle=':', label='Theoretical BAZ', alpha=0.9,
+                        transform=transform, zorder=3)
+                else:
+                    self._plot_great_circle_basic(ax, station_lat, station_lon, 
+                                                event_info['backazimuth'], 
+                                                'green', 'Theoretical BAZ', 
+                                                projection, linestyle=':')
+            
+            # Estimated great circles
+            for wave_type, baz_deg in baz_estimates.items():
+                if use_cartopy:
+                    gc_lons, gc_lats = self._great_circle_path_2d(
+                        station_lat, station_lon, baz_deg)
+                    ax.plot(gc_lons, gc_lats, color=colors.get(wave_type, 'purple'), 
+                        linewidth=3, label=f'{wave_type.upper()} BAZ', alpha=0.8,
+                        transform=transform, zorder=4)
+                else:
+                    self._plot_great_circle_basic(ax, station_lat, station_lon, 
+                                                baz_deg, colors.get(wave_type, 'purple'),
+                                                f'{wave_type.upper()} BAZ', projection)
+        
+        # Set title and legend
+        ax.set_title('Geographic View', fontsize=14, fontweight='bold')
+        ax.legend(bbox_to_anchor=(0.8, 1.1), loc='upper left')
+
+    def _project_to_sphere(self, lat, lon, center_lat, center_lon):
+        """Project lat/lon to sphere coordinates for orthographic-like view"""
+        import numpy as np
+        
+        # Simple orthographic projection centered on station
+        lat_rad = np.radians(lat)
+        lon_rad = np.radians(lon)
+        center_lat_rad = np.radians(center_lat)
+        center_lon_rad = np.radians(center_lon)
+        
+        # Orthographic projection equations
+        x = np.cos(lat_rad) * np.sin(lon_rad - center_lon_rad)
+        y = (np.cos(center_lat_rad) * np.sin(lat_rad) - 
+            np.sin(center_lat_rad) * np.cos(lat_rad) * np.cos(lon_rad - center_lon_rad))
+        
+        return x, y
+
+    def _plot_great_circle_basic(self, ax, lat0, lon0, azimuth, color, label, projection, linestyle='-'):
+        """Plot great circle for basic matplotlib (non-cartopy) plots"""
+        import numpy as np
+        
+        if projection == 'orthographic':
+            # For sphere view, plot the great circle arc
+            gc_lons, gc_lats = self._great_circle_path_2d(lat0, lon0, azimuth, max_distance_deg=90)
+            x_coords, y_coords = self._project_to_sphere(gc_lats, gc_lons, lat0, lon0)
+            
+            # Only plot points that are on the visible hemisphere
+            visible = x_coords**2 + y_coords**2 <= 1
+            if np.any(visible):
+                ax.plot(x_coords[visible], y_coords[visible], color=color, linewidth=3, 
+                    label=label, alpha=0.8, linestyle=linestyle)
+        else:
+            # For flat projection
+            gc_lons, gc_lats = self._great_circle_path_2d(lat0, lon0, azimuth)
+            ax.plot(gc_lons, gc_lats, color=color, linewidth=3, 
+                label=label, alpha=0.8, linestyle=linestyle)
+
+    def _great_circle_path_2d(self, lat0, lon0, azimuth, max_distance_deg=120, num_points=100):
+        """Calculate points along a great circle path for 2D mapping"""
+        import numpy as np
+        
+        # Convert to radians
+        lat0_rad = np.radians(lat0)
+        lon0_rad = np.radians(lon0)
+        azimuth_rad = np.radians(azimuth)
+        
+        # Generate distances along great circle
+        distances_km = np.linspace(0, max_distance_deg * 111.32, num_points)  # ~111.32 km per degree
+        
+        lats = []
+        lons = []
+        
+        for dist_km in distances_km:
+            # Calculate point at distance along azimuth
+            try:
+                from geopy import Point
+                from geopy.distance import distance as geopy_distance
+                
+                start_point = Point(lat0, lon0)
+                destination = geopy_distance(kilometers=dist_km).destination(start_point, azimuth)
+                lats.append(destination.latitude)
+                lons.append(destination.longitude)
+            except ImportError:
+                # Fallback to manual calculation if geopy not available
+                d_rad = dist_km / 6371.0  # Earth radius in km
+                
+                lat = np.arcsin(np.sin(lat0_rad) * np.cos(d_rad) + 
+                            np.cos(lat0_rad) * np.sin(d_rad) * np.cos(azimuth_rad))
+                
+                lon = lon0_rad + np.arctan2(np.sin(azimuth_rad) * np.sin(d_rad) * np.cos(lat0_rad),
+                                        np.cos(d_rad) - np.sin(lat0_rad) * np.sin(lat))
+                
+                lats.append(np.degrees(lat))
+                lons.append(np.degrees(lon))
+        
+        return np.array(lons), np.array(lats)
