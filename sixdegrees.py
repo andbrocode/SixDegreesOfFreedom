@@ -215,7 +215,7 @@ class sixdegrees():
         if 'tunit' in conf.keys():
             self.tunit = conf['tunit']
         else:
-            self.tunit = "m/s^2"
+            self.tunit = r"m/s$^2$"
 
         # polarity dictionary
         self.pol_applied = False
@@ -1675,7 +1675,8 @@ class sixdegrees():
             Minimum correlation coefficient threshold
         tangent_components : str
             Components to use for tangent method ('rotation' or 'acceleration')
-            
+        cc_value : str
+            Value to use for correlation coefficient ('max', 'mid', None)
         Returns:
         --------
         dict : Results dictionary with backazimuth estimates for each wave type
@@ -1845,10 +1846,6 @@ class sixdegrees():
         }
         
         return final_results
-
-
-
-
 
     def compute_backazimuth(self, wave_type: str="", baz_step: int=1, baz_win_sec: float=30.0, 
                         rotation_data: Stream=None, translation_data: Stream=None,
@@ -2105,16 +2102,20 @@ class sixdegrees():
                     # remove 180° ambiguity using appropriate correlation
                     if tangent_components.lower() == "rotation":
                         # Original method: rotate rotation components and correlate with acceleration Z
-                        R, T = rotate_ne_rt(ROT.select(channel='*N')[0].data,
-                                            ROT.select(channel='*E')[0].data,
-                                            baz0
-                                        )
+                        JR, JT = rotate_ne_rt(
+                            ROT.select(channel='*N')[0].data,
+                            ROT.select(channel='*E')[0].data,
+                            baz0
+                        )
                         
+                        HZ = ACC.select(channel="*Z")[0].data
+
                         # correlate with acceleration
-                        ccorr = correlate(ACC.select(channel="*Z")[0][idx1:idx2],
-                                        T[idx1:idx2],
-                                        0, demean=True, normalize='naive', method='auto'
-                                        )
+                        ccorr = correlate(
+                            HZ[idx1:idx2],
+                            JT[idx1:idx2],
+                            0, demean=True, normalize='naive', method='auto'
+                        )
 
                     # remove 180° ambiguity using closest to theoretical backazimuth
                     else:
@@ -2127,9 +2128,9 @@ class sixdegrees():
 
                             # choose the one with the least rmse and set cc_max to 0 (dummy value)
                             if rmse_180 < rmse:
-                                ccorr = [1e-6]
+                                ccorr = [1] #[1e-6]
                             else:
-                                ccorr = [-1e-6]
+                                ccorr = [-1] #[1e-6]
 
                     # get maximum correlation
                     xshift, cc_max = xcorr_max(ccorr)
@@ -3036,224 +3037,6 @@ class sixdegrees():
 
         return results
 
-    def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
-                                  baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
-                                  cc_threshold: float=0, plot: bool=True, output: bool=False,
-                                  invert_rot_z: bool=False, invert_acc_z: bool=False) -> Tuple[plt.Figure, Dict]:
-        """
-        Compare different backazimuth estimation methods
-        
-        Parameters:
-        -----------
-        Twin : float
-            Window length in seconds for backazimuth estimation
-        Toverlap : float
-            Window overlap in percent (0-100)
-        baz_theo : float, optional
-            Theoretical backazimuth in degrees
-        baz_theo_margin : float, optional
-            Margin around theoretical backazimuth in degrees
-        baz_step : int, optional
-            Step size for backazimuth search in degrees
-        minors : bool, optional
-            Add minor ticks to axes if True
-        cc_threshold : float, optional
-            Minimum cross-correlation coefficient threshold (default: 0)
-        plot : bool, optional
-            Whether to create and return plot
-        output : bool, optional
-            Whether to return results dictionary
-        invert_rot_z : bool, optional
-            Invert vertical rotation component if True
-        invert_acc_z : bool, optional
-            Invert vertical acceleration component if True
-            
-        Returns:
-        --------
-        Tuple[Figure, Dict] or Dict
-            Figure and results dictionary if plot=True, else just results dictionary
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib.gridspec import GridSpec
-        import scipy.stats as sts
-        from numpy import ones, linspace, histogram, concatenate, average
-        from numpy import argmax, sqrt, cov, array, arange, nan
-        
-        # Get and process streams
-        rot = self.get_stream("rotation").copy()
-        acc = self.get_stream("translation").copy()
-        
-        # Initialize results dictionary
-        results_dict = {}
-        baz_estimated = {}
-        
-        # Create figure if plotting
-        if plot:
-            fig = plt.figure(figsize=(15, 10))
-            gs = GridSpec(3, 8, figure=fig)
-            
-            # Create subplots
-            ax1 = fig.add_subplot(gs[0, :8])  # Love wave BAZ
-            ax11 = fig.add_subplot(gs[0, 7:])  # Love wave histogram
-            ax11.set_axis_off()
-            
-            ax2 = fig.add_subplot(gs[1, :8])  # Rayleigh wave BAZ
-            ax22 = fig.add_subplot(gs[1, 7:])  # Rayleigh wave histogram
-            ax22.set_axis_off()
-            
-            ax3 = fig.add_subplot(gs[2, :8])  # Tangent BAZ
-            ax33 = fig.add_subplot(gs[2, 7:])  # Tangent histogram
-            ax33.set_axis_off()
-            
-            # Create color map
-            cmap = plt.get_cmap("viridis", 10)
-        
-        # Plot settings
-        font = 12
-        deltaa = 10
-        angles1 = arange(0, 365, deltaa)
-        angles2 = arange(0, 365, 1)
-        t1, t2 = 0, rot[0].stats.endtime - rot[0].stats.starttime
-        
-        # Process each wave type
-        for wave_type, label in [('love', 'Love'), ('rayleigh', 'Rayleigh'), ('tangent', 'Tangent')]:
-            
-            # Compute backazimuth for each wave type
-
-            if wave_type in self.baz_results.keys():
-                print(f"Using precomputed {wave_type} backazimuth results")
-                wave_results = self.baz_results[wave_type]
-            else:
-                print(f"Computing {wave_type} wave backazimuth...")
-                wave_results = self.compute_backazimuth(
-                    wave_type=wave_type,
-                    baz_step=baz_step,
-                    baz_win_sec=Twin,
-                    baz_win_overlap=Toverlap,
-                    out=True
-                )
-            
-            # Filter out low correlation coefficients
-            mask = wave_results['cc_max'] >= cc_threshold
-            times_filtered = wave_results['twin_center'][mask]
-            baz_filtered = wave_results['cc_max_y'][mask]
-            cc_filtered = wave_results['cc_max'][mask]
-            
-            # Store filtered results
-            results_dict[wave_type] = {
-                'time': times_filtered,
-                'backazimuth': baz_filtered,
-                'correlation': cc_filtered
-            }
-            
-            if plot:
-                # Plot results for each wave type
-                if wave_type == 'love':
-                    scatter = ax1.scatter(times_filtered, baz_filtered,
-                                        c=cc_filtered, cmap=cmap,
-                                        s=70, alpha=0.7, vmin=0, vmax=1,
-                                        edgecolors="k", lw=1, zorder=3)
-                elif wave_type == 'rayleigh':
-                    ax2.scatter(times_filtered, baz_filtered,
-                              c=cc_filtered, cmap=cmap,
-                              s=70, alpha=0.7, vmin=0, vmax=1,
-                              edgecolors="k", lw=1, zorder=3)
-                else:  # tangent
-                    ax3.scatter(times_filtered, baz_filtered,
-                              c=cc_filtered, cmap=cmap,
-                              s=70, alpha=0.7, vmin=0, vmax=1,
-                              edgecolors="k", lw=1, zorder=3)
-                
-                # Compute and plot histogram
-                hist = histogram(baz_filtered,
-                               bins=len(angles1)-1,
-                               range=[min(angles1), max(angles1)],
-                               weights=cc_filtered,
-                               density=True)
-                
-                # Compute KDE
-                if len(baz_filtered) > 5:  # Need at least 5 points for KDE
-                    # get kde stats
-                    kde_stats = self.get_kde_stats(baz_filtered, cc_filtered, _baz_steps=0.5, Ndegree=60, plot=False)
-
-                    results_dict[wave_type]['kde'] = kde_stats['kde_values']
-                    baz_estimated[wave_type] = kde_stats['baz_estimate']
-                    results_dict[wave_type]['kde_angles'] = kde_stats['kde_angles']
-                else:
-                    baz_estimated[wave_type] = nan
-                
-                print(f"\nEstimated BAZ {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
-        
-        if plot:
-
-            # add histograms and KDEs to subplots
-            for ax, ax_hist, label in [(ax1, ax11, "love"), (ax2, ax22, "rayleigh"), (ax3, ax33, "tangent")]:
-                ax_hist.hist(results_dict[label]['backazimuth'], 
-                            bins=len(angles1)-1,
-                            range=[min(angles1), max(angles1)],
-                            weights=results_dict[label]['correlation'],
-                            orientation="horizontal", density=True, color="grey")
-                if len(baz_filtered) > 5:
-                    ax_hist.plot(results_dict[label]['kde'],
-                                 results_dict[label]['kde_angles'],
-                                 color='k', lw=3)
-                ax_hist.yaxis.tick_right()
-                ax_hist.invert_xaxis()
-                ax_hist.set_ylim(-5, 365)
-
-            # Add theoretical BAZ if provided
-            if baz_theo is not None:
-                for ax in [ax1, ax2, ax3]:
-                    ax.plot([t1, t2], [baz_theo, baz_theo], color='k', ls='--', label='Theoretical BAZ')
-                    ax.fill_between([t1, t2], 
-                                  baz_theo-baz_theo_margin,
-                                  baz_theo+baz_theo_margin,
-                                  color='grey', alpha=0.3, zorder=1)
-            
-            # Configure axes
-            for ax in [ax1, ax2, ax3]:
-                ax.set_ylim(-5, 365)
-                ax.set_yticks(range(0, 360+60, 60))
-                ax.grid(True, alpha=0.3)
-                ax.set_xlim(t1, t2*1.15)
-                if minors:
-                    ax.minorticks_on()
-            
-            # Add labels
-            ax1.set_title(f"Love Wave BAZ (estimated = {baz_estimated['love']}°)", fontsize=font)
-            ax2.set_title(f"Rayleigh Wave BAZ (estimated = {baz_estimated['rayleigh']}°)", fontsize=font)
-            ax3.set_title(f"Tangent BAZ (estimated = {baz_estimated['tangent']}°)", fontsize=font)
-            ax3.set_xlabel("Time (s)", fontsize=font)
-            
-            for ax in [ax1, ax2, ax3]:
-                ax.set_ylabel("BAZ (°)", fontsize=font)
-            
-            # Add colorbar
-            cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-            plt.colorbar(scatter, cax=cbar_ax, label='CC coefficient')
-            
-            # Add title
-            title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
-            title += f" | {self.fmin}-{self.fmax} Hz | T = {Twin} s | {Toverlap*10:.0f}% overlap"
-            if baz_theo is not None:
-                title += f" | expected BAz = {baz_theo:.1f}°"
-            if cc_threshold > 0:
-                title += f" | CC ≥ {cc_threshold}"
-            fig.suptitle(title, fontsize=font+2, y=0.99)
-            
-            # plt.tight_layout()
-            # plt.show()
-        
-        # Store estimated BAZ
-        self.baz_estimated = baz_estimated
-        
-        # Prepare output
-        if output:
-            if plot:
-                return fig, results_dict
-            else:
-                return results_dict
-
     def compute_velocities_optimized(self, rotation_data: Stream=None, translation_data: Stream=None,
                                      wave_type: str='love', baz_results: Dict=None, baz_mode: str='mid',
                                      method: str='odr', cc_threshold: float=0.0) -> Dict:
@@ -3365,16 +3148,18 @@ class sixdegrees():
                 continue
 
             # Rotate components to radial-transverse
-            rot_r, rot_t = rotate_ne_rt(
-                rot.select(channel='*N')[0].data,
-                rot.select(channel='*E')[0].data,
-                _baz
-            )
-            acc_r, acc_t = rotate_ne_rt(
-                tra.select(channel='*N')[0].data,
-                tra.select(channel='*E')[0].data,
-                _baz
-            )
+            if wave_type.lower() == 'rayleigh':
+                rot_r, rot_t = rotate_ne_rt(
+                    rot.select(channel='*N')[0].data,
+                    rot.select(channel='*E')[0].data,
+                    _baz
+                )
+            elif wave_type.lower() == 'love':
+                acc_r, acc_t = rotate_ne_rt(
+                    tra.select(channel='*N')[0].data,
+                    tra.select(channel='*E')[0].data,
+                    _baz
+                )
 
             # Compute velocity using amplitude ratio
             if wave_type.lower() == 'love':
@@ -3689,6 +3474,274 @@ class sixdegrees():
 
         print(f"Completed processing {len(results['frequency'])} frequency bands successfully.")
         return results
+
+    def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
+                                  baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
+                                  cc_threshold: float=0, cc_method: str='max', plot: bool=True, output: bool=False,
+                                  invert_rot_z: bool=False, invert_acc_z: bool=False) -> Tuple[plt.Figure, Dict]:
+        """
+        Compare different backazimuth estimation methods
+        
+        Parameters:
+        -----------
+        Twin : float
+            Window length in seconds for backazimuth estimation
+        Toverlap : float
+            Window overlap in percent (0-100)
+        baz_theo : float, optional
+            Theoretical backazimuth in degrees
+        baz_theo_margin : float, optional
+            Margin around theoretical backazimuth in degrees
+        baz_step : int, optional
+            Step size for backazimuth search in degrees
+        minors : bool, optional
+            Add minor ticks to axes if True
+        cc_threshold : float, optional
+            Minimum cross-correlation coefficient threshold (default: 0)
+        plot : bool, optional
+            Whether to create and return plot
+        output : bool, optional
+            Whether to return results dictionary
+        invert_rot_z : bool, optional
+            Invert vertical rotation component if True
+        invert_acc_z : bool, optional
+            Invert vertical acceleration component if True
+        cc_method : str, optional
+            Method to use for cross-correlation coefficient thresholding ('max' or 'mid')
+        Returns:
+        --------
+        Tuple[Figure, Dict] or Dict
+            Figure and results dictionary if plot=True, else just results dictionary
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+        import scipy.stats as sts
+        from numpy import ones, linspace, histogram, concatenate, average
+        from numpy import argmax, sqrt, cov, array, arange, nan
+        
+        # Get and process streams
+        rot = self.get_stream("rotation").copy()
+        acc = self.get_stream("translation").copy()
+        
+        # Initialize results dictionary
+        results_dict = {}
+        baz_estimated = {}
+        
+        # Create figure if plotting
+        if plot:
+            fig = plt.figure(figsize=(15, 10))
+            gs = GridSpec(3, 8, figure=fig)
+            
+            # Create subplots
+            ax1 = fig.add_subplot(gs[0, :8])  # Love wave BAZ
+            ax11 = fig.add_subplot(gs[0, 7:])  # Love wave histogram
+            ax11.set_axis_off()
+            
+            ax2 = fig.add_subplot(gs[1, :8])  # Rayleigh wave BAZ
+            ax22 = fig.add_subplot(gs[1, 7:])  # Rayleigh wave histogram
+            ax22.set_axis_off()
+            
+            ax3 = fig.add_subplot(gs[2, :8])  # Tangent BAZ
+            ax33 = fig.add_subplot(gs[2, 7:])  # Tangent histogram
+            ax33.set_axis_off()
+            
+            # Create color map
+            cmap = plt.get_cmap("viridis", 10)
+        
+        # Plot settings
+        font = 12
+        deltaa = 10
+        angles1 = arange(0, 365, deltaa)
+        angles2 = arange(0, 365, 1)
+        t1, t2 = 0, rot[0].stats.endtime - rot[0].stats.starttime
+        
+        # Process each wave type
+        for wave_type, label in [('love', 'Love'), ('rayleigh', 'Rayleigh'), ('tangent', 'Tangent')]:
+            
+            # Compute backazimuth for each wave type
+
+            if wave_type in self.baz_results.keys():
+                print(f"Using precomputed {wave_type} backazimuth results")
+                wave_results = self.baz_results[wave_type]
+            else:
+                print(f"Computing {wave_type} wave backazimuth...")
+                wave_results = self.compute_backazimuth(
+                    wave_type=wave_type,
+                    baz_step=baz_step,
+                    baz_win_sec=Twin,
+                    baz_win_overlap=Toverlap,
+                    out=True
+                )
+            
+            # Filter out low correlation coefficients
+            if cc_method.lower() == 'max':
+                mask = wave_results['cc_max'] >= cc_threshold
+                times_filtered = wave_results['twin_center'][mask]
+                baz_filtered = wave_results['baz_max'][mask]
+                cc_filtered = wave_results['cc_max'][mask]
+            elif cc_method.lower() == 'mid':
+                mask = wave_results['cc_mid'] >= cc_threshold
+                times_filtered = wave_results['twin_center'][mask]
+                baz_filtered = wave_results['baz_mid'][mask]
+                cc_filtered = wave_results['cc_mid'][mask]
+            else:
+                raise ValueError(f"Invalid cc_method: {cc_method}. Use 'max' or 'mid'")
+            
+            # Tangent method is special as it has both positive and negative cc_max at -1 and 1
+            if wave_type == 'tangent':
+                mask = abs(wave_results['cc_max']) > cc_threshold
+                times_filtered = wave_results['twin_center'][mask]
+                baz_filtered = wave_results['baz_max'][mask]
+                cc_filtered = wave_results['cc_max'][mask]
+
+            # Store filtered results
+            results_dict[wave_type] = {
+                'time': times_filtered,
+                'backazimuth': baz_filtered,
+                'correlation': cc_filtered
+            }
+            
+            if plot:
+                # Plot results for each wave type
+                if wave_type == 'love':
+                    scatter = ax1.scatter(
+                        times_filtered,
+                        baz_filtered,
+                        c=cc_filtered,
+                        cmap=cmap,
+                        s=70,
+                        alpha=0.7,
+                        vmin=0,
+                        vmax=1,
+                        edgecolors="k",
+                        lw=1,
+                        zorder=3
+                    )
+                elif wave_type == 'rayleigh':
+                    scatter = ax2.scatter(
+                        times_filtered,
+                        baz_filtered,
+                        c=cc_filtered,
+                        cmap=cmap,
+                        s=70,
+                        alpha=0.7,
+                        vmin=0,
+                        vmax=1,
+                        edgecolors="k",
+                        lw=1,
+                        zorder=3
+                    )
+                else:  # tangent
+                    ax3.scatter(
+                        wave_results['twin_center'][wave_results['cc_max'] > cc_threshold], 
+                        wave_results['baz_max'][wave_results['cc_max'] > cc_threshold],
+                        c='tab:blue',
+                        s=70,
+                        alpha=0.7,
+                        edgecolors="k",
+                        lw=1,
+                        zorder=3
+                    )
+                    ax3.scatter(
+                        wave_results['twin_center'][wave_results['cc_max'] < -cc_threshold], 
+                        wave_results['baz_max'][wave_results['cc_max'] < -cc_threshold],
+                        c='tab:orange',
+                        s=70,
+                        alpha=0.7,
+                        edgecolors="k",
+                        lw=1,
+                        zorder=3
+                    )
+
+                # Compute and plot histogram
+                hist = histogram(baz_filtered,
+                               bins=len(angles1)-1,
+                               range=[min(angles1), max(angles1)],
+                               weights=cc_filtered,
+                               density=True)
+                
+                # Compute KDE
+                if len(baz_filtered) > 5:  # Need at least 5 points for KDE
+                    # get kde stats
+                    kde_stats = self.get_kde_stats(baz_filtered, cc_filtered, _baz_steps=0.5, Ndegree=60, plot=False)
+
+                    results_dict[wave_type]['kde'] = kde_stats['kde_values']
+                    baz_estimated[wave_type] = kde_stats['baz_estimate']
+                    results_dict[wave_type]['kde_angles'] = kde_stats['kde_angles']
+                else:
+                    baz_estimated[wave_type] = nan
+                
+                print(f"\nEstimated BAZ {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
+        
+        if plot:
+
+            # add histograms and KDEs to subplots
+            for ax, ax_hist, label in [(ax1, ax11, "love"), (ax2, ax22, "rayleigh"), (ax3, ax33, "tangent")]:
+                ax_hist.hist(results_dict[label]['backazimuth'], 
+                            bins=len(angles1)-1,
+                            range=[min(angles1), max(angles1)],
+                            weights=results_dict[label]['correlation'],
+                            orientation="horizontal", density=True, color="grey")
+                if len(baz_filtered) > 5:
+                    ax_hist.plot(results_dict[label]['kde'],
+                                 results_dict[label]['kde_angles'],
+                                 color='k', lw=3)
+                ax_hist.yaxis.tick_right()
+                ax_hist.invert_xaxis()
+                ax_hist.set_ylim(-5, 365)
+
+            # Add theoretical BAZ if provided
+            if baz_theo is not None:
+                for ax in [ax1, ax2, ax3]:
+                    ax.plot([t1, t2], [baz_theo, baz_theo], color='k', ls='--', label='Theoretical BAZ')
+                    ax.fill_between([t1, t2], 
+                                  baz_theo-baz_theo_margin,
+                                  baz_theo+baz_theo_margin,
+                                  color='grey', alpha=0.3, zorder=1)
+            
+            # Configure axes
+            for ax in [ax1, ax2, ax3]:
+                ax.set_ylim(-5, 365)
+                ax.set_yticks(range(0, 360+60, 60))
+                ax.grid(True, alpha=0.3)
+                ax.set_xlim(t1, t2*1.15)
+                if minors:
+                    ax.minorticks_on()
+            
+            # Add labels
+            ax1.set_title(f"Love Wave BAZ (estimated = {baz_estimated['love']}°)", fontsize=font)
+            ax2.set_title(f"Rayleigh Wave BAZ (estimated = {baz_estimated['rayleigh']}°)", fontsize=font)
+            ax3.set_title(f"Tangent BAZ (estimated = {baz_estimated['tangent']}°)", fontsize=font)
+            ax3.set_xlabel("Time (s)", fontsize=font)
+            
+            for ax in [ax1, ax2, ax3]:
+                ax.set_ylabel("BAZ (°)", fontsize=font)
+            
+            # Add colorbar
+            cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+            plt.colorbar(scatter, cax=cbar_ax, label='CC coefficient')
+            
+            # Add title
+            title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
+            title += f" | {self.fmin}-{self.fmax} Hz | T = {Twin} s | {Toverlap*10:.0f}% overlap"
+            if baz_theo is not None:
+                title += f" | expected BAz = {baz_theo:.1f}°"
+            if cc_threshold > 0:
+                title += f" | CC ≥ {cc_threshold}"
+            fig.suptitle(title, fontsize=font+2, y=0.99)
+            
+            # plt.tight_layout()
+            # plt.show()
+        
+        # Store estimated BAZ
+        self.baz_estimated = baz_estimated
+        
+        # Prepare output
+        if output:
+            if plot:
+                return fig, results_dict
+            else:
+                return results_dict
 
 
     @staticmethod
