@@ -34,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+from scipy.signal import hilbert
 
 
 class sixdegrees():
@@ -676,16 +677,18 @@ class sixdegrees():
             stsort += stream.select(component=c)
         return stsort
 
-    def load_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime], resample_rate: Optional[float]=None):
+    def load_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime], resample_rate: Optional[float]=None, merging: bool=False):
         '''
         Load data for translation and rotaion as obspy stream
 
         @param t1: starttime
         @param t2: endtime  
         @param resample_rate: resample rate in Hz
+        @param merging: merge stream if True
         @type t1: str or UTCDateTime
         @type t2: str or UTCDateTime
         @type resample_rate: float or None
+        @type merging: bool
         '''
 
         from obspy import Stream, UTCDateTime, read
@@ -697,11 +700,11 @@ class sixdegrees():
 
         if len(self.tra_seed) > 0:
             # add to stream
-            st0 += self._load_translation_data(t1, t2)
+            st0 += self._load_translation_data(t1, t2, merging=merging)
 
         if len(self.rot_seed) > 0:
             # add to stream
-            st0 += self._load_rotation_data(t1, t2)
+            st0 += self._load_rotation_data(t1, t2, merging=merging)
 
         # check if stream has correct length
         if len(st0) < (len(self.tra_seed) + len(self.rot_seed)):
@@ -753,13 +756,22 @@ class sixdegrees():
                 if self.verbose:
                     print(f"Sampling rates found: {sampling_rates}")
 
-    def _load_translation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime]):
+    def _load_translation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime], merging: bool=False):
         '''
         Load translation data
+
+        @param t1: starttime
+        @param t2: endtime
+        @param merging: merge stream if True
+        @type t1: str or UTCDateTime
+        @type t2: str or UTCDateTime
+        @type merging: bool
         '''
 
         # Load translation data
         tra = Stream()
+
+        # initialize FDSN client
         client = FDSNClient(self.fdsn_client_tra)
 
         for tseed in self.tra_seed:
@@ -798,6 +810,10 @@ class sixdegrees():
                 print(f" -> loading translational data failed!")
                 if self.verbose:
                     print(e)
+
+        # merge stream if required
+        if merging:
+            tra = tra.merge(method=1, fill_value=0)
 
         # add dummy trace
         if self.dummy_trace:
@@ -874,12 +890,21 @@ class sixdegrees():
         
         return tra
 
-    def _load_rotation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime]):
+    def _load_rotation_data(self, t1: Union[str, UTCDateTime], t2: Union[str, UTCDateTime], merging: bool=False):
         '''
         Load rotation data
+
+        @param t1: starttime
+        @param t2: endtime
+        @param merging: merge stream if True
+        @type t1: str or UTCDateTime
+        @type t2: str or UTCDateTime
+        @type merging: bool
         '''
         # Load rotation data
         rot = Stream()
+
+        # initialize FDSN client
         client = FDSNClient(self.fdsn_client_rot)
 
         # raw channel order
@@ -926,6 +951,10 @@ class sixdegrees():
                 print(f" -> loading rotational data failed!")
                 if self.verbose:
                     print(e)
+
+        # merge stream if required
+        if merging:
+            rot = rot.merge(method=1, fill_value=0)
 
         # add dummy trace
         if self.dummy_trace:
@@ -3478,7 +3507,7 @@ class sixdegrees():
     def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
                                   baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
                                   cc_threshold: float=0, cc_method: str='max', plot: bool=True, output: bool=False,
-                                  invert_rot_z: bool=False, invert_acc_z: bool=False) -> Tuple[plt.Figure, Dict]:
+                                  precomputed: bool=True) -> Tuple[plt.Figure, Dict]:
         """
         Compare different backazimuth estimation methods
         
@@ -3560,7 +3589,7 @@ class sixdegrees():
             
             # Compute backazimuth for each wave type
 
-            if wave_type in self.baz_results.keys():
+            if precomputed and wave_type in self.baz_results.keys():
                 print(f"Using precomputed {wave_type} backazimuth results")
                 wave_results = self.baz_results[wave_type]
             else:
@@ -3598,7 +3627,19 @@ class sixdegrees():
             results_dict[wave_type] = {
                 'time': times_filtered,
                 'backazimuth': baz_filtered,
-                'correlation': cc_filtered
+                'correlation': cc_filtered,
+                'twin_center': wave_results['twin_center'],
+                'cc_max': wave_results['cc_max'],
+                'cc_mid': wave_results['cc_mid'],
+                'baz_max': wave_results['baz_max'],
+                'baz_mid': wave_results['baz_mid'],
+                'parameters': {
+                    'wave_type': wave_type,
+                    'baz_step': baz_step,
+                    'baz_win_sec': Twin,
+                    'baz_win_overlap': Toverlap,
+                    'cc_threshold': cc_threshold,
+                }
             }
             
             if plot:
@@ -3652,27 +3693,31 @@ class sixdegrees():
                         lw=1,
                         zorder=3
                     )
-
-                # Compute and plot histogram
-                hist = histogram(baz_filtered,
-                               bins=len(angles1)-1,
-                               range=[min(angles1), max(angles1)],
-                               weights=cc_filtered,
-                               density=True)
+                try:
+                    # Compute and plot histogram
+                    hist = histogram(baz_filtered,
+                                bins=len(angles1)-1,
+                                range=[min(angles1), max(angles1)],
+                                weights=cc_filtered,
+                                density=True)
+                except:
+                    pass
                 
-                # Compute KDE
-                if len(baz_filtered) > 5:  # Need at least 5 points for KDE
-                    # get kde stats
-                    kde_stats = self.get_kde_stats(baz_filtered, cc_filtered, _baz_steps=0.5, Ndegree=60, plot=False)
+            # Compute KDE
+            if len(baz_filtered) > 5:  # Need at least 5 points for KDE
+                # get kde stats
+                kde_stats = self.get_kde_stats(baz_filtered, cc_filtered, _baz_steps=0.5, Ndegree=60, plot=False)
 
-                    results_dict[wave_type]['kde'] = kde_stats['kde_values']
-                    baz_estimated[wave_type] = kde_stats['baz_estimate']
-                    results_dict[wave_type]['kde_angles'] = kde_stats['kde_angles']
-                else:
-                    baz_estimated[wave_type] = nan
-                
-                print(f"\nEstimated BAZ {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
-        
+                baz_estimated[wave_type] = kde_stats['baz_estimate']
+                results_dict[wave_type]['kde'] = kde_stats['kde_values']
+                results_dict[wave_type]['kde_angles'] = kde_stats['kde_angles']
+                results_dict[wave_type]['baz_std'] = kde_stats['kde_dev']
+                results_dict[wave_type]['baz_estimate'] = kde_stats['baz_estimate']
+            else:
+                baz_estimated[wave_type] = nan
+            
+            print(f"\nEstimated BAZ {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
+    
         if plot:
 
             # add histograms and KDEs to subplots
@@ -3723,7 +3768,7 @@ class sixdegrees():
             
             # Add title
             title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
-            title += f" | {self.fmin}-{self.fmax} Hz | T = {Twin} s | {Toverlap*10:.0f}% overlap"
+            title += f" | {self.fmin}-{self.fmax} Hz | T = {Twin} s | {Toverlap*100:.0f}% overlap"
             if baz_theo is not None:
                 title += f" | expected BAz = {baz_theo:.1f}°"
             if cc_threshold > 0:
@@ -3732,10 +3777,7 @@ class sixdegrees():
             
             # plt.tight_layout()
             # plt.show()
-        
-        # Store estimated BAZ
-        self.baz_estimated = baz_estimated
-        
+
         # Prepare output
         if output:
             if plot:
@@ -4768,21 +4810,21 @@ class sixdegrees():
         if wave_type == "love":
 
             # Plot translational data
-            ax_wave.plot(times, ht*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.T", lw=lw)
+            ax_wave.plot(times, ht*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[-1][:-1]}T", lw=lw)
             ax_wave.set_ylim(-max(abs(ht*trans_scale)), max(abs(ht*trans_scale)))
 
             # Add rotational data on twin axis
             ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, jz*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.Z", lw=lw)
+            ax_wave2.plot(times, jz*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.{self.rot_seed[0].split('.')[-1][:-1]}Z", lw=lw)
             ax_wave2.set_ylim(-max(abs(jz*rot_scale)), max(abs(jz*rot_scale)))
     
         elif wave_type == "rayleigh":
-            ax_wave.plot(times, hz*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.Z", lw=lw)
+            ax_wave.plot(times, hz*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[-1][:-1]}Z", lw=lw)
             ax_wave.set_ylim(-max(abs(hz*trans_scale)), max(abs(hz*trans_scale)))
 
             # Add rotational data on twin axis
             ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, jt*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.T", lw=lw)
+            ax_wave2.plot(times, jt*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.{self.rot_seed[0].split('.')[-1][:-1]}T", lw=lw)
             ax_wave2.set_ylim(-max(abs(jt*rot_scale)), max(abs(jt*rot_scale)))
             
         # Configure waveform axes
@@ -5840,3 +5882,215 @@ class sixdegrees():
         
         plt.tight_layout()
         return fig
+
+    def compute_envelope_statistics(self, rotation_data: Stream=None, translation_data: Stream=None,
+                                 love_baz_results: Dict=None, rayleigh_baz_results: Dict=None, 
+                                 baz_mode: str='mid', cc_threshold: float=0.0) -> Dict:
+        """
+        Compute mean and standard deviation of signal envelopes in time intervals for Love and Rayleigh waves
+        
+        Parameters:
+        -----------
+        rotation_data : Stream
+            Rotational data stream
+        translation_data : Stream
+            Translation data stream
+        love_baz_results : Dict
+            Dictionary containing backazimuth results for Love waves
+        rayleigh_baz_results : Dict
+            Dictionary containing backazimuth results for Rayleigh waves
+        baz_mode : str
+            Mode to use for backazimuth selection ('max' or 'mid')
+        cc_threshold : float, optional
+            Minimum cross-correlation coefficient to consider, by default 0.0
+            
+        Returns:
+        --------
+        Dict
+            Dictionary containing:
+            - times : array of time points
+            - envelope_means: dict with component means
+            - envelope_stds: dict with component standard deviations
+            - cc_value: dict with cc values for love and rayleigh
+            - backazimuth: dict with baz values for love and rayleigh
+        """
+        import numpy as np
+        from obspy.signal.rotate import rotate_ne_rt
+        from scipy.signal import hilbert
+
+        # Validate inputs
+        if rotation_data is None or translation_data is None:
+            raise ValueError("Both rotation and translation data must be provided")
+        if love_baz_results is None or rayleigh_baz_results is None:
+            raise ValueError("Both Love and Rayleigh backazimuth results must be provided")
+        if baz_mode.lower() not in ['max', 'mid']:
+            raise ValueError(f"Invalid baz mode: {baz_mode}. Use 'max' or 'mid'")
+
+        # Make copies to avoid modifying original data
+        rot = rotation_data.copy()
+        tra = translation_data.copy()
+
+        # Get sampling rate and validate
+        df = rot[0].stats.sampling_rate
+        if df <= 0:
+            raise ValueError(f"Invalid sampling rate: {df}")
+
+        # Extract parameters from baz_results for both wave types
+        try:
+            # Love wave parameters
+            love_win_time_s = love_baz_results['parameters']['baz_win_sec']
+            love_overlap = love_baz_results['parameters']['baz_win_overlap']
+            love_ttt = love_baz_results['twin_center']
+            if baz_mode.lower() == 'max':
+                love_baz = love_baz_results['baz_max']
+                love_ccc = love_baz_results['cc_max']
+            else:  # 'mid'
+                love_baz = love_baz_results['baz_mid']
+                love_ccc = love_baz_results['cc_mid']
+
+            # Rayleigh wave parameters
+            rayleigh_win_time_s = rayleigh_baz_results['parameters']['baz_win_sec']
+            rayleigh_overlap = rayleigh_baz_results['parameters']['baz_win_overlap']
+            rayleigh_ttt = rayleigh_baz_results['twin_center']
+            if baz_mode.lower() == 'max':
+                rayleigh_baz = rayleigh_baz_results['baz_max']
+                rayleigh_ccc = rayleigh_baz_results['cc_max']
+            else:  # 'mid'
+                rayleigh_baz = rayleigh_baz_results['baz_mid']
+                rayleigh_ccc = rayleigh_baz_results['cc_mid']
+
+            # Verify window parameters match
+            if (love_win_time_s != rayleigh_win_time_s or 
+                love_overlap != rayleigh_overlap or 
+                not np.array_equal(love_ttt, rayleigh_ttt)):
+                raise ValueError("Window parameters must match between Love and Rayleigh results")
+
+        except KeyError as e:
+            raise ValueError(f"Missing required key in backazimuth results: {e}")
+
+        # Use Love wave parameters for window calculations since they should match
+        win_time_s = love_win_time_s
+        overlap = love_overlap
+        ttt = love_ttt
+
+        # Calculate window parameters
+        win_samples = int(win_time_s * df)
+        if win_samples <= 0:
+            raise ValueError(f"Invalid window size: {win_samples} samples")
+
+        overlap_samples = int(win_samples * overlap)
+        step = win_samples - overlap_samples
+
+        # number of windows
+        n_windows = len(ttt)
+
+        # Initialize output arrays
+        envelope_means = {
+            'rot_z': np.zeros(n_windows),  # Love
+            'rot_r': np.zeros(n_windows),  # Rayleigh
+            'rot_t': np.zeros(n_windows),  # Rayleigh
+            'acc_z': np.zeros(n_windows),  # Rayleigh
+            'acc_r': np.zeros(n_windows),  # Love
+            'acc_t': np.zeros(n_windows)   # Love
+        }
+        
+        envelope_stds = {
+            'rot_z': np.zeros(n_windows),  # Love
+            'rot_r': np.zeros(n_windows),  # Rayleigh
+            'rot_t': np.zeros(n_windows),  # Rayleigh
+            'acc_z': np.zeros(n_windows),  # Rayleigh
+            'acc_r': np.zeros(n_windows),  # Love
+            'acc_t': np.zeros(n_windows)   # Love
+        }
+
+        def compute_envelope(data):
+            """Helper function to compute signal envelope using Hilbert transform"""
+            return np.abs(hilbert(data))
+
+        # Loop through windows
+        for i in range(n_windows):
+            i1 = i * step
+            i2 = i1 + win_samples
+
+            # Get vertical components (used for both Love and Rayleigh)
+            rot_z = rot.select(channel="*Z")[0].data[i1:i2]
+            acc_z = tra.select(channel="*Z")[0].data[i1:i2]
+
+            # Process Love wave components if above threshold
+            if love_ccc[i] > cc_threshold:
+                # Rotate horizontals using Love backazimuth
+                acc_r_love, acc_t_love = rotate_ne_rt(
+                    tra.select(channel='*N')[0].data[i1:i2],
+                    tra.select(channel='*E')[0].data[i1:i2],
+                    love_baz[i]
+                )
+                
+                # Compute envelopes for Love components
+                envelope_means['rot_z'][i] = np.nanmean(compute_envelope(rot_z))
+                envelope_stds['rot_z'][i] = np.nanstd(compute_envelope(rot_z))
+                envelope_means['acc_r'][i] = np.nanmean(compute_envelope(acc_r_love))
+                envelope_stds['acc_r'][i] = np.nanstd(compute_envelope(acc_r_love))
+                envelope_means['acc_t'][i] = np.nanmean(compute_envelope(acc_t_love))
+                envelope_stds['acc_t'][i] = np.nanstd(compute_envelope(acc_t_love))
+            else:
+                envelope_means['rot_z'][i] = np.nan
+                envelope_stds['rot_z'][i] = np.nan
+                envelope_means['acc_r'][i] = np.nan
+                envelope_stds['acc_r'][i] = np.nan
+                envelope_means['acc_t'][i] = np.nan
+                envelope_stds['acc_t'][i] = np.nan
+
+            # Process Rayleigh wave components if above threshold
+            if rayleigh_ccc[i] > cc_threshold:
+                # Rotate horizontals using Rayleigh backazimuth
+                rot_r_rayleigh, rot_t_rayleigh = rotate_ne_rt(
+                    rot.select(channel='*N')[0].data[i1:i2],
+                    rot.select(channel='*E')[0].data[i1:i2],
+                    rayleigh_baz[i]
+                )
+                
+                # Compute envelopes for Rayleigh components
+                envelope_means['rot_r'][i] = np.nanmean(compute_envelope(rot_r_rayleigh))
+                envelope_stds['rot_r'][i] = np.nanstd(compute_envelope(rot_r_rayleigh))
+                envelope_means['rot_t'][i] = np.nanmean(compute_envelope(rot_t_rayleigh))
+                envelope_stds['rot_t'][i] = np.nanstd(compute_envelope(rot_t_rayleigh))
+                envelope_means['acc_z'][i] = np.nanmean(compute_envelope(acc_z))
+                envelope_stds['acc_z'][i] = np.nanstd(compute_envelope(acc_z))
+            else:
+                envelope_means['rot_r'][i] = np.nan
+                envelope_stds['rot_r'][i] = np.nan
+                envelope_means['rot_t'][i] = np.nan
+                envelope_stds['rot_t'][i] = np.nan
+                envelope_means['acc_z'][i] = np.nan
+                envelope_stds['acc_z'][i] = np.nan
+
+
+        # get oveerall mean and std
+        envelope_stats = {}
+
+        for comp in ['rot_z', 'rot_r', 'rot_t', 'acc_z', 'acc_r', 'acc_t']:
+            envelope_stats[comp] = {}
+            envelope_stats[comp]['mean'] = np.nanmean(envelope_means[comp])
+            envelope_stats[comp]['std'] = np.nanstd(envelope_means[comp])
+            envelope_stats[comp]['median'] = np.nanmedian(envelope_means[comp])
+            envelope_stats[comp]['mad'] = np.nanmedian(np.abs(envelope_means[comp] - np.nanmedian(envelope_means[comp])))
+
+        return {
+            'times': ttt,
+            'envelope_means': envelope_means,
+            'envelope_stds': envelope_stds,
+            'envelope_stats': envelope_stats,
+            'cc_value': {
+                'love': love_ccc,
+                'rayleigh': rayleigh_ccc
+            },
+            'backazimuth': {
+                'love': love_baz,
+                'rayleigh': rayleigh_baz
+            },
+            'parameters': {
+                'win_time_s': win_time_s,
+                'overlap': overlap,
+                'baz_mode': baz_mode
+            }
+        }
