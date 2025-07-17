@@ -2341,7 +2341,7 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
     # Overall title
     title = f"Analysis"
     try:
-        title += f" | T = {results['parameters']['baz_win_sec']}s ({results['parameters']['baz_win_sec_overlap']*100:.0f}%)"
+        title += f" | T = {results['parameters']['baz_win_sec']}s ({results['parameters']['baz_win_overlap']*100:.0f}%)"
         title += f" | CC > {results['parameters']['cc_threshold']}"
     except:
         pass
@@ -2372,7 +2372,7 @@ def print_dict_tree(d, indent=0, prefix=""):
 def compute_frequency_backazimuth_adaptive(sd_object, wave_type='love', fmin=0.01, fmax=0.5, 
                                           octave_fraction=3, baz_step=1, 
                                           window_factor=1.0, overlap_fraction=0.5,
-                                          baz_win_sec_overlap=0.5, verbose=True,
+                                          baz_win_overlap=0.5, verbose=True,
                                           cc_threshold=None):
     """
     Compute backazimuth for octave frequency bands with adaptive time windows (1/fc)
@@ -2450,14 +2450,14 @@ def compute_frequency_backazimuth_adaptive(sd_object, wave_type='love', fmin=0.0
                 wave_type=wave_type,
                 baz_step=baz_step,
                 baz_win_sec=time_window_sec,
-                baz_win_sec_overlap=overlap_fraction,
+                baz_win_overlap=overlap_fraction,
                 verbose=False,
                 out=True
             )
  
             if results_baz and 'cc_max_y' in results_baz:
                 # Store time windows for this frequency
-                results['time_windows'].append(results_baz['cc_max_t'])
+                results['time_windows'].append(results_baz['twin_center'])
                 
                 # Store backazimuth and correlation data
                 results['backazimuth_data'].append(results_baz['cc_max_y'])
