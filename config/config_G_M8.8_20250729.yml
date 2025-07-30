@@ -1,0 +1,23 @@
+data_source: fdsn
+fdsn_client_rot: LMU
+fdsn_client_tra: BGR
+keep_z: false
+magnitude: 8.8
+origin_time: '2025-07-29 23:24:50'
+path_to_data_out: ./output/
+project: G_Analysis
+rot_remove_response: true
+rot_seed:
+- BW.RLAS..BJZ
+rotate_zne: true
+seed: XX.RLAS..
+tbeg: '2025-07-29 23:30:00'
+tend: '2025-07-30 01:30:00'
+tra_remove_response: true
+tra_seed:
+- GR.WET..BHZ
+- GR.WET..BHN
+- GR.WET..BHE
+use_romy_zne: false
+verbose: true
+workdir: ./
