@@ -719,10 +719,12 @@ class sixdegrees():
             if self.verbose:
                 print(f"-> resampling stream to {resample_rate} Hz")
             for tr in st0:
-                tr = tr.detrend("linear")
-                tr = tr.detrend("demean")
-                tr = tr.filter("lowpass", freq=resample_rate/2, corners=2, zerophase=False)
+                tr = tr.detrend("simple")
+                tr = tr.taper(max_percentage=0.05, type='cosine')
+                tr = tr.filter("highpass", freq=0.001, corners=2, zerophase=True)
+                tr = tr.filter("lowpass", freq=resample_rate/4, corners=2, zerophase=True)
                 tr = tr.resample(resample_rate, no_filter=True)
+                tr = tr.detrend("demean")
 
                 # adjust channel code
                 if resample_rate >= 100:
@@ -731,6 +733,7 @@ class sixdegrees():
                     tr.stats.channel = "B"+tr.stats.channel[1:]
                 elif resample_rate < 10:
                     tr.stats.channel = "L"+tr.stats.channel[1:]
+
             if self.verbose:
                 print(st0)
 
@@ -772,7 +775,12 @@ class sixdegrees():
         tra = Stream()
 
         # initialize FDSN client
-        client = FDSNClient(self.fdsn_client_tra)
+        if self.data_source.lower() == 'fdsn':
+            try:
+                client = FDSNClient(self.fdsn_client_tra)
+            except Exception as e:
+                print(f"-> warning: failed to initialize FDSN client: {str(e)}")
+                client = None
 
         for tseed in self.tra_seed:
 
@@ -876,8 +884,9 @@ class sixdegrees():
             if 'Z' in channels and 'X' in channels and 'Y' in channels:
                 tra = self.sort_channels(tra, ['Z', 'X', 'Y'])
                 tra = tra._rotate_to_zne(self.tra_inv, components='ZXY')
-            # elif 'Z' in channels and 'N' in channels and 'E' in channels:
-            #     tra = tra._rotate_to_zne(self.tra_inv, components='ZNE')
+            elif 'Z' in channels and 'N' in channels and 'E' in channels:
+                tra = self.sort_channels(tra, ['Z', 'N', 'E'])
+                tra = tra._rotate_to_zne(self.tra_inv, components='ZNE')
             # elif 'U' in channels and 'V' in channels and 'W' in channels:
             #     tra = tra._rotate_to_zne(self.tra_inv, components='UVW')
             # elif 'Z' in channels and '1' in channels and '2' in channels:
@@ -905,7 +914,12 @@ class sixdegrees():
         rot = Stream()
 
         # initialize FDSN client
-        client = FDSNClient(self.fdsn_client_rot)
+        if self.data_source.lower() == 'fdsn':
+            try:
+                client = FDSNClient(self.fdsn_client_rot)
+            except Exception as e:
+                print(f"-> warning: failed to initialize FDSN client: {str(e)}")
+                client = None
 
         # raw channel order
         channel_raw = {"Z": "3", "N": "2", "E": "1"}
@@ -1018,7 +1032,6 @@ class sixdegrees():
                             for tr in rot:
                                 tr.data = tr.data[:min(sizes)]
                         # rotate
-                        print("rotating")
                         rot = self.rotate_romy_zne(
                             rot, 
                             self.rot_inv,
@@ -1755,7 +1768,7 @@ class sixdegrees():
                 
                 # apply cc threshold if provided
                 if cc_threshold is not None:
-                    mask = ccc >= cc_threshold
+                    mask = ccc > cc_threshold
                     time = time[mask]
                     baz = baz[mask]
                     cc = ccc[mask]
@@ -1810,7 +1823,7 @@ class sixdegrees():
             
                 # apply cc threshold if provided
                 if cc_threshold is not None:
-                    mask = ccc >= cc_threshold
+                    mask = ccc > cc_threshold
                     time = time[mask]
                     baz = baz[mask]
                     cc = ccc[mask]
@@ -2850,7 +2863,7 @@ class sixdegrees():
                 raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
 
             # Compute velocity using amplitude ratio
-            if abs(cc) >= cc_threshold:
+            if abs(cc) > cc_threshold:
                 if wave_type.lower() == 'love':
                     # get velocity from amplitude ratio via regression
                     if method.lower() == 'odr':
@@ -3011,7 +3024,7 @@ class sixdegrees():
                 raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
 
             # Compute velocity using amplitude ratio
-            if abs(cc) >= cc_threshold:
+            if abs(cc) > cc_threshold:
                 if wave_type.lower() == 'love':
                     # get velocity from amplitude ratio via regression
                     if method.lower() == 'odr':
@@ -3506,7 +3519,7 @@ class sixdegrees():
 
     def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
                                   baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
-                                  cc_threshold: float=0, cc_method: str='max', plot: bool=True, output: bool=False,
+                                  cc_threshold: float=0, cc_method: str='max', plot: bool=False, output: bool=False,
                                   precomputed: bool=True) -> Tuple[plt.Figure, Dict]:
         """
         Compare different backazimuth estimation methods
@@ -3604,12 +3617,12 @@ class sixdegrees():
             
             # Filter out low correlation coefficients
             if cc_method.lower() == 'max':
-                mask = wave_results['cc_max'] >= cc_threshold
+                mask = wave_results['cc_max'] > cc_threshold
                 times_filtered = wave_results['twin_center'][mask]
                 baz_filtered = wave_results['baz_max'][mask]
                 cc_filtered = wave_results['cc_max'][mask]
             elif cc_method.lower() == 'mid':
-                mask = wave_results['cc_mid'] >= cc_threshold
+                mask = wave_results['cc_mid'] > cc_threshold
                 times_filtered = wave_results['twin_center'][mask]
                 baz_filtered = wave_results['baz_mid'][mask]
                 cc_filtered = wave_results['cc_mid'][mask]
@@ -3722,18 +3735,19 @@ class sixdegrees():
 
             # add histograms and KDEs to subplots
             for ax, ax_hist, label in [(ax1, ax11, "love"), (ax2, ax22, "rayleigh"), (ax3, ax33, "tangent")]:
-                ax_hist.hist(results_dict[label]['backazimuth'], 
-                            bins=len(angles1)-1,
-                            range=[min(angles1), max(angles1)],
-                            weights=results_dict[label]['correlation'],
-                            orientation="horizontal", density=True, color="grey")
-                if len(baz_filtered) > 5:
-                    ax_hist.plot(results_dict[label]['kde'],
-                                 results_dict[label]['kde_angles'],
-                                 color='k', lw=3)
-                ax_hist.yaxis.tick_right()
-                ax_hist.invert_xaxis()
-                ax_hist.set_ylim(-5, 365)
+                if len(baz_filtered) > 0:
+                    ax_hist.hist(results_dict[label]['backazimuth'], 
+                                bins=len(angles1)-1,
+                                range=[min(angles1), max(angles1)],
+                                weights=results_dict[label]['correlation'],
+                                orientation="horizontal", density=True, color="grey")
+                    if len(baz_filtered) > 5:
+                        ax_hist.plot(results_dict[label]['kde'],
+                                    results_dict[label]['kde_angles'],
+                                    color='k', lw=3)
+                    ax_hist.yaxis.tick_right()
+                    ax_hist.invert_xaxis()
+                    ax_hist.set_ylim(-5, 365)
 
             # Add theoretical BAZ if provided
             if baz_theo is not None:
@@ -3785,6 +3799,63 @@ class sixdegrees():
             else:
                 return results_dict
 
+    @staticmethod
+    def load_from_yaml(name: str):
+
+        import os, yaml
+
+        with open(name+".yaml", 'r') as ifile:
+            obj = yaml.load(ifile, Loader=yaml.FullLoader)
+        return obj
+
+    @staticmethod
+    def store_to_yaml(obj: object, name: str):
+
+        import os, yaml
+
+        with open(name+".yaml", 'w') as ofile:
+            yaml.dump(obj, ofile)
+
+    @staticmethod
+    def load_from_pickle(name: str):
+
+        import os, pickle
+
+        with open(name+".pkl", 'rb') as ifile:
+            obj = pickle.load(ifile)
+        return obj
+
+    @staticmethod
+    def store_to_pickle(obj: object, name: str):
+
+        import os, pickle
+
+        with open(name+".pkl", 'wb') as ofile:
+            pickle.dump(obj, ofile)
+
+        if os.path.isfile(name+".pkl"):
+            print(f" -> stored: {name}.pkl")
+
+    @staticmethod
+    def get_time_windows(tbeg: Union[None, str, UTCDateTime]=None, tend: Union[None, str, UTCDateTime]=None, interval_seconds: int=3600, fractional_overlap: float=0) -> List[Tuple[UTCDateTime, UTCDateTime]]:
+        '''
+        Obtain time intervals
+        '''
+
+        from obspy import UTCDateTime
+
+        tbeg = UTCDateTime(tbeg)
+        tend = UTCDateTime(tend)
+
+        times = []
+        t1, t2 = tbeg, tbeg + interval_seconds
+
+        while t2 <= tend:
+            times.append((t1, t2))
+            t1 = t1 + interval_seconds - interval_seconds * fractional_overlap
+            t2 = t2 + interval_seconds - interval_seconds * fractional_overlap
+
+        return times
 
     @staticmethod
     def sync_twin_axes(ax1, ax2):
@@ -4045,7 +4116,7 @@ class sixdegrees():
 
     @staticmethod
     def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[float]=None, fmax: Optional[float]=None, wave_type: str="both",
-                         pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, runit: str="rad/s", tunit: str="m/s^2",
+                         pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, runit: str=r"rad/s", tunit: str=r"m/s^2",
                          twin_sec: int=5, twin_overlap: float=0.5, uscale: str="nano") -> plt.Figure:
 
         from obspy.signal.cross_correlation import correlate
@@ -4799,7 +4870,7 @@ class sixdegrees():
         
         # apply cc threshold if provided
         if cc_threshold is not None:
-            mask = ccc >= cc_threshold
+            mask = ccc > cc_threshold
             time = time[mask]
             baz = baz[mask]
             cc = ccc[mask]
@@ -4904,7 +4975,7 @@ class sixdegrees():
         if self.fmin is not None and self.fmax is not None:
             title += f" | f = {self.fmin}-{self.fmax} Hz"
         if cc_threshold is not None:
-            title += f" | CC >= {cc_threshold}"
+            title += f" | CC > {cc_threshold}"
         if baz_theo is not None:
             title += f" | Theo. BAz = {round(baz_theo, 1)}°"
         if baz_results['parameters']['baz_win_sec'] is not None:
@@ -4993,7 +5064,7 @@ class sixdegrees():
 
         # prepare mask
         if cc_threshold is not None:
-            mask = velocity_results['ccoef'] >= cc_threshold
+            mask = velocity_results['ccoef'] > cc_threshold
         else:
             mask = velocity_results['ccoef'] >= 0
 
@@ -5072,7 +5143,7 @@ class sixdegrees():
                  f" | T = {velocity_results['parameters']['win_time_s']:.1f} s"
                  f" | {velocity_results['parameters']['overlap']*100:.0f}% overlap")
         if cc_threshold is not None:
-            title += f" | cc >= {cc_threshold}"
+            title += f" | cc > {cc_threshold}"
         fig.suptitle(title, fontsize=font+2, y=0.95)
         
         # plt.tight_layout()
@@ -5239,7 +5310,7 @@ class sixdegrees():
         ax3 = fig.add_subplot(gs[2, 0], sharex=ax1)
 
         # Create mask based on correlation threshold
-        mask = love_velocities_ransac['ccoef'] >= cc_threshold
+        mask = love_velocities_ransac['ccoef'] > cc_threshold
 
         # Create colormap
         vmin, vmax, vstep = 0.5, 1.0, 0.05
@@ -5345,7 +5416,7 @@ class sixdegrees():
         cc = array(results_velocities['ccoef'])
 
         # Apply threshold mask
-        mask = cc >= cc_threshold
+        mask = cc > cc_threshold
 
         # Create figure with space for colorbar
         fig = plt.figure(figsize=figsize)
