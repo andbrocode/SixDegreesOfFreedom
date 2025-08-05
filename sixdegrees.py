@@ -311,11 +311,10 @@ class sixdegrees():
             return {}
 
         self.base_catalog = base_catalog
-
-        # Initialize FDSN client for chosen catalog
-        client = Client(self.base_catalog)
-
         try:
+            # Initialize FDSN client for chosen catalog
+            client = Client(self.base_catalog)
+
             # Check if station coordinates are available
             if not hasattr(self, 'station_latitude') or not hasattr(self, 'station_longitude'):
                 print("Station coordinates not set. Please set station_latitude and station_longitude or load data and inventory first..")
@@ -388,6 +387,9 @@ class sixdegrees():
                 'depth_km': 0,
                 'magnitude': 0,
                 'backazimuth': 0,
+                'distance_km': 0,
+                'distance_deg': 0,
+                'azimuth': 0,
             }
             print(f"No event found in {self.base_catalog} catalog for given time. Using dummy event info.")
             return self.event_info
@@ -3826,6 +3828,9 @@ class sixdegrees():
 
         with open(name+".yaml", 'w') as ofile:
             yaml.dump(obj, ofile)
+
+        if os.path.isfile(name+".yaml"):
+            print(f" -> stored: {name}.yaml")
 
     @staticmethod
     def load_from_pickle(name: str):
