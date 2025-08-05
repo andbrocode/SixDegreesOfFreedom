@@ -1,0 +1,7 @@
+# ignore some files / directories for repository
+
+figures/
+
+__pycache__/
+
+
