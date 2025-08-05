@@ -312,7 +312,7 @@ class sixdegrees():
 
         self.base_catalog = base_catalog
 
-        #initialize FDSN client for chosen catalog
+        # Initialize FDSN client for chosen catalog
         client = Client(self.base_catalog)
 
         try:
@@ -379,7 +379,18 @@ class sixdegrees():
             print(f"Error getting event information from {self.base_catalog}:")
             if self.verbose:
                 print(e)
-            return {}
+
+            # prepare dummy event info
+            self.event_info = {
+                'origin_time': t0,
+                'latitude': 0,
+                'longitude': 0,
+                'depth_km': 0,
+                'magnitude': 0,
+                'backazimuth': 0,
+            }
+            print(f"No event found in {self.base_catalog} catalog for given time. Using dummy event info.")
+            return self.event_info
 
     def get_theoretical_arrival(self, phase: str='P') -> float:
         """
