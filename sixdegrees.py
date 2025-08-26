@@ -50,6 +50,8 @@ class sixdegrees():
         self.fdsn_client_tra = "IRIS"
         self.tra_inv = None
         self.rot_inv = None
+        self.rot_inv_file = None
+        self.tra_inv_file = None
 
         # predefine results for backazimuth estimation
         self.baz_results = {}
@@ -67,13 +69,13 @@ class sixdegrees():
         if 'tbeg' in conf.keys():
             self.tbeg = UTCDateTime(conf['tbeg'])
         else:
-            print("-> no starttime given!")
+            print("WARNING: no starttime given!")
 
         # define endtime
         if 'tend' in conf.keys():
             self.tend = UTCDateTime(conf['tend'])
         else:
-            print("-> no starttime given!")
+            print("WARNING: no endtime given!")
 
         # set verbose (print information)
         if 'verbose' in conf.keys():
@@ -91,13 +93,13 @@ class sixdegrees():
         if 'rot_seed' in conf.keys():
             self.rot_seed = conf['rot_seed']
         else:
-            print("-> no rotation seed id given!")
+            print("WARNING: no rotation seed id given!")
 
         # seed id of translation stream
         if 'tra_seed' in conf.keys():
             self.tra_seed = conf['tra_seed']
         else:
-            print("-> no translation seed id given!")
+            print("WARNING: no translation seed id given!")
 
         # station coordinates
         if 'station_lon' in conf.keys() and 'station_lat' in conf.keys():
@@ -135,41 +137,51 @@ class sixdegrees():
         if 'path_to_inv_tra' in conf.keys():
             self.tra_inv_file = os.path.normpath(conf['path_to_inv_tra'])
         else:
-            print("-> no path to translation station inventory given!")
-            self.tra_inv_file = None
+            print("INFO: no path to translation station inventory given!")
 
         # path to rotation station inventory
         if 'path_to_inv_rot' in conf.keys():
             self.rot_inv_file = os.path.normpath(conf['path_to_inv_rot'])
         else:
-            print("-> no path to rotation station inventory given!")
-            self.rot_inv_file = None
+            print("INFO: no path to rotation station inventory given!")
 
         if self.data_source == 'sds':
             # path to SDS file structure for rotation data
             if 'path_to_sds_rot' in conf.keys():
                 self.rot_sds = os.path.normpath(conf['path_to_sds_rot'])
             else:
-                print("-> no path to SDS file structure for rotation data given!")
+                if self.data_source == 'sds':
+                    print("WARNING: no path to SDS file structure for rotation data given!")
+                else:
+                    print("INFO: no path to SDS file structure for rotation data given!")
 
             # path to SDS file structure for translaton data
             if 'path_to_sds_tra' in conf.keys():
                 self.tra_sds = os.path.normpath(conf['path_to_sds_tra'])
             else:
-                print("-> no path to SDS file structure for translaton data given!")
+                if self.data_source == 'sds':
+                    print("WARNING: no path to SDS file structure for translaton data given!")
+                else:
+                    print("INFO: no path to SDS file structure for translaton data given!")
 
         elif self.data_source == 'fdsn':
             # path to FDSN client for rotation data
             if 'fdsn_client_rot' in conf.keys():
                 self.fdsn_client_rot = conf['fdsn_client_rot']
             else:
-                print("-> no FDSN client for rotation data given!")
+                if self.data_source == 'fdsn':
+                    print("WARNING: no FDSN client for rotation data given!")
+                else:
+                    print("INFO: no FDSN client for rotation data given!")
 
             # path to FDSN client for translation data
             if 'fdsn_client_tra' in conf.keys():
                 self.fdsn_client_tra = conf['fdsn_client_tra']
             else:
-                print("-> no FDSN client for translation data given!")
+                if self.data_source == 'fdsn':
+                    print("WARNING: no FDSN client for translation data given!")
+                else:
+                    print("INFO: no FDSN client for translation data given!")
 
         # path to mseed file if using direct file input
         if 'path_to_mseed_file' in conf.keys():
@@ -479,7 +491,7 @@ class sixdegrees():
 
         Example:
 
-        >>> flower, fupper, fcenter = __get_octave_bands(f_min, f_max, fband_type="octave", plot=False)
+        >>> flower, fupper, fcenter = get_octave_bands(f_min, f_max, fband_type="octave", plot=False)
         '''
 
         import matplotlib.pyplot as plt
@@ -768,7 +780,7 @@ class sixdegrees():
             if len(sampling_rates) == 1:
                 self.sampling_rate = sampling_rates.pop()
             else:
-                print(" -> Warning: Not all traces have the same sampling rate!")
+                print(" WARNING: Not all traces have the same sampling rate!")
                 if self.verbose:
                     print(f"Sampling rates found: {sampling_rates}")
 
@@ -788,12 +800,12 @@ class sixdegrees():
         tra = Stream()
 
         # initialize FDSN client
+        client = None
         if self.data_source.lower() == 'fdsn':
             try:
                 client = FDSNClient(self.fdsn_client_tra)
             except Exception as e:
-                print(f"-> warning: failed to initialize FDSN client: {str(e)}")
-                client = None
+                print(f"WARNING: failed to initialize FDSN client: {str(e)}")
 
         for tseed in self.tra_seed:
 
@@ -852,16 +864,17 @@ class sixdegrees():
 
         else:
             try:
-                # get inventory from FDSN
-                self.tra_inv = client.get_stations(network=net, station=sta,
-                                                    starttime=t1, endtime=t2,
-                                                    level="response",
-                                                    )
-                if self.verbose:
-                    print(f"-> translation inventory requested: {self.tra_inv}")
+                if client is not None:
+                    # get inventory from FDSN
+                    self.tra_inv = client.get_stations(network=net, station=sta,
+                                                        starttime=t1, endtime=t2,
+                                                        level="response",
+                                                        )
+                    if self.verbose:
+                        print(f"-> translation inventory requested: {self.tra_inv}")
             except Exception as e:
                 self.tra_inv = None
-                print(f"-> warning: failed to get inventory: {str(e)}")
+                print(f"WARNING: failed to get inventory: {str(e)}")
 
         # Get station coordinates
         if self.tra_inv is not None:
@@ -871,7 +884,7 @@ class sixdegrees():
                     self.station_latitude = coords['latitude']
                     self.station_longitude = coords['longitude']
                 except Exception as e:
-                    print(f"-> warning: failed to get station coordinates: {str(e)}")
+                    print(f"WARNING: failed to get station coordinates: {str(e)}")
 
         # Remove response of translation data
         if self.tra_remove_response and self.tra_inv is not None:
@@ -883,7 +896,7 @@ class sixdegrees():
                 # detrend
                 tra = tra.detrend("linear")
             except Exception as e:
-                print(f"-> warning: failed to remove response: {str(e)}")
+                print(f"WARNING: failed to remove response: {str(e)}")
 
         # rotate to ZNE
         if self.rotate_zne and self.tra_inv is not None:
@@ -905,7 +918,7 @@ class sixdegrees():
             # elif 'Z' in channels and '1' in channels and '2' in channels:
             #     tra = tra._rotate_to_zne(self.tra_inv, components='Z12')
             else:
-                print(f"-> warning: unknown rotation components: {channels}")
+                print(f"WARNING: unknown rotation components: {channels}")
 
         if self.verbose:
             print(tra)
@@ -927,12 +940,12 @@ class sixdegrees():
         rot = Stream()
 
         # initialize FDSN client
+        client = None
         if self.data_source.lower() == 'fdsn':
             try:
                 client = FDSNClient(self.fdsn_client_rot)
             except Exception as e:
-                print(f"-> warning: failed to initialize FDSN client: {str(e)}")
-                client = None
+                print(f"WARNING: failed to initialize FDSN client: {str(e)}")
 
         # raw channel order
         channel_raw = {"Z": "3", "N": "2", "E": "1"}
@@ -996,6 +1009,7 @@ class sixdegrees():
             if self.verbose:
                 print(f"-> rotation inventory provided: {self.rot_inv_file}")
             self.rot_inv = read_inventory(self.rot_inv_file)
+
         elif self.data_source.lower() == 'fdsn':
             try:
                 # get inventory from FDSN
@@ -1005,14 +1019,17 @@ class sixdegrees():
                                                     )
             except Exception as e:
                 self.rot_inv = None
-                print(f"-> warning: failed to get inventory: {str(e)}")
+                print(f"WARNING: failed to get inventory: {str(e)}")
 
         # assign station coordinates
         if self.rot_inv is not None:
             if self.station_latitude is None and self.station_longitude is None:
-                coords = self.rot_inv.get_coordinates(self.rot_seed[0])
-                self.station_latitude = coords['latitude']
-                self.station_longitude = coords['longitude']
+                if self.rot_inv is not None:
+                    coords = self.rot_inv.get_coordinates(self.rot_seed[0])
+                    self.station_latitude = coords['latitude']
+                    self.station_longitude = coords['longitude']
+                else:
+                    print(f"WARNING: Cannot assign station coordinates! \nProvide a rotation inventory file or set station_latitude and station_longitude in configuration!")
 
         # remove sensitivity
         if self.rot_remove_response and self.rot_inv is not None:
@@ -1026,7 +1043,7 @@ class sixdegrees():
                     print("-> removing sensitivity")
     
             except Exception as e:
-                print(f"-> warning: failed to remove sensitivity: {str(e)}")
+                print(f"WARNING: failed to remove sensitivity: {str(e)}")
 
         # rotate to ZNE
         if self.rotate_zne:
@@ -1052,7 +1069,7 @@ class sixdegrees():
                             keep_z=self.keep_z
                         )
                     except Exception as e:
-                        print(f"-> warning: ROMY ZNE rotation failed: {str(e)}")
+                        print(f"WARNING: ROMY ZNE rotation failed: {str(e)}")
             else:
                 channels = [tr.stats.channel[-1] for tr in rot]
                 if self.verbose:
@@ -1067,14 +1084,19 @@ class sixdegrees():
                     rot = rot._rotate_to_zne(self.rot_inv, components='UVW')
                 elif 'Z' in channels and '1' in channels and '2' in channels:
                     rot = rot._rotate_to_zne(self.rot_inv, components='Z12')
+                elif '1' in channels and '2' in channels and '3' in channels:
+                    rot = rot._rotate_to_zne(self.rot_inv, components='321')
                 else:
-                    print(f"-> warning: unknown rotation components: {channels}")
+                    print(f"WARNING: unknown rotation components: {channels}")
 
         # assign station coordinates
         if self.station_latitude is None and self.station_longitude is None:
-            coords = self.rot_inv.get_coordinates(self.rot_seed[0])
-            self.station_latitude = coords['latitude']
-            self.station_longitude = coords['longitude']
+            if self.rot_inv is not None:
+                coords = self.rot_inv.get_coordinates(self.rot_seed[0])
+                self.station_latitude = coords['latitude']
+                self.station_longitude = coords['longitude']
+            else:
+                print(f"WARNING: Cannot assign station coordinates! \nProvide a rotation inventory file or set station_latitude and station_longitude in configuration!")
 
         if self.verbose:
             print(rot)
@@ -1113,11 +1135,11 @@ class sixdegrees():
 
         from numpy import interp, arange
 
-        def __get_size(st0: Stream) -> List[int]:
+        def _get_size(st0: Stream) -> List[int]:
             return [tr.stats.npts for tr in st0]
 
         # get size of traces
-        n_samples = __get_size(self.st)
+        n_samples = _get_size(self.st)
 
         # check if all traces have same amount of samples
         if not all(x == n_samples[0] for x in n_samples):
@@ -1131,17 +1153,17 @@ class sixdegrees():
                     _tbeg = max([tr.stats.starttime for tr in self.st])
                     _tend = min([tr.stats.endtime for tr in self.st])
                     self.st = self.st.trim(_tbeg, _tend, nearest_sample=True)
-                    print(f"  -> adjusted: {__get_size(self.st)}")
+                    print(f"  -> adjusted: {_get_size(self.st)}")
 
                     if set_interpolate:
-                        _times = arange(0, min(__get_size(self.st)), self.st[0].stats.delta)
+                        _times = arange(0, min(_get_size(self.st)), self.st[0].stats.delta)
                         for tr in self.st:
                             tr.data = interp(_times, tr.times(reftime=_tbeg), tr.data)
             else:
                 # adjust for difference of one sample
                 for tr in self.st:
                     tr.data = tr.data[:min(n_samples)]
-                print(f"  -> adjusted: {__get_size(self.st)}")
+                print(f"  -> adjusted: {_get_size(self.st)}")
 
     def correct_tilt(self, g: float=9.81, raw: bool=False):
         '''
@@ -1175,13 +1197,57 @@ class sixdegrees():
         self.pol_dict = pol_dict
         self.pol_applied = True
 
-    def store_as_pickle(self, obj: object, name: str):
+    @staticmethod
+    def load_from_yaml(name: str):
+        """
+        Load an object from a yaml file.
+        """
+        import os, yaml
 
+        ifile = open(name+".yaml", 'r')
+        obj = yaml.load(ifile)
+
+        return obj
+
+    @staticmethod
+    def load_from_pickle(name: str):
+        """
+        Load an object from a pickle file.
+        """
         import os, pickle
+        ifile = open(name+".pkl", 'rb')
+        obj = pickle.load(ifile)
+        return obj
 
-        ofile = open(name+".pkl", 'wb')
+    @staticmethod
+    def store_as_yaml(obj: object, name: str):
+        """
+        Store an object as a yaml file.
+        """
+        import os, yaml
+        # if file does not end with yml add yml
+        if not name.endswith(".yml"):
+            name += ".yml"
+        # store file
+        ofile = open(name, 'w')
+        yaml.dump(obj, ofile)
+        # check if file is stored
+        if os.path.isfile(name+".yml"):
+            print(f" -> stored: {name}.yml")
+
+    @staticmethod
+    def store_as_pickle(obj: object, name: str):
+        """
+        Store an object as a pickle file.
+        """
+        import os, pickle
+        # if file does not end with pkl add pkl
+        if not name.endswith(".pkl"):
+            name += ".pkl"
+        # store file
+        ofile = open(name, 'wb')
         pickle.dump(obj, ofile)
-
+        # check if file is stored
         if os.path.isfile(name+".pkl"):
             print(f" -> stored: {name}.pkl")
 
@@ -1711,7 +1777,7 @@ class sixdegrees():
 
     def compute_backazimuth_map(self, wave_types=['love', 'rayleigh'], 
                                 baz_step=1, baz_win_sec=20.0, 
-                                baz_win_overlap=0.5, cc_threshold=0.5, cc_value='mid',
+                                baz_win_overlap=0.5, cc_threshold=0.5, cc_method='mid',
                                 tangent_components="rotation"):
         """
         Compute backazimuth estimates for surface waves and tangent methods
@@ -1730,7 +1796,7 @@ class sixdegrees():
             Minimum correlation coefficient threshold
         tangent_components : str
             Components to use for tangent method ('rotation' or 'acceleration')
-        cc_value : str
+        cc_method : str
             Value to use for correlation coefficient ('max', 'mid', None)
         Returns:
         --------
@@ -1772,10 +1838,10 @@ class sixdegrees():
                 time = baz_result['twin_center']
 
                 # select maximal or mid approach results
-                if cc_value == 'mid':
+                if cc_method == 'mid':
                     ccc = baz_result['cc_mid']
                     baz = baz_result['baz_mid']
-                elif cc_value == 'max' or cc_value is None:
+                elif cc_method == 'max' or cc_method is None:
                     ccc = baz_result['cc_max']
                     baz = baz_result['baz_max']
                 
@@ -2287,7 +2353,7 @@ class sixdegrees():
 
     # OLD
     def compute_backazimuth_fast(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, 
-                        baz_win_sec_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=True,
+                        baz_win_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=True,
                         out: bool=False, n_jobs: int=-1) -> Dict:
         """
         Estimate backazimuth for Love, Rayleigh, or tangent waves (optimized with parallelization)
@@ -2300,7 +2366,7 @@ class sixdegrees():
             Step size in degrees for backazimuth search (default: 1)
         baz_win_sec : float
             Length of backazimuth estimation windows in seconds (default: 30.0)
-        baz_win_sec_overlap : float
+        baz_win_overlap : float
             Overlap between windows as fraction (0-1) (default: 0.5)
         tangent_components : str
             Components to use for tangent method ('rotation' or 'acceleration')
@@ -2335,7 +2401,7 @@ class sixdegrees():
         # Store window parameters and ensure baz_step is integer
         self.baz_step = int(baz_step)
         self.baz_win_sec = baz_win_sec
-        self.baz_win_sec_overlap = baz_win_sec_overlap
+        self.baz_win_overlap = baz_win_overlap
 
         # Prepare streams
         ACC = self.get_stream("translation").copy()
@@ -2356,7 +2422,7 @@ class sixdegrees():
         n_samples = len(ROT.select(channel="*Z")[0])
 
         # Calculate overlap in samples
-        overlap = baz_win_sec_overlap / baz_win_sec
+        overlap = int(baz_win_overlap * baz_win_sec * self.sampling_rate)
 
         # Prepare time windows for loop
         n_windows = n_samples // (int(self.sampling_rate * baz_win_sec))
@@ -2578,7 +2644,7 @@ class sixdegrees():
                 'component_type': tangent_components if wave_type.lower() == "tangent" else None,
                 'parameters': {
                     'baz_win_sec': baz_win_sec,
-                    'baz_win_sec_overlap': baz_win_sec_overlap,
+                    'baz_win_soverlap': baz_win_overlap,
                     'baz_step': baz_step,
                     'wave_type': wave_type,
                 }
@@ -2990,7 +3056,7 @@ class sixdegrees():
                 wave_type=wave_type,
                 baz_step=1,
                 baz_win_sec=win_time_s,
-                baz_win_sec_overlap=overlap,
+                baz_win_overlap=overlap,
                 out=True
             )
 
@@ -3120,7 +3186,7 @@ class sixdegrees():
             Dictionary containing:
             - times : array of time points
             - velocity: array of phase velocities
-            - cc_value: array of cross-correlation coefficients
+            - cc_method: array of cross-correlation coefficients
             - backazimuth: array of backazimuths
         """
         import numpy as np
@@ -3966,7 +4032,7 @@ class sixdegrees():
         '''
         Calculating a simple 1D FastFourierSpectrum of a time series.
 
-        >>> frequencies, spectrum, phase = __fft(signal_in, dt ,window=None,normalize=None)
+        >>> frequencies, spectrum, phase = get_fft(signal_in, dt ,window=None,normalize=None)
         '''
 
         from scipy.fft import fft, fftfreq, fftshift
@@ -4132,16 +4198,54 @@ class sixdegrees():
 
     @staticmethod
     def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[float]=None, fmax: Optional[float]=None, wave_type: str="both",
-                         pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, runit: str=r"rad/s", tunit: str=r"m/s^2",
-                         twin_sec: int=5, twin_overlap: float=0.5, uscale: str="nano") -> plt.Figure:
+                         pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, runit: str=r"rad/s", tunit: str=r"m/s$^2$",
+                         twin_sec: int=5, twin_overlap: float=0.5, unitscale: str="nano") -> plt.Figure:
 
+        """
+        Plot waveform cross-correlation.
+
+        Parameters:
+        -----------
+        rot0 : Stream
+            Rotation rate stream
+        acc0 : Stream
+            Acceleration stream
+        baz : float
+            Backazimuth
+        fmin : float or None
+            Minimum frequency for bandpass filter
+        fmax : float or None
+            Maximum frequency for bandpass filter
+        wave_type : str
+            Wave type: "love", "rayleigh", or "both"
+        pol_dict : dict or None
+            Polarity dictionary
+        distance : float or None
+            Distance
+        runit : str
+            Unit for rotation rate
+        tunit : str
+            Unit for acceleration
+        twin_sec : int
+            Time window length
+        twin_overlap : float
+            Time window overlap
+        unitscale : str
+            Unit scale: "nano" or "micro"
+
+        Returns:
+        --------
+        fig : plt.Figure
+            Figure object
+
+        """
         from obspy.signal.cross_correlation import correlate
         from obspy.signal.rotate import rotate_ne_rt
         from numpy import linspace, ones, array
         import matplotlib.pyplot as plt
         from matplotlib.ticker import AutoMinorLocator
 
-        def __cross_correlation_windows(arr1: array, arr2: array, dt: float, Twin: float, overlap: float=0, lag: int=0, demean: bool=True, plot: bool=False) -> Tuple[array, array]:
+        def _cross_correlation_windows(arr1: array, arr2: array, dt: float, Twin: float, overlap: float=0, lag: int=0, demean: bool=True, plot: bool=False) -> Tuple[array, array]:
 
             from obspy.signal.cross_correlation import correlate, xcorr_max
             from numpy import arange, array, roll
@@ -4181,6 +4285,7 @@ class sixdegrees():
         pol = {"HZ":1,"HN":1,"HE":1,"HR":1,"HT":1,
                "JZ":1,"JN":1,"JE":1,"JR":1,"JT":1,
               }
+        
         # update polarity dictionary
         if pol_dict is not None:
             for k in pol_dict.keys():
@@ -4199,10 +4304,10 @@ class sixdegrees():
         
         # define scaling factors
         mu = r"$\mu$"
-        if uscale == "nano":
+        if unitscale == "nano":
             acc_scaling, acc_unit = 1e6, f"{mu}{tunit}"
             rot_scaling, rot_unit = 1e9, f"n{runit}"
-        elif uscale == "micro":
+        elif unitscale == "micro":
             acc_scaling, acc_unit = 1e3, f"m{tunit}"
             rot_scaling, rot_unit = 1e6, f"{mu}{runit}"
 
@@ -4230,7 +4335,7 @@ class sixdegrees():
             # update polarity
             rot0, acc0, rot0_lbl, acc0_lbl = pol['JZ']*rot_z, pol['HT']*acc_t, f"{pol['JZ']}x ROT-Z", f"{pol['HT']}x ACC-T"
             # calculate cross-correlation
-            tt0, cc0 = __cross_correlation_windows(rot0, acc0, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
+            tt0, cc0 = _cross_correlation_windows(rot0, acc0, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
             cc.append(cc0)
             cc_all.append(max(correlate(rot0, acc0, 0, demean=True, normalize='naive', method='fft')))
 
@@ -4250,12 +4355,12 @@ class sixdegrees():
             # update polarity
             rot1, acc1, rot1_lbl, acc1_lbl = pol['JT']*rot_t, pol['HZ']*acc_z, f"{pol['JT']}x ROT-T", f"{pol['HZ']}x ACC-Z"
             # calculate cross-correlation
-            tt1, cc1 = __cross_correlation_windows(rot1, acc1, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
+            tt1, cc1 = _cross_correlation_windows(rot1, acc1, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
             cc.append(cc1)
             cc_all.append(max(correlate(rot1, acc1, 0, demean=True, normalize='naive', method='fft')))
 
         # rot2, acc2, rot2_lbl, acc2_lbl = pol['JZ']*rot_z, pol['HR']*acc_r, f"{pol['JZ']}x ROT-Z", f"{pol['HR']}x ACC-R"
-        # tt2, cc2 = __cross_correlation_windows(rot2, acc2, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
+        # tt2, cc2 = _cross_correlation_windows(rot2, acc2, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
 
         cmap = plt.get_cmap("coolwarm", 12)
 
@@ -4357,7 +4462,7 @@ class sixdegrees():
         sm.set_array([])
         cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal")
 
-        cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-53, color="k")
+        cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-55, color="k")
 
         # Set limits for scatter plots
         for cm in cms:
@@ -4416,7 +4521,7 @@ class sixdegrees():
         import multitaper as mt
         from numpy import reshape, max, min
         
-        def __multitaper_psd(arr: array, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[array, array]:
+        def _multitaper_psd(arr: array, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[array, array]:
             """Calculate multitaper power spectral density"""
             out_psd = mt.MTSpec(arr, nw=time_bandwidth, kspec=n_win, dt=dt, iadapt=2)
             _f, _psd = out_psd.rspec()
@@ -4429,12 +4534,12 @@ class sixdegrees():
         ]
         psds = {}
         for comp_name, comp_pattern in components:
-            f1, psd1 = __multitaper_psd(
+            f1, psd1 = _multitaper_psd(
                 rot.select(channel=comp_pattern)[0].data, 
                 rot[0].stats.delta,
                 n_win=Tsec
             )
-            f2, psd2 = __multitaper_psd(
+            f2, psd2 = _multitaper_psd(
                 acc.select(channel=comp_pattern)[0].data, 
                 acc[0].stats.delta,
                 n_win=Tsec
@@ -4530,9 +4635,9 @@ class sixdegrees():
 
             # For the last panel (E component), don't create new y-axis ticks on the right
             if i == 2:
-                ax2.set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
+                axes[i].set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
             if i == 0:
-                ax2.set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
+                axes[i].set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
             
             # Add component label
             axes[i].set_title(f"Component {comp_name}", fontsize=font)
@@ -4581,7 +4686,7 @@ class sixdegrees():
         from pycwt import cwt, Morlet
         from numpy import std, nanmean, nan, nansum, nanmax, polyfit, polyval, array, reshape, nanpercentile, ones
         
-        def __mask_cone(arr2d: array, ff: array, thresholds: array, fill: float=nan) -> array:
+        def _mask_cone(arr2d: array, ff: array, thresholds: array, fill: float=nan) -> array:
             """Create cone of influence mask"""
             mask = ones(arr2d.shape)
             for k in range(arr2d.shape[0]):
@@ -4622,7 +4727,7 @@ class sixdegrees():
         if normalize:
             power /= nanmax(power)
         
-        cone_mask = __mask_cone(power, freqs, 1/coi)
+        cone_mask = _mask_cone(power, freqs, 1/coi)
         power_masked = power * cone_mask
         
         # Calculate global statistics
@@ -4631,7 +4736,6 @@ class sixdegrees():
         
         # Generate diagnostic plot if requested
         if plot:
-            # ... (plotting code from original function) ...
             pass
         
         # Prepare output dictionary
@@ -4681,12 +4785,13 @@ class sixdegrees():
         acc_scale = 1e3
 
         # Count total components and calculate needed subplots
+        n_panels = len(cwt_output.keys())
         n_components = len(rot) + len(acc)
         
         # Create figure with GridSpec
         # Each component needs 2 rows - one for waveform and one for CWT
-        fig = plt.figure(figsize=(15, 4*n_components))
-        gs = GridSpec(2*n_components, 1, figure=fig, height_ratios=[1, 3]*n_components, hspace=0.3)
+        fig = plt.figure(figsize=(15, 4*n_panels))
+        gs = GridSpec(2*n_panels, 1, figure=fig, height_ratios=[1, 3]*n_panels, hspace=0.3)
 
         # Component mapping
         components = []
@@ -4711,12 +4816,12 @@ class sixdegrees():
                 tr = rot.select(channel=f"*{comp}")[0]
                 data = tr.data * rot_scale
                 unit = r"$\mu$rad"
-                label = f"$\Omega_{comp}$"
+                label = f"$\Omega_{comp[-1]}$"
             else:
                 tr = acc.select(channel=f"*{comp}")[0]
                 data = tr.data * acc_scale
                 unit = r"mm/s$^2$"
-                label = f"$a_{comp}$"
+                label = f"$a_{comp[-1]}$"
             
             # Get times from the current trace instead of rotation stream
             times = tr.times() * tscale
@@ -4730,7 +4835,7 @@ class sixdegrees():
             wave_ax.grid(True, alpha=0.3)
             
             # Plot CWT
-            key = f"{comp}_{data_type}"
+            key = f"{comp}"
             im = cwt_ax.pcolormesh(
                 cwt_output[key]['times'] * tscale,
                 cwt_output[key]['frequencies'],
@@ -4782,16 +4887,159 @@ class sixdegrees():
                         transform=cwt_ax.transAxes, fontsize=font+2, color="w")
         
         # Add colorbar
-        cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.8])
+        cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.7])
         cb = plt.colorbar(im, cax=cbar_ax)
         cb.set_label("Normalized CWT Power", fontsize=font)
         
         plt.subplots_adjust(right=0.9)
         return fig
 
+    @staticmethod
+    def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False, 
+                ylim: Union[float, None]=None, scale: float=1e6) -> plt.Figure:
+        """
+        Plot continuous wavelet transform analysis for all components of rotation and translation
+        
+        Parameters:
+        -----------
+        st : Stream
+            Stream of data to plot
+        cwt_output : Dict
+            Dictionary containing CWT results for each component
+        clog : bool
+            Use logarithmic colorscale if True
+        ylim : float or None
+            Upper frequency limit for plotting
+        scale : float
+            Scale factor for data
+            
+        Returns:
+        --------
+        matplotlib.figure.Figure
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.gridspec import GridSpec
+        
+        # Plot settings
+        tscale = 1
+        font = 12
+        cmap = plt.get_cmap("viridis")
+
+        # decide if rotation or translation data 
+        if "J" in st[0].stats.channel:
+            if scale == 1e9:
+                unit = r"nrad"
+            elif scale == 1e6:
+                unit = r"$\mu$rad"
+            elif scale == 1e3:
+                unit = r"mrad"
+            else:
+                unit = r"rad"
+                scale = 1
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+        else:
+            if scale == 1e9:
+                unit = r"nm/s$^2$"
+            elif scale == 1e6:
+                unit = r"mm/s$^2$"
+            elif scale == 1e3:
+                unit = r"m/s$^2$"
+            else:
+                unit = r"m/s$^2$"
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+                scale = 1
+
+
+        # Create figure with GridSpec
+        # Each component needs 2 rows - one for waveform and one for CWT
+        fig = plt.figure(figsize=(15, 4))
+        gs = GridSpec(2, 1, figure=fig, height_ratios=[1, 3], hspace=0.3)
+
+        # Set colormap limits
+        if clog:
+            vmin, vmax, norm = 0.01, 1, "log"
+        else:
+            vmin, vmax, norm = 0.0, 0.9, None
+            
+        # Plot each component
+        wave_ax = fig.add_subplot(gs[0])
+        cwt_ax = fig.add_subplot(gs[1])
+            
+        # Get data and scale
+        tr = st.copy()[0]
+        data = tr.data * scale
+        label = f"$\Omega_{tr.stats.channel[-1]}$"
+        key = f"{tr.stats.channel}"
+        
+        # Get times from the current trace instead of rotation stream
+        times = tr.times() * tscale
+        
+        # Plot waveform
+        wave_ax.plot(times, data, color="k", label=label, lw=1)
+        wave_ax.set_xlim(min(times), max(times))
+        wave_ax.legend(loc=1)
+        wave_ax.set_xticklabels([])
+        wave_ax.set_ylabel(f"{label}\n({unit})", fontsize=font)
+        wave_ax.grid(True, alpha=0.3)
+        
+        # Plot CWT
+        im = cwt_ax.pcolormesh(
+            cwt_output[key]['times'] * tscale,
+            cwt_output[key]['frequencies'],
+            cwt_output[key]['cwt_power'],
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            norm=norm,
+            rasterized=True
+        )
+        
+        # Add cone of influence
+        cwt_ax.plot(
+            cwt_output[key]['times'] * tscale,
+            cwt_output[key]['cone'],
+            color="white",
+            ls="--",
+            alpha=0.7
+        )
+        cwt_ax.fill_between(
+            cwt_output[key]['times'] * tscale,
+            cwt_output[key]['cone'],
+            min(cwt_output[key]['frequencies']) * np.ones(len(cwt_output[key]['cone'])),
+            color="white",
+            alpha=0.2
+        )
+        
+        # Set frequency limits
+        if ylim is None:
+            cwt_ax.set_ylim(min(cwt_output[key]['frequencies']),
+                            max(cwt_output[key]['frequencies']))
+        else:
+            cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
+        
+        cwt_ax.set_yscale('log')
+        cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)
+        cwt_ax.grid(True, alpha=0.3)
+
+        # Only add xlabel to bottom subplot
+        cwt_ax.set_xlabel(
+            f"Time (s) from {st[0].stats.starttime.date} "
+            f"{str(st[0].stats.starttime.time).split('.')[0]} UTC",
+            fontsize=font
+        )
+        
+        # Add colorbar
+        cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.7])
+        cb = plt.colorbar(im, cax=cbar_ax)
+        cb.set_label("Normalized CWT Power", fontsize=font)
+        
+        plt.subplots_adjust(right=0.9)
+        return fig
+    
     def plot_backazimuth_results(self, baz_results: Dict, wave_type: str='love', 
                                 baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
-                                cc_threshold: float=None, minors: bool=True, cc_value: str='mid') -> plt.Figure:
+                                cc_threshold: float=None, minors: bool=True, cc_method: str='mid') -> plt.Figure:
         """
         Plot backazimuth estimation results
         
@@ -4809,7 +5057,7 @@ class sixdegrees():
             Minimum cross-correlation coefficient threshold
         minors : bool, optional
             Add minor ticks to axes if True
-        cc_value : str
+        cc_method : str
             Type of cc to choose ('mid' or 'max')
         unitscale : str
             Unit scale for rotation rate ('nano' or 'micro')
@@ -4877,10 +5125,10 @@ class sixdegrees():
         time = baz_results['twin_center']
 
         # select maximal or mid approach results
-        if cc_value == 'mid':
+        if cc_method == 'mid':
             ccc = baz_results['cc_mid']
             baz = baz_results['baz_mid']
-        elif cc_value == 'max':
+        elif cc_method == 'max':
             ccc = baz_results['cc_max']
             baz = baz_results['baz_max']
         

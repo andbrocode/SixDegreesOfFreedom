@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python>=3.8
+  - python>=3.9
   - numpy>=1.20.0
   - scipy>=1.7.0
   - matplotlib>=3.4.0
@@ -16,17 +16,9 @@ dependencies:
   - jupyter>=1.0.0
   - ipywidgets>=8.1.0
   - notebook>=6.5.4
+  - tqdm>=4.65.0
+  - typing-extensions>=4.5.0
+  - cartopy>=0.21.0  # Optional but recommended for map plotting
   - pip
   - pip:
-    - acoustics>=0.2.0
-
-dependencies_info:
-  - numpy: Array operations, numerical computations, and typing support
-  - scipy: Scientific computing, signal processing, ODR regression
-  - matplotlib: Advanced plotting with GridSpec, custom colormaps
-  - obspy: Seismological data processing, rotation, filtering
-  - pandas: Data manipulation and time series handling
-  - scikit-learn: Machine learning tools for regression
-  - python-acoustics: Acoustic analysis and octave band calculations
-  - requests: HTTP requests for FDSN web services
-
+    - acoustics>=0.2.3
