@@ -9,10 +9,8 @@
 
 import os
 import pickle
-import os
 import matplotlib.pyplot as plt
 import numpy as np
-import os.path  # Add explicit import for os.path
 
 from typing import Dict, List, Tuple, Union, Optional, Any
 from obspy import UTCDateTime, Stream, Inventory, read, read_inventory
@@ -3878,6 +3876,218 @@ class sixdegrees():
             else:
                 return results_dict
 
+    def compute_envelope_statistics(self, rotation_data: Stream=None, translation_data: Stream=None,
+                                 love_baz_results: Dict=None, rayleigh_baz_results: Dict=None, 
+                                 baz_mode: str='mid', cc_threshold: float=0.0) -> Dict:
+        """
+        Compute mean and standard deviation of signal envelopes in time intervals for Love and Rayleigh waves
+        
+        Parameters:
+        -----------
+        rotation_data : Stream
+            Rotational data stream
+        translation_data : Stream
+            Translation data stream
+        love_baz_results : Dict
+            Dictionary containing backazimuth results for Love waves
+        rayleigh_baz_results : Dict
+            Dictionary containing backazimuth results for Rayleigh waves
+        baz_mode : str
+            Mode to use for backazimuth selection ('max' or 'mid')
+        cc_threshold : float, optional
+            Minimum cross-correlation coefficient to consider, by default 0.0
+            
+        Returns:
+        --------
+        Dict
+            Dictionary containing:
+            - times : array of time points
+            - envelope_means: dict with component means
+            - envelope_stds: dict with component standard deviations
+            - cc_value: dict with cc values for love and rayleigh
+            - backazimuth: dict with baz values for love and rayleigh
+        """
+        import numpy as np
+        from obspy.signal.rotate import rotate_ne_rt
+        from scipy.signal import hilbert
+
+        # Validate inputs
+        if rotation_data is None or translation_data is None:
+            raise ValueError("Both rotation and translation data must be provided")
+        if love_baz_results is None or rayleigh_baz_results is None:
+            raise ValueError("Both Love and Rayleigh backazimuth results must be provided")
+        if baz_mode.lower() not in ['max', 'mid']:
+            raise ValueError(f"Invalid baz mode: {baz_mode}. Use 'max' or 'mid'")
+
+        # Make copies to avoid modifying original data
+        rot = rotation_data.copy()
+        tra = translation_data.copy()
+
+        # Get sampling rate and validate
+        df = rot[0].stats.sampling_rate
+        if df <= 0:
+            raise ValueError(f"Invalid sampling rate: {df}")
+
+        # Extract parameters from baz_results for both wave types
+        try:
+            # Love wave parameters
+            love_win_time_s = love_baz_results['parameters']['baz_win_sec']
+            love_overlap = love_baz_results['parameters']['baz_win_overlap']
+            love_ttt = love_baz_results['twin_center']
+            if baz_mode.lower() == 'max':
+                love_baz = love_baz_results['baz_max']
+                love_ccc = love_baz_results['cc_max']
+            else:  # 'mid'
+                love_baz = love_baz_results['baz_mid']
+                love_ccc = love_baz_results['cc_mid']
+
+            # Rayleigh wave parameters
+            rayleigh_win_time_s = rayleigh_baz_results['parameters']['baz_win_sec']
+            rayleigh_overlap = rayleigh_baz_results['parameters']['baz_win_overlap']
+            rayleigh_ttt = rayleigh_baz_results['twin_center']
+            if baz_mode.lower() == 'max':
+                rayleigh_baz = rayleigh_baz_results['baz_max']
+                rayleigh_ccc = rayleigh_baz_results['cc_max']
+            else:  # 'mid'
+                rayleigh_baz = rayleigh_baz_results['baz_mid']
+                rayleigh_ccc = rayleigh_baz_results['cc_mid']
+
+            # Verify window parameters match
+            if (love_win_time_s != rayleigh_win_time_s or 
+                love_overlap != rayleigh_overlap or 
+                not np.array_equal(love_ttt, rayleigh_ttt)):
+                raise ValueError("Window parameters must match between Love and Rayleigh results")
+
+        except KeyError as e:
+            raise ValueError(f"Missing required key in backazimuth results: {e}")
+
+        # Use Love wave parameters for window calculations since they should match
+        win_time_s = love_win_time_s
+        overlap = love_overlap
+        ttt = love_ttt
+
+        # Calculate window parameters
+        win_samples = int(win_time_s * df)
+        if win_samples <= 0:
+            raise ValueError(f"Invalid window size: {win_samples} samples")
+
+        overlap_samples = int(win_samples * overlap)
+        step = win_samples - overlap_samples
+
+        # number of windows
+        n_windows = len(ttt)
+
+        # Initialize output arrays
+        envelope_means = {
+            'rot_z': np.zeros(n_windows),  # Love
+            'rot_r': np.zeros(n_windows),  # Rayleigh
+            'rot_t': np.zeros(n_windows),  # Rayleigh
+            'acc_z': np.zeros(n_windows),  # Rayleigh
+            'acc_r': np.zeros(n_windows),  # Love
+            'acc_t': np.zeros(n_windows)   # Love
+        }
+        
+        envelope_stds = {
+            'rot_z': np.zeros(n_windows),  # Love
+            'rot_r': np.zeros(n_windows),  # Rayleigh
+            'rot_t': np.zeros(n_windows),  # Rayleigh
+            'acc_z': np.zeros(n_windows),  # Rayleigh
+            'acc_r': np.zeros(n_windows),  # Love
+            'acc_t': np.zeros(n_windows)   # Love
+        }
+
+        def compute_envelope(data):
+            """Helper function to compute signal envelope using Hilbert transform"""
+            return np.abs(hilbert(data))
+
+        # Loop through windows
+        for i in range(n_windows):
+            i1 = i * step
+            i2 = i1 + win_samples
+
+            # Get vertical components (used for both Love and Rayleigh)
+            rot_z = rot.select(channel="*Z")[0].data[i1:i2]
+            acc_z = tra.select(channel="*Z")[0].data[i1:i2]
+
+            # Process Love wave components if above threshold
+            if love_ccc[i] > cc_threshold:
+                # Rotate horizontals using Love backazimuth
+                acc_r_love, acc_t_love = rotate_ne_rt(
+                    tra.select(channel='*N')[0].data[i1:i2],
+                    tra.select(channel='*E')[0].data[i1:i2],
+                    love_baz[i]
+                )
+                
+                # Compute envelopes for Love components
+                envelope_means['rot_z'][i] = np.nanmean(compute_envelope(rot_z))
+                envelope_stds['rot_z'][i] = np.nanstd(compute_envelope(rot_z))
+                envelope_means['acc_r'][i] = np.nanmean(compute_envelope(acc_r_love))
+                envelope_stds['acc_r'][i] = np.nanstd(compute_envelope(acc_r_love))
+                envelope_means['acc_t'][i] = np.nanmean(compute_envelope(acc_t_love))
+                envelope_stds['acc_t'][i] = np.nanstd(compute_envelope(acc_t_love))
+            else:
+                envelope_means['rot_z'][i] = np.nan
+                envelope_stds['rot_z'][i] = np.nan
+                envelope_means['acc_r'][i] = np.nan
+                envelope_stds['acc_r'][i] = np.nan
+                envelope_means['acc_t'][i] = np.nan
+                envelope_stds['acc_t'][i] = np.nan
+
+            # Process Rayleigh wave components if above threshold
+            if rayleigh_ccc[i] > cc_threshold:
+                # Rotate horizontals using Rayleigh backazimuth
+                rot_r_rayleigh, rot_t_rayleigh = rotate_ne_rt(
+                    rot.select(channel='*N')[0].data[i1:i2],
+                    rot.select(channel='*E')[0].data[i1:i2],
+                    rayleigh_baz[i]
+                )
+                
+                # Compute envelopes for Rayleigh components
+                envelope_means['rot_r'][i] = np.nanmean(compute_envelope(rot_r_rayleigh))
+                envelope_stds['rot_r'][i] = np.nanstd(compute_envelope(rot_r_rayleigh))
+                envelope_means['rot_t'][i] = np.nanmean(compute_envelope(rot_t_rayleigh))
+                envelope_stds['rot_t'][i] = np.nanstd(compute_envelope(rot_t_rayleigh))
+                envelope_means['acc_z'][i] = np.nanmean(compute_envelope(acc_z))
+                envelope_stds['acc_z'][i] = np.nanstd(compute_envelope(acc_z))
+            else:
+                envelope_means['rot_r'][i] = np.nan
+                envelope_stds['rot_r'][i] = np.nan
+                envelope_means['rot_t'][i] = np.nan
+                envelope_stds['rot_t'][i] = np.nan
+                envelope_means['acc_z'][i] = np.nan
+                envelope_stds['acc_z'][i] = np.nan
+
+
+        # get oveerall mean and std
+        envelope_stats = {}
+
+        for comp in ['rot_z', 'rot_r', 'rot_t', 'acc_z', 'acc_r', 'acc_t']:
+            envelope_stats[comp] = {}
+            envelope_stats[comp]['mean'] = np.nanmean(envelope_means[comp])
+            envelope_stats[comp]['std'] = np.nanstd(envelope_means[comp])
+            envelope_stats[comp]['median'] = np.nanmedian(envelope_means[comp])
+            envelope_stats[comp]['mad'] = np.nanmedian(np.abs(envelope_means[comp] - np.nanmedian(envelope_means[comp])))
+
+        return {
+            'times': ttt,
+            'envelope_means': envelope_means,
+            'envelope_stds': envelope_stds,
+            'envelope_stats': envelope_stats,
+            'cc_value': {
+                'love': love_ccc,
+                'rayleigh': rayleigh_ccc
+            },
+            'backazimuth': {
+                'love': love_baz,
+                'rayleigh': rayleigh_baz
+            },
+            'parameters': {
+                'win_time_s': win_time_s,
+                'overlap': overlap,
+                'baz_mode': baz_mode
+            }
+        }
+
     @staticmethod
     def load_from_yaml(name: str):
 
@@ -5036,7 +5246,7 @@ class sixdegrees():
         
         plt.subplots_adjust(right=0.9)
         return fig
-    
+
     def plot_backazimuth_results(self, baz_results: Dict, wave_type: str='love', 
                                 baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
                                 cc_threshold: float=None, minors: bool=True, cc_method: str='mid') -> plt.Figure:
@@ -6217,215 +6427,3 @@ class sixdegrees():
         
         plt.tight_layout()
         return fig
-
-    def compute_envelope_statistics(self, rotation_data: Stream=None, translation_data: Stream=None,
-                                 love_baz_results: Dict=None, rayleigh_baz_results: Dict=None, 
-                                 baz_mode: str='mid', cc_threshold: float=0.0) -> Dict:
-        """
-        Compute mean and standard deviation of signal envelopes in time intervals for Love and Rayleigh waves
-        
-        Parameters:
-        -----------
-        rotation_data : Stream
-            Rotational data stream
-        translation_data : Stream
-            Translation data stream
-        love_baz_results : Dict
-            Dictionary containing backazimuth results for Love waves
-        rayleigh_baz_results : Dict
-            Dictionary containing backazimuth results for Rayleigh waves
-        baz_mode : str
-            Mode to use for backazimuth selection ('max' or 'mid')
-        cc_threshold : float, optional
-            Minimum cross-correlation coefficient to consider, by default 0.0
-            
-        Returns:
-        --------
-        Dict
-            Dictionary containing:
-            - times : array of time points
-            - envelope_means: dict with component means
-            - envelope_stds: dict with component standard deviations
-            - cc_value: dict with cc values for love and rayleigh
-            - backazimuth: dict with baz values for love and rayleigh
-        """
-        import numpy as np
-        from obspy.signal.rotate import rotate_ne_rt
-        from scipy.signal import hilbert
-
-        # Validate inputs
-        if rotation_data is None or translation_data is None:
-            raise ValueError("Both rotation and translation data must be provided")
-        if love_baz_results is None or rayleigh_baz_results is None:
-            raise ValueError("Both Love and Rayleigh backazimuth results must be provided")
-        if baz_mode.lower() not in ['max', 'mid']:
-            raise ValueError(f"Invalid baz mode: {baz_mode}. Use 'max' or 'mid'")
-
-        # Make copies to avoid modifying original data
-        rot = rotation_data.copy()
-        tra = translation_data.copy()
-
-        # Get sampling rate and validate
-        df = rot[0].stats.sampling_rate
-        if df <= 0:
-            raise ValueError(f"Invalid sampling rate: {df}")
-
-        # Extract parameters from baz_results for both wave types
-        try:
-            # Love wave parameters
-            love_win_time_s = love_baz_results['parameters']['baz_win_sec']
-            love_overlap = love_baz_results['parameters']['baz_win_overlap']
-            love_ttt = love_baz_results['twin_center']
-            if baz_mode.lower() == 'max':
-                love_baz = love_baz_results['baz_max']
-                love_ccc = love_baz_results['cc_max']
-            else:  # 'mid'
-                love_baz = love_baz_results['baz_mid']
-                love_ccc = love_baz_results['cc_mid']
-
-            # Rayleigh wave parameters
-            rayleigh_win_time_s = rayleigh_baz_results['parameters']['baz_win_sec']
-            rayleigh_overlap = rayleigh_baz_results['parameters']['baz_win_overlap']
-            rayleigh_ttt = rayleigh_baz_results['twin_center']
-            if baz_mode.lower() == 'max':
-                rayleigh_baz = rayleigh_baz_results['baz_max']
-                rayleigh_ccc = rayleigh_baz_results['cc_max']
-            else:  # 'mid'
-                rayleigh_baz = rayleigh_baz_results['baz_mid']
-                rayleigh_ccc = rayleigh_baz_results['cc_mid']
-
-            # Verify window parameters match
-            if (love_win_time_s != rayleigh_win_time_s or 
-                love_overlap != rayleigh_overlap or 
-                not np.array_equal(love_ttt, rayleigh_ttt)):
-                raise ValueError("Window parameters must match between Love and Rayleigh results")
-
-        except KeyError as e:
-            raise ValueError(f"Missing required key in backazimuth results: {e}")
-
-        # Use Love wave parameters for window calculations since they should match
-        win_time_s = love_win_time_s
-        overlap = love_overlap
-        ttt = love_ttt
-
-        # Calculate window parameters
-        win_samples = int(win_time_s * df)
-        if win_samples <= 0:
-            raise ValueError(f"Invalid window size: {win_samples} samples")
-
-        overlap_samples = int(win_samples * overlap)
-        step = win_samples - overlap_samples
-
-        # number of windows
-        n_windows = len(ttt)
-
-        # Initialize output arrays
-        envelope_means = {
-            'rot_z': np.zeros(n_windows),  # Love
-            'rot_r': np.zeros(n_windows),  # Rayleigh
-            'rot_t': np.zeros(n_windows),  # Rayleigh
-            'acc_z': np.zeros(n_windows),  # Rayleigh
-            'acc_r': np.zeros(n_windows),  # Love
-            'acc_t': np.zeros(n_windows)   # Love
-        }
-        
-        envelope_stds = {
-            'rot_z': np.zeros(n_windows),  # Love
-            'rot_r': np.zeros(n_windows),  # Rayleigh
-            'rot_t': np.zeros(n_windows),  # Rayleigh
-            'acc_z': np.zeros(n_windows),  # Rayleigh
-            'acc_r': np.zeros(n_windows),  # Love
-            'acc_t': np.zeros(n_windows)   # Love
-        }
-
-        def compute_envelope(data):
-            """Helper function to compute signal envelope using Hilbert transform"""
-            return np.abs(hilbert(data))
-
-        # Loop through windows
-        for i in range(n_windows):
-            i1 = i * step
-            i2 = i1 + win_samples
-
-            # Get vertical components (used for both Love and Rayleigh)
-            rot_z = rot.select(channel="*Z")[0].data[i1:i2]
-            acc_z = tra.select(channel="*Z")[0].data[i1:i2]
-
-            # Process Love wave components if above threshold
-            if love_ccc[i] > cc_threshold:
-                # Rotate horizontals using Love backazimuth
-                acc_r_love, acc_t_love = rotate_ne_rt(
-                    tra.select(channel='*N')[0].data[i1:i2],
-                    tra.select(channel='*E')[0].data[i1:i2],
-                    love_baz[i]
-                )
-                
-                # Compute envelopes for Love components
-                envelope_means['rot_z'][i] = np.nanmean(compute_envelope(rot_z))
-                envelope_stds['rot_z'][i] = np.nanstd(compute_envelope(rot_z))
-                envelope_means['acc_r'][i] = np.nanmean(compute_envelope(acc_r_love))
-                envelope_stds['acc_r'][i] = np.nanstd(compute_envelope(acc_r_love))
-                envelope_means['acc_t'][i] = np.nanmean(compute_envelope(acc_t_love))
-                envelope_stds['acc_t'][i] = np.nanstd(compute_envelope(acc_t_love))
-            else:
-                envelope_means['rot_z'][i] = np.nan
-                envelope_stds['rot_z'][i] = np.nan
-                envelope_means['acc_r'][i] = np.nan
-                envelope_stds['acc_r'][i] = np.nan
-                envelope_means['acc_t'][i] = np.nan
-                envelope_stds['acc_t'][i] = np.nan
-
-            # Process Rayleigh wave components if above threshold
-            if rayleigh_ccc[i] > cc_threshold:
-                # Rotate horizontals using Rayleigh backazimuth
-                rot_r_rayleigh, rot_t_rayleigh = rotate_ne_rt(
-                    rot.select(channel='*N')[0].data[i1:i2],
-                    rot.select(channel='*E')[0].data[i1:i2],
-                    rayleigh_baz[i]
-                )
-                
-                # Compute envelopes for Rayleigh components
-                envelope_means['rot_r'][i] = np.nanmean(compute_envelope(rot_r_rayleigh))
-                envelope_stds['rot_r'][i] = np.nanstd(compute_envelope(rot_r_rayleigh))
-                envelope_means['rot_t'][i] = np.nanmean(compute_envelope(rot_t_rayleigh))
-                envelope_stds['rot_t'][i] = np.nanstd(compute_envelope(rot_t_rayleigh))
-                envelope_means['acc_z'][i] = np.nanmean(compute_envelope(acc_z))
-                envelope_stds['acc_z'][i] = np.nanstd(compute_envelope(acc_z))
-            else:
-                envelope_means['rot_r'][i] = np.nan
-                envelope_stds['rot_r'][i] = np.nan
-                envelope_means['rot_t'][i] = np.nan
-                envelope_stds['rot_t'][i] = np.nan
-                envelope_means['acc_z'][i] = np.nan
-                envelope_stds['acc_z'][i] = np.nan
-
-
-        # get oveerall mean and std
-        envelope_stats = {}
-
-        for comp in ['rot_z', 'rot_r', 'rot_t', 'acc_z', 'acc_r', 'acc_t']:
-            envelope_stats[comp] = {}
-            envelope_stats[comp]['mean'] = np.nanmean(envelope_means[comp])
-            envelope_stats[comp]['std'] = np.nanstd(envelope_means[comp])
-            envelope_stats[comp]['median'] = np.nanmedian(envelope_means[comp])
-            envelope_stats[comp]['mad'] = np.nanmedian(np.abs(envelope_means[comp] - np.nanmedian(envelope_means[comp])))
-
-        return {
-            'times': ttt,
-            'envelope_means': envelope_means,
-            'envelope_stds': envelope_stds,
-            'envelope_stats': envelope_stats,
-            'cc_value': {
-                'love': love_ccc,
-                'rayleigh': rayleigh_ccc
-            },
-            'backazimuth': {
-                'love': love_baz,
-                'rayleigh': rayleigh_baz
-            },
-            'parameters': {
-                'win_time_s': win_time_s,
-                'overlap': overlap,
-                'baz_mode': baz_mode
-            }
-        }
