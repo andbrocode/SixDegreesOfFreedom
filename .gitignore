@@ -1,8 +1,0 @@
-# ignore some files / directories for repository
-
-figures/
-
-__pycache__/
-
-data/romy_eigenmodes*
-
