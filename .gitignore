@@ -4,4 +4,7 @@ figures/
 
 __pycache__/
 
+data/romy_eigenmodes_2days.mseed
+data/romy_eigenmodes_2days.mseed
+data/romy_eigenmodes.mseed
 
