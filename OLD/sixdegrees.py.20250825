@@ -50,6 +50,8 @@ class sixdegrees():
         self.fdsn_client_tra = "IRIS"
         self.tra_inv = None
         self.rot_inv = None
+        self.rot_inv_file = None
+        self.tra_inv_file = None
 
         # predefine results for backazimuth estimation
         self.baz_results = {}
@@ -135,41 +137,51 @@ class sixdegrees():
         if 'path_to_inv_tra' in conf.keys():
             self.tra_inv_file = os.path.normpath(conf['path_to_inv_tra'])
         else:
-            print("WARNING: no path to translation station inventory given!")
-            self.tra_inv_file = None
+            print("INFO: no path to translation station inventory given!")
 
         # path to rotation station inventory
         if 'path_to_inv_rot' in conf.keys():
             self.rot_inv_file = os.path.normpath(conf['path_to_inv_rot'])
         else:
-            print("WARNING: no path to rotation station inventory given!")
-            self.rot_inv_file = None
+            print("INFO: no path to rotation station inventory given!")
 
         if self.data_source == 'sds':
             # path to SDS file structure for rotation data
             if 'path_to_sds_rot' in conf.keys():
                 self.rot_sds = os.path.normpath(conf['path_to_sds_rot'])
             else:
-                print("WARNING: no path to SDS file structure for rotation data given!")
+                if self.data_source == 'sds':
+                    print("WARNING: no path to SDS file structure for rotation data given!")
+                else:
+                    print("INFO: no path to SDS file structure for rotation data given!")
 
             # path to SDS file structure for translaton data
             if 'path_to_sds_tra' in conf.keys():
                 self.tra_sds = os.path.normpath(conf['path_to_sds_tra'])
             else:
-                print("WARNING: no path to SDS file structure for translaton data given!")
+                if self.data_source == 'sds':
+                    print("WARNING: no path to SDS file structure for translaton data given!")
+                else:
+                    print("INFO: no path to SDS file structure for translaton data given!")
 
         elif self.data_source == 'fdsn':
             # path to FDSN client for rotation data
             if 'fdsn_client_rot' in conf.keys():
                 self.fdsn_client_rot = conf['fdsn_client_rot']
             else:
-                print("INFO: no FDSN client for rotation data given!")
+                if self.data_source == 'fdsn':
+                    print("WARNING: no FDSN client for rotation data given!")
+                else:
+                    print("INFO: no FDSN client for rotation data given!")
 
             # path to FDSN client for translation data
             if 'fdsn_client_tra' in conf.keys():
                 self.fdsn_client_tra = conf['fdsn_client_tra']
             else:
-                print("INFO: no FDSN client for translation data given!")
+                if self.data_source == 'fdsn':
+                    print("WARNING: no FDSN client for translation data given!")
+                else:
+                    print("INFO: no FDSN client for translation data given!")
 
         # path to mseed file if using direct file input
         if 'path_to_mseed_file' in conf.keys():
@@ -768,7 +780,7 @@ class sixdegrees():
             if len(sampling_rates) == 1:
                 self.sampling_rate = sampling_rates.pop()
             else:
-                print(" -> Warning: Not all traces have the same sampling rate!")
+                print(" WARNING: Not all traces have the same sampling rate!")
                 if self.verbose:
                     print(f"Sampling rates found: {sampling_rates}")
 
@@ -788,12 +800,12 @@ class sixdegrees():
         tra = Stream()
 
         # initialize FDSN client
+        client = None
         if self.data_source.lower() == 'fdsn':
             try:
                 client = FDSNClient(self.fdsn_client_tra)
             except Exception as e:
-                print(f"-> warning: failed to initialize FDSN client: {str(e)}")
-                client = None
+                print(f"WARNING: failed to initialize FDSN client: {str(e)}")
 
         for tseed in self.tra_seed:
 
@@ -852,16 +864,17 @@ class sixdegrees():
 
         else:
             try:
-                # get inventory from FDSN
-                self.tra_inv = client.get_stations(network=net, station=sta,
-                                                    starttime=t1, endtime=t2,
-                                                    level="response",
-                                                    )
-                if self.verbose:
-                    print(f"-> translation inventory requested: {self.tra_inv}")
+                if client is not None:
+                    # get inventory from FDSN
+                    self.tra_inv = client.get_stations(network=net, station=sta,
+                                                        starttime=t1, endtime=t2,
+                                                        level="response",
+                                                        )
+                    if self.verbose:
+                        print(f"-> translation inventory requested: {self.tra_inv}")
             except Exception as e:
                 self.tra_inv = None
-                print(f"-> warning: failed to get inventory: {str(e)}")
+                print(f"WARNING: failed to get inventory: {str(e)}")
 
         # Get station coordinates
         if self.tra_inv is not None:
@@ -871,7 +884,7 @@ class sixdegrees():
                     self.station_latitude = coords['latitude']
                     self.station_longitude = coords['longitude']
                 except Exception as e:
-                    print(f"-> warning: failed to get station coordinates: {str(e)}")
+                    print(f"WARNING: failed to get station coordinates: {str(e)}")
 
         # Remove response of translation data
         if self.tra_remove_response and self.tra_inv is not None:
@@ -883,7 +896,7 @@ class sixdegrees():
                 # detrend
                 tra = tra.detrend("linear")
             except Exception as e:
-                print(f"-> warning: failed to remove response: {str(e)}")
+                print(f"WARNING: failed to remove response: {str(e)}")
 
         # rotate to ZNE
         if self.rotate_zne and self.tra_inv is not None:
@@ -905,7 +918,7 @@ class sixdegrees():
             # elif 'Z' in channels and '1' in channels and '2' in channels:
             #     tra = tra._rotate_to_zne(self.tra_inv, components='Z12')
             else:
-                print(f"-> warning: unknown rotation components: {channels}")
+                print(f"WARNING: unknown rotation components: {channels}")
 
         if self.verbose:
             print(tra)
@@ -927,12 +940,12 @@ class sixdegrees():
         rot = Stream()
 
         # initialize FDSN client
+        client = None
         if self.data_source.lower() == 'fdsn':
             try:
                 client = FDSNClient(self.fdsn_client_rot)
             except Exception as e:
-                print(f"-> warning: failed to initialize FDSN client: {str(e)}")
-                client = None
+                print(f"WARNING: failed to initialize FDSN client: {str(e)}")
 
         # raw channel order
         channel_raw = {"Z": "3", "N": "2", "E": "1"}
@@ -996,6 +1009,7 @@ class sixdegrees():
             if self.verbose:
                 print(f"-> rotation inventory provided: {self.rot_inv_file}")
             self.rot_inv = read_inventory(self.rot_inv_file)
+
         elif self.data_source.lower() == 'fdsn':
             try:
                 # get inventory from FDSN
@@ -1005,14 +1019,17 @@ class sixdegrees():
                                                     )
             except Exception as e:
                 self.rot_inv = None
-                print(f"-> warning: failed to get inventory: {str(e)}")
+                print(f"WARNING: failed to get inventory: {str(e)}")
 
         # assign station coordinates
         if self.rot_inv is not None:
             if self.station_latitude is None and self.station_longitude is None:
-                coords = self.rot_inv.get_coordinates(self.rot_seed[0])
-                self.station_latitude = coords['latitude']
-                self.station_longitude = coords['longitude']
+                if self.rot_inv is not None:
+                    coords = self.rot_inv.get_coordinates(self.rot_seed[0])
+                    self.station_latitude = coords['latitude']
+                    self.station_longitude = coords['longitude']
+                else:
+                    print(f"WARNING: Cannot assign station coordinates! \nProvide a rotation inventory file or set station_latitude and station_longitude in configuration!")
 
         # remove sensitivity
         if self.rot_remove_response and self.rot_inv is not None:
@@ -1026,7 +1043,7 @@ class sixdegrees():
                     print("-> removing sensitivity")
     
             except Exception as e:
-                print(f"-> warning: failed to remove sensitivity: {str(e)}")
+                print(f"WARNING: failed to remove sensitivity: {str(e)}")
 
         # rotate to ZNE
         if self.rotate_zne:
@@ -1052,7 +1069,7 @@ class sixdegrees():
                             keep_z=self.keep_z
                         )
                     except Exception as e:
-                        print(f"-> warning: ROMY ZNE rotation failed: {str(e)}")
+                        print(f"WARNING: ROMY ZNE rotation failed: {str(e)}")
             else:
                 channels = [tr.stats.channel[-1] for tr in rot]
                 if self.verbose:
@@ -1070,13 +1087,16 @@ class sixdegrees():
                 elif '1' in channels and '2' in channels and '3' in channels:
                     rot = rot._rotate_to_zne(self.rot_inv, components='321')
                 else:
-                    print(f"-> warning: unknown rotation components: {channels}")
+                    print(f"WARNING: unknown rotation components: {channels}")
 
         # assign station coordinates
         if self.station_latitude is None and self.station_longitude is None:
-            coords = self.rot_inv.get_coordinates(self.rot_seed[0])
-            self.station_latitude = coords['latitude']
-            self.station_longitude = coords['longitude']
+            if self.rot_inv is not None:
+                coords = self.rot_inv.get_coordinates(self.rot_seed[0])
+                self.station_latitude = coords['latitude']
+                self.station_longitude = coords['longitude']
+            else:
+                print(f"WARNING: Cannot assign station coordinates! \nProvide a rotation inventory file or set station_latitude and station_longitude in configuration!")
 
         if self.verbose:
             print(rot)
@@ -1177,15 +1197,59 @@ class sixdegrees():
         self.pol_dict = pol_dict
         self.pol_applied = True
 
-    def store_as_pickle(self, obj: object, name: str):
+    @staticmethod
+    def load_from_yaml(name: str):
+        """
+        Load an object from a yaml file.
+        """
+        import os, yaml
 
+        ifile = open(name+".yaml", 'r')
+        obj = yaml.load(ifile)
+
+        return obj
+
+    @staticmethod
+    def load_from_pickle(name: str):
+        """
+        Load an object from a pickle file.
+        """
         import os, pickle
+        ifile = open(name+".pkl", 'rb')
+        obj = pickle.load(ifile)
+        return obj
 
-        ofile = open(name+".pkl", 'wb')
+    @staticmethod
+    def store_as_yaml(obj: object, name: str):
+        """
+        Store an object as a yaml file.
+        """
+        import os, yaml
+        # if file does not end with yml add yml
+        if not name.endswith(".yml"):
+            name += ".yml"
+        # store file
+        ofile = open(name, 'w')
+        yaml.dump(obj, ofile)
+        # check if file is stored
+        if os.path.isfile(ofile):
+            print(f" -> stored: {ofile}")
+
+    @staticmethod
+    def store_as_pickle(obj: object, name: str):
+        """
+        Store an object as a pickle file.
+        """
+        import os, pickle
+        # if file does not end with pkl add pkl
+        if not name.endswith(".pkl"):
+            name += ".pkl"
+        # store file
+        ofile = open(name, 'wb')
         pickle.dump(obj, ofile)
-
-        if os.path.isfile(name+".pkl"):
-            print(f" -> stored: {name}.pkl")
+        # check if file is stored
+        if os.path.isfile(ofile):
+            print(f" -> stored: {ofile}")
 
     def optimize_parameters(self, wave_type: str='love', overlap: float=0.5, twin_min: float=1,
                           fbands: Dict=None, baz_step: int=1, bandwidth_factor: float=6) -> Dict:
@@ -1713,7 +1777,7 @@ class sixdegrees():
 
     def compute_backazimuth_map(self, wave_types=['love', 'rayleigh'], 
                                 baz_step=1, baz_win_sec=20.0, 
-                                baz_win_overlap=0.5, cc_threshold=0.5, cc_value='mid',
+                                baz_win_overlap=0.5, cc_threshold=0.5, cc_method='mid',
                                 tangent_components="rotation"):
         """
         Compute backazimuth estimates for surface waves and tangent methods
@@ -1732,7 +1796,7 @@ class sixdegrees():
             Minimum correlation coefficient threshold
         tangent_components : str
             Components to use for tangent method ('rotation' or 'acceleration')
-        cc_value : str
+        cc_method : str
             Value to use for correlation coefficient ('max', 'mid', None)
         Returns:
         --------
@@ -1774,10 +1838,10 @@ class sixdegrees():
                 time = baz_result['twin_center']
 
                 # select maximal or mid approach results
-                if cc_value == 'mid':
+                if cc_method == 'mid':
                     ccc = baz_result['cc_mid']
                     baz = baz_result['baz_mid']
-                elif cc_value == 'max' or cc_value is None:
+                elif cc_method == 'max' or cc_method is None:
                     ccc = baz_result['cc_max']
                     baz = baz_result['baz_max']
                 
@@ -2289,7 +2353,7 @@ class sixdegrees():
 
     # OLD
     def compute_backazimuth_fast(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, 
-                        baz_win_sec_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=True,
+                        baz_win_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=True,
                         out: bool=False, n_jobs: int=-1) -> Dict:
         """
         Estimate backazimuth for Love, Rayleigh, or tangent waves (optimized with parallelization)
@@ -2302,7 +2366,7 @@ class sixdegrees():
             Step size in degrees for backazimuth search (default: 1)
         baz_win_sec : float
             Length of backazimuth estimation windows in seconds (default: 30.0)
-        baz_win_sec_overlap : float
+        baz_win_overlap : float
             Overlap between windows as fraction (0-1) (default: 0.5)
         tangent_components : str
             Components to use for tangent method ('rotation' or 'acceleration')
@@ -2337,7 +2401,7 @@ class sixdegrees():
         # Store window parameters and ensure baz_step is integer
         self.baz_step = int(baz_step)
         self.baz_win_sec = baz_win_sec
-        self.baz_win_sec_overlap = baz_win_sec_overlap
+        self.baz_win_overlap = baz_win_overlap
 
         # Prepare streams
         ACC = self.get_stream("translation").copy()
@@ -2358,7 +2422,7 @@ class sixdegrees():
         n_samples = len(ROT.select(channel="*Z")[0])
 
         # Calculate overlap in samples
-        overlap = baz_win_sec_overlap / baz_win_sec
+        overlap = int(baz_win_overlap * baz_win_sec * self.sampling_rate)
 
         # Prepare time windows for loop
         n_windows = n_samples // (int(self.sampling_rate * baz_win_sec))
@@ -2580,7 +2644,7 @@ class sixdegrees():
                 'component_type': tangent_components if wave_type.lower() == "tangent" else None,
                 'parameters': {
                     'baz_win_sec': baz_win_sec,
-                    'baz_win_sec_overlap': baz_win_sec_overlap,
+                    'baz_win_soverlap': baz_win_overlap,
                     'baz_step': baz_step,
                     'wave_type': wave_type,
                 }
@@ -2992,7 +3056,7 @@ class sixdegrees():
                 wave_type=wave_type,
                 baz_step=1,
                 baz_win_sec=win_time_s,
-                baz_win_sec_overlap=overlap,
+                baz_win_overlap=overlap,
                 out=True
             )
 
@@ -3122,7 +3186,7 @@ class sixdegrees():
             Dictionary containing:
             - times : array of time points
             - velocity: array of phase velocities
-            - cc_value: array of cross-correlation coefficients
+            - cc_method: array of cross-correlation coefficients
             - backazimuth: array of backazimuths
         """
         import numpy as np
@@ -4398,7 +4462,7 @@ class sixdegrees():
         sm.set_array([])
         cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal")
 
-        cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-53, color="k")
+        cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-55, color="k")
 
         # Set limits for scatter plots
         for cm in cms:
@@ -4873,7 +4937,7 @@ class sixdegrees():
             else:
                 unit = r"rad"
                 scale = 1
-                print(f"-> warning: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
         else:
             if scale == 1e9:
                 unit = r"nm/s$^2$"
@@ -4883,7 +4947,7 @@ class sixdegrees():
                 unit = r"m/s$^2$"
             else:
                 unit = r"m/s$^2$"
-                print(f"-> warning: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
                 scale = 1
 
 
@@ -4975,7 +5039,7 @@ class sixdegrees():
     
     def plot_backazimuth_results(self, baz_results: Dict, wave_type: str='love', 
                                 baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
-                                cc_threshold: float=None, minors: bool=True, cc_value: str='mid') -> plt.Figure:
+                                cc_threshold: float=None, minors: bool=True, cc_method: str='mid') -> plt.Figure:
         """
         Plot backazimuth estimation results
         
@@ -4993,7 +5057,7 @@ class sixdegrees():
             Minimum cross-correlation coefficient threshold
         minors : bool, optional
             Add minor ticks to axes if True
-        cc_value : str
+        cc_method : str
             Type of cc to choose ('mid' or 'max')
         unitscale : str
             Unit scale for rotation rate ('nano' or 'micro')
@@ -5061,10 +5125,10 @@ class sixdegrees():
         time = baz_results['twin_center']
 
         # select maximal or mid approach results
-        if cc_value == 'mid':
+        if cc_method == 'mid':
             ccc = baz_results['cc_mid']
             baz = baz_results['baz_mid']
-        elif cc_value == 'max':
+        elif cc_method == 'max':
             ccc = baz_results['cc_max']
             baz = baz_results['baz_max']
         

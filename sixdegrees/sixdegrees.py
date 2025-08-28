@@ -1201,9 +1201,11 @@ class sixdegrees():
         Load an object from a yaml file.
         """
         import os, yaml
-
-        ifile = open(name+".yaml", 'r')
-        obj = yaml.load(ifile)
+        # if file does not end with yml add yml
+        if not name.endswith(".yml"):
+            name += ".yml"
+        with open(name, 'r') as f:
+            obj = yaml.load(f, Loader=yaml.FullLoader)
 
         return obj
 
@@ -1213,8 +1215,11 @@ class sixdegrees():
         Load an object from a pickle file.
         """
         import os, pickle
-        ifile = open(name+".pkl", 'rb')
-        obj = pickle.load(ifile)
+        # if file does not end with pkl add pkl
+        if not name.endswith(".pkl"):
+            name += ".pkl"
+        with open(name, 'rb') as f:
+            obj = pickle.load(f)
         return obj
 
     @staticmethod
@@ -1227,8 +1232,8 @@ class sixdegrees():
         if not name.endswith(".yml"):
             name += ".yml"
         # store file
-        ofile = open(name, 'w')
-        yaml.dump(obj, ofile)
+        with open(name, 'w') as f:
+            yaml.dump(obj, f)
         # check if file is stored
         if os.path.isfile(name+".yml"):
             print(f" -> stored: {name}.yml")
@@ -4089,46 +4094,6 @@ class sixdegrees():
         }
 
     @staticmethod
-    def load_from_yaml(name: str):
-
-        import os, yaml
-
-        with open(name+".yaml", 'r') as ifile:
-            obj = yaml.load(ifile, Loader=yaml.FullLoader)
-        return obj
-
-    @staticmethod
-    def store_to_yaml(obj: object, name: str):
-
-        import os, yaml
-
-        with open(name+".yaml", 'w') as ofile:
-            yaml.dump(obj, ofile)
-
-        if os.path.isfile(name+".yaml"):
-            print(f" -> stored: {name}.yaml")
-
-    @staticmethod
-    def load_from_pickle(name: str):
-
-        import os, pickle
-
-        with open(name+".pkl", 'rb') as ifile:
-            obj = pickle.load(ifile)
-        return obj
-
-    @staticmethod
-    def store_to_pickle(obj: object, name: str):
-
-        import os, pickle
-
-        with open(name+".pkl", 'wb') as ofile:
-            pickle.dump(obj, ofile)
-
-        if os.path.isfile(name+".pkl"):
-            print(f" -> stored: {name}.pkl")
-
-    @staticmethod
     def get_time_windows(tbeg: Union[None, str, UTCDateTime]=None, tend: Union[None, str, UTCDateTime]=None, interval_seconds: int=3600, fractional_overlap: float=0) -> List[Tuple[UTCDateTime, UTCDateTime]]:
         '''
         Obtain time intervals
@@ -6426,4 +6391,154 @@ class sixdegrees():
         fig.suptitle(title, fontsize=16)
         
         plt.tight_layout()
+        return fig
+
+    def plot_waveforms(self, equal_scale=False, figsize=(12, 10), time_scale="seconds", ymin=None, ymax=None, ybounds=None):
+        """
+        Plot all waveforms in the stream in subplots above each other.
+        
+        Parameters
+        ----------
+        equal_scale : bool, optional
+            If True, all subplots share the same y-axis scale. Default is False.
+        figsize : tuple, optional
+            Figure size (width, height) in inches. Default is (12, 8).
+        time_scale : str, optional
+            Time scale for time labels. Default is "seconds".
+        ymin : float or dict, optional
+            Minimum y-axis value. Can be single float for all plots or dict with channel keys
+        ymax : float or dict, optional
+            Maximum y-axis value. Can be single float for all plots or dict with channel keys
+        ybounds : dict, optional
+            Minimum and maximum y-axis values as dict with channel keys.
+        Returns
+        -------
+        fig, axs : matplotlib figure and axes objects
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from matplotlib.ticker import AutoMinorLocator
+        
+        if not hasattr(self, 'st') or self.st is None:
+            raise ValueError("No stream data available in sixdegrees object")
+        
+        # Create figure and subplots
+        n_traces = len(self.st)
+
+        fig, axs = plt.subplots(n_traces, 1, figsize=figsize, sharex=True)
+
+        if n_traces == 1:
+            axs = [axs]
+        
+        # Get global min/max if equal_scale is True and no ymin/ymax provided
+        if equal_scale and ymin is None and ymax is None:
+            global_min = min(tr.data.min() for tr in self.st)
+            global_max = max(tr.data.max() for tr in self.st)
+            y_range = global_max - global_min
+            y_margin = y_range * 0.1
+            y_lims = (global_min - y_margin, global_max + y_margin)
+        
+        # Plot each trace
+        for i, tr in enumerate(self.st):
+            # Get time vector based on time_scale
+            if time_scale == "seconds":
+                times = tr.times(reftime=self.tbeg)
+                xlabel = "Time (s)"
+            elif time_scale == "minutes":
+                times = tr.times(reftime=self.tbeg) / 60
+                xlabel = "Time (min)"
+            elif time_scale == "hours":
+                times = tr.times(reftime=self.tbeg) / 3600
+                xlabel = "Time (h)"
+            elif time_scale == "days":
+                times = tr.times(reftime=self.tbeg) / 86400
+                xlabel = "Time (d)"
+            
+            # Plot waveform
+            line = axs[i].plot(times, tr.data, 'k-', linewidth=0.5)[0]
+            
+            # Set y-limits
+            if equal_scale and ymin is None and ymax is None:
+                axs[i].set_ylim(y_lims)
+            else:
+                # Handle individual channel limits
+                y_min_val = ymin[tr.stats.channel] if isinstance(ymin, dict) else ymin
+                y_max_val = ymax[tr.stats.channel] if isinstance(ymax, dict) else ymax
+                
+                if y_min_val is None or y_max_val is None:
+                    data_min, data_max = tr.data.min(), tr.data.max()
+                    y_range = data_max - data_min
+                    y_margin = y_range * 0.1
+                    y_min_val = data_min - y_margin if y_min_val is None else y_min_val
+                    y_max_val = data_max + y_margin if y_max_val is None else y_max_val
+                
+                if ybounds is not None and tr.stats.channel in ybounds:
+                    if y_min_val < ybounds[tr.stats.channel][0]:
+                        y_min_val = ybounds[tr.stats.channel][0]
+                    if y_max_val > ybounds[tr.stats.channel][1]:
+                        y_max_val = ybounds[tr.stats.channel][1]
+                
+                axs[i].set_ylim(y_min_val, y_max_val)
+            
+            # Format y-label with units
+            if "J" in tr.stats.channel:
+                    unit = self.runit
+            else:
+                unit = self.tunit
+
+            axs[i].set_ylabel(unit, rotation=0, ha='right', va='center')
+            
+            # Add channel info as legend
+            network = tr.stats.network
+            station = tr.stats.station
+            location = tr.stats.location
+            channel = tr.stats.channel
+            label = f"{network}.{station}.{location}.{channel}"
+            axs[i].legend([line], [label], loc='upper right', frameon=False)
+            
+            # Add minor ticks
+            axs[i].yaxis.set_minor_locator(AutoMinorLocator())
+            axs[i].xaxis.set_minor_locator(AutoMinorLocator())
+            
+            # Remove top, right, and bottom spines (except for last subplot)
+            axs[i].spines['top'].set_visible(False)
+            axs[i].spines['right'].set_visible(False)
+            if i < n_traces - 1:
+                axs[i].spines['bottom'].set_visible(False)
+                axs[i].xaxis.set_visible(False)
+            
+            # Add grid
+            # axs[i].grid(True, which='major', alpha=0.3)
+            # axs[i].grid(True, which='minor', alpha=0.1)
+        
+        # Set x-label on bottom subplot
+        axs[-1].set_xlabel(xlabel)
+        
+        # Add title with time period and filter info if available
+        title_parts = []
+        
+        # Add time period
+        start_time = min(tr.stats.starttime for tr in self.st)
+        end_time = max(tr.stats.endtime for tr in self.st)
+        time_period = f"Period: {start_time.strftime('%Y-%m-%d %H:%M:%S')} - {end_time.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        title_parts.append(time_period)
+        
+        # Add filter info if available
+        if hasattr(self, 'fmin') and hasattr(self, 'fmax'):
+            if self.fmin and self.fmax:
+                filter_info = f"Filter: {self.fmin:.3f} - {self.fmax:.3f} Hz"
+            elif self.fmin:
+                filter_info = f"Filter: > {self.fmin:.3f} Hz"
+            elif self.fmax:
+                filter_info = f"Filter: < {self.fmax:.3f} Hz"
+            title_parts.append(filter_info)
+        
+        if title_parts:
+            fig.suptitle(' | '.join(title_parts), y=0.95)
+        
+        # Adjust layout
+        plt.tight_layout()
+        plt.show();
+
         return fig
