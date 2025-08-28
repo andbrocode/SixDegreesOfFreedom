@@ -8,3 +8,4 @@ from .sixdegrees import sixdegrees
 
 __all__ = ['sixdegrees']
 
+
