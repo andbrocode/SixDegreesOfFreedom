@@ -1204,6 +1204,10 @@ class sixdegrees():
         # if file does not end with yml add yml
         if not name.endswith(".yml"):
             name += ".yml"
+        # check if file exists
+        if not os.path.isfile(name):
+            raise FileNotFoundError(f"File {name} not found")
+        # load file
         with open(name, 'r') as f:
             obj = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -1218,6 +1222,10 @@ class sixdegrees():
         # if file does not end with pkl add pkl
         if not name.endswith(".pkl"):
             name += ".pkl"
+        # check if file exists
+        if not os.path.isfile(name):
+            raise FileNotFoundError(f"File {name} not found")
+        # load file
         with open(name, 'rb') as f:
             obj = pickle.load(f)
         return obj
@@ -1231,9 +1239,14 @@ class sixdegrees():
         # if file does not end with yml add yml
         if not name.endswith(".yml"):
             name += ".yml"
+        # check if file exists
+        if os.path.isfile(name):
+            print(f" -> file {name} already exists. Aborting...")
+            return
         # store file
-        with open(name, 'w') as f:
-            yaml.dump(obj, f)
+        ofile = open(name, 'w')
+        yaml.dump(obj, ofile)
+        ofile.close()
         # check if file is stored
         if os.path.isfile(name+".yml"):
             print(f" -> stored: {name}.yml")

@@ -1,0 +1,20 @@
+data_source: fdsn
+fdsn_client_rot: LMU
+fdsn_client_tra: BGR
+magnitude: 7.0
+origin_time: '2024-12-05 18:44:26'
+path_to_data_out: ./output/
+project: G_Analysis
+rot_remove_response: true
+rot_seed:
+- BW.RLAS..BJZ
+seed: XX.RLAS..
+tbeg: '2024-12-05 18:34:21'
+tend: '2024-12-05 21:34:21'
+tra_remove_response: true
+tra_seed:
+- GR.WET..BHZ
+- GR.WET..BHN
+- GR.WET..BHE
+verbose: true
+workdir: ./
