@@ -1,0 +1,20 @@
+data_source: mseed_file
+magnitude: 4.1
+origin_time: '2022-12-31 12:12:20'
+path_to_data_out: ./output/
+path_to_mseed_file: ./data/bspf_M4.1_6c.mseed
+project: BSPF_Analysis
+rot_seed:
+- XX.BSPF..BJZ
+- XX.BSPF..BJN
+- XX.BSPF..BJE
+station_lat: 33.610643
+station_lon: -116.455439
+tbeg: '2022-12-31 12:12:20'
+tend: '2022-12-31 12:12:55'
+tra_seed:
+- XX.BSPF..BHZ
+- XX.BSPF..BHN
+- XX.BSPF..BHE
+verbose: true
+workdir: ./

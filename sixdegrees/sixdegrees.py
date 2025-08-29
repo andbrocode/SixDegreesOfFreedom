@@ -58,175 +58,85 @@ class sixdegrees():
         self.baz_theo = None
         
         # define data source (local SDS or online FDSN)
-        if 'data_source' in conf.keys():
-            self.data_source = conf['data_source']  # 'sds' or 'fdsn'
-        else:
-            self.data_source = 'fdsn'  # default to local SDS archive
+        self.data_source = conf.get('data_source', 'fdsn')  # 'sds' or 'fdsn'
 
-        # define startime
-        if 'tbeg' in conf.keys():
-            self.tbeg = UTCDateTime(conf['tbeg'])
-        else:
-            print("WARNING: no starttime given!")
+        # get startime and convert to UTCDateTime
+        self.tbeg = conf.get('tbeg', None)
+        if self.tbeg is not None:
+            self.tbeg = UTCDateTime(self.tbeg)
 
-        # define endtime
-        if 'tend' in conf.keys():
-            self.tend = UTCDateTime(conf['tend'])
-        else:
-            print("WARNING: no endtime given!")
+        # get endtime and convert to UTCDateTime
+        self.tend = conf.get('tend', None)
+        if self.tend is not None:
+            self.tend = UTCDateTime(self.tend)
 
         # set verbose (print information)
-        if 'verbose' in conf.keys():
-            self.verbose = conf['verbose']
-        else:
-            self.verbose = False
+        self.verbose = conf.get('verbose', False)
 
         # seed id of stream
-        if 'seed' in conf.keys():
-            self.net, self.sta, self.loc, self.cha = conf['seed'].split('.')
-        else:
-            self.net, self.sta, self.loc, self.cha = "XX.XXXX..".split('.')
+        self.net, self.sta, self.loc, self.cha = conf.get('seed', "XX.XXXX..").split('.')
 
         # seed id of rotation stream
-        if 'rot_seed' in conf.keys():
-            self.rot_seed = conf['rot_seed']
-        else:
-            print("WARNING: no rotation seed id given!")
+        self.rot_seed = conf.get('rot_seed', None)
 
         # seed id of translation stream
-        if 'tra_seed' in conf.keys():
-            self.tra_seed = conf['tra_seed']
-        else:
-            print("WARNING: no translation seed id given!")
+        self.tra_seed = conf.get('tra_seed', None)
 
         # station coordinates
-        if 'station_lon' in conf.keys() and 'station_lat' in conf.keys():
-            self.station_longitude = conf['station_lon']
-            self.station_latitude = conf['station_lat']
-        else:
-            self.station_longitude = None
-            self.station_latitude = None
+        self.station_longitude = conf.get('station_lon', None)
+        self.station_latitude = conf.get('station_lat', None)
 
         # define project name
-        if 'project' in conf.keys():
-            self.project = conf['project']
-        else:
-            self.project = "test"
-
+        self.project = conf.get('project', "test")
+        
         # define working directory
-        if 'workdir' in conf.keys():
-            self.workdir = os.path.normpath(conf['workdir'])
-        else:
-            self.workdir = os.path.normpath("./")
+        self.workdir = conf.get('workdir', os.path.normpath("./"))
 
         # define directory for output data
-        if 'path_to_data_out' in conf.keys():
-            self.path_to_data_out = os.path.normpath(conf['path_to_data_out'])
-        else:
-            self.path_to_data_out = os.path.normpath(os.path.join(self.workdir, "output"))
+        self.path_to_data_out = conf.get('path_to_data_out', os.path.normpath(os.path.join(self.workdir, "output")))
 
         # define directory for figure output
-        if 'path_to_figs_out' in conf.keys():
-            self.path_to_figs_out = os.path.normpath(conf['path_to_figs_out'])
-        else:
-            self.path_to_figs_out = os.path.normpath(os.path.join(self.workdir, "figures"))
-
-        # path to translation station inventory
-        if 'path_to_inv_tra' in conf.keys():
-            self.tra_inv_file = os.path.normpath(conf['path_to_inv_tra'])
-        else:
-            print("INFO: no path to translation station inventory given!")
+        self.path_to_figs_out = conf.get('path_to_figs_out', os.path.normpath(os.path.join(self.workdir, "figures")))
 
         # path to rotation station inventory
-        if 'path_to_inv_rot' in conf.keys():
-            self.rot_inv_file = os.path.normpath(conf['path_to_inv_rot'])
-        else:
-            print("INFO: no path to rotation station inventory given!")
+        self.rot_inv_file = conf.get('path_to_inv_rot', None)
+        # path to translation station inventory
+        self.tra_inv_file = conf.get('path_to_inv_tra', None)
 
-        if self.data_source == 'sds':
-            # path to SDS file structure for rotation data
-            if 'path_to_sds_rot' in conf.keys():
-                self.rot_sds = os.path.normpath(conf['path_to_sds_rot'])
-            else:
-                if self.data_source == 'sds':
-                    print("WARNING: no path to SDS file structure for rotation data given!")
-                else:
-                    print("INFO: no path to SDS file structure for rotation data given!")
+        # path to SDS file structure for rotation data
+        self.rot_sds = conf.get('path_to_sds_rot', None)
+        # path to SDS file structure for translation data
+        self.tra_sds = conf.get('path_to_sds_tra', None)
 
-            # path to SDS file structure for translaton data
-            if 'path_to_sds_tra' in conf.keys():
-                self.tra_sds = os.path.normpath(conf['path_to_sds_tra'])
-            else:
-                if self.data_source == 'sds':
-                    print("WARNING: no path to SDS file structure for translaton data given!")
-                else:
-                    print("INFO: no path to SDS file structure for translaton data given!")
-
-        elif self.data_source == 'fdsn':
-            # path to FDSN client for rotation data
-            if 'fdsn_client_rot' in conf.keys():
-                self.fdsn_client_rot = conf['fdsn_client_rot']
-            else:
-                if self.data_source == 'fdsn':
-                    print("WARNING: no FDSN client for rotation data given!")
-                else:
-                    print("INFO: no FDSN client for rotation data given!")
-
-            # path to FDSN client for translation data
-            if 'fdsn_client_tra' in conf.keys():
-                self.fdsn_client_tra = conf['fdsn_client_tra']
-            else:
-                if self.data_source == 'fdsn':
-                    print("WARNING: no FDSN client for translation data given!")
-                else:
-                    print("INFO: no FDSN client for translation data given!")
+        # path to FDSN client for rotation data
+        self.fdsn_client_rot = conf.get('fdsn_client_rot', None)
+        # path to FDSN client for translation data
+        self.fdsn_client_tra = conf.get('fdsn_client_tra', None)
 
         # path to mseed file if using direct file input
-        if 'path_to_mseed_file' in conf.keys():
-            self.mseed_file = os.path.normpath(conf['path_to_mseed_file'])
-        else:
-            self.mseed_file = False
+        self.mseed_file = conf.get('path_to_mseed_file', False)
 
         # add dummy trace
-        if 'dummy_trace' in conf.keys():
-            self.dummy_trace = conf['dummy_trace']
-        else:
-            self.dummy_trace = False
+        self.dummy_trace = conf.get('dummy_trace', False)
 
-        # rotate_zne
-        if 'rotate_zne' in conf.keys():
-            self.rotate_zne = conf['rotate_zne']
-        else:
-            self.rotate_zne = False
+        # rotate_zne    
+        self.rotate_zne = conf.get('rotate_zne', False)
 
         # remove_response_tra
-        if 'tra_remove_response' in conf.keys():
-            self.tra_remove_response = conf['tra_remove_response']
-        else:
-            self.tra_remove_response = False
+        self.tra_remove_response = conf.get('tra_remove_response', False)
 
         # remove_response_rot
-        if 'rot_remove_response' in conf.keys():
-            self.rot_remove_response = conf['rot_remove_response']
-        else:
-            self.rot_remove_response = False
+        self.rot_remove_response = conf.get('rot_remove_response', False)
 
         # output type for remove response
-        if 'tra_output' in conf.keys():
-            self.tra_output = conf['tra_output']
-        else:
-            self.tra_output = "ACC"
+        self.tra_output = conf.get('tra_output', "ACC")
 
         # units
+        self.runit = conf.get('runit', "rad/s")
+        self.tunit = conf.get('tunit', r"m/s$^2$")
+        
+        # define mu symbol
         self.mu = "$\mu$"
-        if 'runit' in conf.keys():
-            self.runit = conf['runit']
-        else:
-            self.runit = "rad/s"
-        if 'tunit' in conf.keys():
-            self.tunit = conf['tunit']
-        else:
-            self.tunit = r"m/s$^2$"
 
         # polarity dictionary
         self.pol_applied = False
@@ -240,7 +150,63 @@ class sixdegrees():
         self.use_romy_zne = conf.get('use_romy_zne', False)
         self.keep_z = conf.get('keep_z', True)
 
+        # check attributes
+        checks = self.check_attributes()
+
+        if not checks['passed']:
+            for note in checks['notes']:
+                print(note)
+            raise ValueError("Required attributes are not set. Please check the configuration.")
+
     # ____________________________________________________
+
+    def check_attributes(self):
+        """
+        Check if all required attributes are set
+        """
+        checks = {'passed': True, 'notes': []}
+        if self.data_source == 'sds':
+            if self.rot_sds is None:
+                checks['notes'].append("WARNING: no path to SDS file structure for rotation data given!")
+                checks['passed'] = False
+            if self.tra_sds is None:
+                checks['notes'].append("WARNING: no path to SDS file structure for translation data given!")
+                checks['passed'] = False
+        elif self.data_source == 'fdsn':
+            if self.fdsn_client_rot is None:
+                checks['notes'].append("WARNING: no FDSN client for rotation data given!")
+                checks['passed'] = False
+            if self.fdsn_client_tra is None:
+                checks['notes'].append("WARNING: no FDSN client for translation data given!")
+                checks['passed'] = False
+        elif self.data_source == 'mseed_file':
+            if self.mseed_file is None:
+                checks['notes'].append("WARNING: no path to mseed file given!")
+                checks['passed'] = False
+        if self.station_longitude is None:
+            checks['notes'].append("WARNING: no station longitude given!")
+            checks['passed'] = False
+        if self.station_latitude is None:
+            checks['notes'].append("WARNING: no station latitude given!")
+            checks['passed'] = False
+        if self.rot_seed is None:
+            checks['notes'].append("WARNING: no rotation seed id given!")
+            checks['passed'] = False
+        if self.tra_seed is None:
+            checks['notes'].append("WARNING: no translation seed id given!")
+            checks['passed'] = False
+        if self.rot_inv_file is None:
+            checks['notes'].append("INFO: no path to rotation station inventory given!")
+        if self.tra_inv_file is None:
+            checks['notes'].append("INFO: no path to translation station inventory given!")
+        if self.tbeg is None:
+            checks['notes'].append("WARNING: no starttime given!")
+            checks['passed'] = False
+        if self.tend is None:
+            checks['notes'].append("WARNING: no endtime given!")
+            checks['passed'] = False
+
+        return checks
 
     def attributes(self) -> List[str]:
         """
@@ -582,12 +548,16 @@ class sixdegrees():
         tra = self.get_stream("translation").copy()
         
         # rotate components
-        rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data,
-                                    rot.select(channel="*E")[0].data,
-                                    baz)
-        tra_r, tra_t = rotate_ne_rt(tra.select(channel="*N")[0].data,
-                                    tra.select(channel="*E")[0].data,
-                                    baz)
+        rot_r, rot_t = rotate_ne_rt(
+            rot.select(channel="*N")[0].data,
+            rot.select(channel="*E")[0].data,
+            baz
+        )
+        tra_r, tra_t = rotate_ne_rt(
+            tra.select(channel="*N")[0].data,
+            tra.select(channel="*E")[0].data,
+            baz
+        )
 
         tra_z = tra.select(channel="*Z")[0].data
         rot_z = rot.select(channel="*Z")[0].data
@@ -742,9 +712,10 @@ class sixdegrees():
             if self.verbose:
                 print(f"-> resampling stream to {resample_rate} Hz")
             for tr in st0:
+                tr = tr.detrend("demean")
                 tr = tr.detrend("simple")
-                tr = tr.taper(max_percentage=0.05, type='cosine')
-                tr = tr.filter("highpass", freq=0.001, corners=2, zerophase=True)
+                # tr = tr.taper(max_percentage=0.05, type='cosine')
+                # tr = tr.filter("highpass", freq=0.001, corners=2, zerophase=True)
                 tr = tr.filter("lowpass", freq=resample_rate/4, corners=2, zerophase=True)
                 tr = tr.resample(resample_rate, no_filter=True)
                 tr = tr.detrend("demean")
@@ -911,10 +882,10 @@ class sixdegrees():
             elif 'Z' in channels and 'N' in channels and 'E' in channels:
                 tra = self.sort_channels(tra, ['Z', 'N', 'E'])
                 tra = tra._rotate_to_zne(self.tra_inv, components='ZNE')
-            # elif 'U' in channels and 'V' in channels and 'W' in channels:
-            #     tra = tra._rotate_to_zne(self.tra_inv, components='UVW')
-            # elif 'Z' in channels and '1' in channels and '2' in channels:
-            #     tra = tra._rotate_to_zne(self.tra_inv, components='Z12')
+            elif 'U' in channels and 'V' in channels and 'W' in channels:
+                tra = tra._rotate_to_zne(self.tra_inv, components='UVW')
+            elif 'Z' in channels and '1' in channels and '2' in channels:
+                tra = tra._rotate_to_zne(self.tra_inv, components='Z12')
             else:
                 print(f"WARNING: unknown rotation components: {channels}")
 
@@ -4679,163 +4650,6 @@ class sixdegrees():
         return fig
 
     @staticmethod
-    def plot_spectra_comparison_fill(rot: Stream, acc: Stream, fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
-                                   ylog: bool=False, xlog: bool=False, fill: bool=False) -> plt.Figure:
-        """
-        Plot power spectral density comparison between rotation and acceleration data with horizontal layout
-        
-        Parameters:
-        -----------
-        rot : Stream
-            Rotation rate stream
-        acc : Stream
-            Acceleration stream
-        fmin : float or None
-            Minimum frequency for bandpass filter
-        fmax : float or None
-            Maximum frequency for bandpass filter
-        ylog : bool
-            Use logarithmic y-axis scale if True
-        xlog : bool
-            Use logarithmic x-axis scale if True
-        fill : bool
-            Fill the area under curves if True
-            
-        Returns:
-        --------
-        matplotlib.figure.Figure
-        """
-        import matplotlib.pyplot as plt
-        import multitaper as mt
-        from numpy import reshape, max, min
-        
-        def _multitaper_psd(arr: array, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[array, array]:
-            """Calculate multitaper power spectral density"""
-            out_psd = mt.MTSpec(arr, nw=time_bandwidth, kspec=n_win, dt=dt, iadapt=2)
-            _f, _psd = out_psd.rspec()
-            return reshape(_f, _f.size), reshape(_psd, _psd.size)
-
-        # Calculate PSDs for each component
-        Tsec = 5
-        components = [
-            ('Z', '*Z'), ('N', '*N'), ('E', '*E')
-        ]
-        psds = {}
-        for comp_name, comp_pattern in components:
-            f1, psd1 = _multitaper_psd(
-                rot.select(channel=comp_pattern)[0].data, 
-                rot[0].stats.delta,
-                n_win=Tsec
-            )
-            f2, psd2 = _multitaper_psd(
-                acc.select(channel=comp_pattern)[0].data, 
-                acc[0].stats.delta,
-                n_win=Tsec
-            )
-            psds[comp_name] = {'rot': (f1, psd1), 'acc': (f2, psd2)}
-
-        # Create figure
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        plt.subplots_adjust(wspace=0.3)
-
-        # Plot settings
-        font = 12
-        lw = 1
-        rot_color = "darkred"
-        acc_color = "black"
-        alpha = 0.5 if fill else 1.0
-
-        # Add title with time information
-        title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
-        if fmin is not None and fmax is not None:
-            title += f" | {fmin}-{fmax} Hz"
-        fig.suptitle(title, fontsize=font+2, y=1.02)
-
-        # Plot each component
-        for i, (comp_name, comp_data) in enumerate(psds.items()):
-            # Get component labels
-            rot_label = f"{rot[0].stats.station}.{rot.select(channel=f'*{comp_name}')[0].stats.channel}"
-            acc_label = f"{acc[0].stats.station}.{acc.select(channel=f'*{comp_name}')[0].stats.channel}"
-            
-            if fill:
-                # Plot with fill
-                axes[i].fill_between(
-                    comp_data['rot'][0],
-                    comp_data['rot'][1],
-                    lw=lw,
-                    label=rot_label,
-                    color=rot_color,
-                    alpha=alpha,
-                    zorder=3
-                )
-                ax2 = axes[i].twinx()
-                ax2.fill_between(
-                    comp_data['acc'][0],
-                    comp_data['acc'][1],
-                    lw=lw,
-                    label=acc_label,
-                    color=acc_color,
-                    alpha=alpha,
-                    zorder=2
-                )
-            else:
-                # Plot lines
-                axes[i].plot(
-                    comp_data['rot'][0],
-                    comp_data['rot'][1],
-                    lw=lw,
-                    label=rot_label,
-                    color=rot_color,
-                    ls="-",
-                    zorder=3
-                )
-                ax2 = axes[i].twinx()
-                ax2.plot(
-                    comp_data['acc'][0],
-                    comp_data['acc'][1],
-                    lw=lw,
-                    label=acc_label,
-                    color=acc_color,
-                    zorder=2
-                )
-            
-            # Configure axes
-            axes[i].legend(loc=1, ncols=4)
-            if xlog:
-                axes[i].set_xscale("log")
-            if ylog:
-                axes[i].set_yscale("log")
-                ax2.set_yscale("log")
-            
-            axes[i].grid(which="both", alpha=0.5)
-            axes[i].tick_params(axis='y', colors=rot_color)
-            axes[i].set_ylim(bottom=0)
-            ax2.set_ylim(bottom=0)
-            
-            # Set frequency limits
-            xlim_right = fmax if fmax else rot[0].stats.sampling_rate * 0.5
-            axes[i].set_xlim(left=fmin, right=xlim_right)
-            ax2.set_xlim(left=fmin, right=xlim_right)
-            axes[i].set_xlabel("Frequency (Hz)", fontsize=font)
-
-            # Set legends
-            ax2.legend(loc=2)
-
-            # For the last panel (E component), don't create new y-axis ticks on the right
-            if i == 2:
-                axes[i].set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
-            if i == 0:
-                axes[i].set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
-            
-            # Add component label
-            axes[i].set_title(f"Component {comp_name}", fontsize=font)
-
-        # Adjust layout to accommodate supertitle
-        plt.subplots_adjust(top=0.90)
-        
-        return fig
-
-    @staticmethod
     def compute_cwt(times: array, data: array, dt: float, datalabel: str="data", log: bool=False, 
                     period: bool=False, tscale: str='sec', scale_value: float=2, 
                     ymax: Union[float, None]=None, normalize: bool=True, plot: bool=False) -> Dict:
@@ -5080,6 +4894,163 @@ class sixdegrees():
         cb.set_label("Normalized CWT Power", fontsize=font)
         
         plt.subplots_adjust(right=0.9)
+        return fig
+
+    @staticmethod
+    def plot_spectra_comparison_fill(rot: Stream, acc: Stream, fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
+                                   ylog: bool=False, xlog: bool=False, fill: bool=False) -> plt.Figure:
+        """
+        Plot power spectral density comparison between rotation and acceleration data with horizontal layout
+        
+        Parameters:
+        -----------
+        rot : Stream
+            Rotation rate stream
+        acc : Stream
+            Acceleration stream
+        fmin : float or None
+            Minimum frequency for bandpass filter
+        fmax : float or None
+            Maximum frequency for bandpass filter
+        ylog : bool
+            Use logarithmic y-axis scale if True
+        xlog : bool
+            Use logarithmic x-axis scale if True
+        fill : bool
+            Fill the area under curves if True
+            
+        Returns:
+        --------
+        matplotlib.figure.Figure
+        """
+        import matplotlib.pyplot as plt
+        import multitaper as mt
+        from numpy import reshape, max, min
+        
+        def _multitaper_psd(arr: array, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[array, array]:
+            """Calculate multitaper power spectral density"""
+            out_psd = mt.MTSpec(arr, nw=time_bandwidth, kspec=n_win, dt=dt, iadapt=2)
+            _f, _psd = out_psd.rspec()
+            return reshape(_f, _f.size), reshape(_psd, _psd.size)
+
+        # Calculate PSDs for each component
+        Tsec = 5
+        components = [
+            ('Z', '*Z'), ('N', '*N'), ('E', '*E')
+        ]
+        psds = {}
+        for comp_name, comp_pattern in components:
+            f1, psd1 = _multitaper_psd(
+                rot.select(channel=comp_pattern)[0].data, 
+                rot[0].stats.delta,
+                n_win=Tsec
+            )
+            f2, psd2 = _multitaper_psd(
+                acc.select(channel=comp_pattern)[0].data, 
+                acc[0].stats.delta,
+                n_win=Tsec
+            )
+            psds[comp_name] = {'rot': (f1, psd1), 'acc': (f2, psd2)}
+
+        # Create figure
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        plt.subplots_adjust(wspace=0.3)
+
+        # Plot settings
+        font = 12
+        lw = 1
+        rot_color = "darkred"
+        acc_color = "black"
+        alpha = 0.5 if fill else 1.0
+
+        # Add title with time information
+        title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
+        if fmin is not None and fmax is not None:
+            title += f" | {fmin}-{fmax} Hz"
+        fig.suptitle(title, fontsize=font+2, y=1.02)
+
+        # Plot each component
+        for i, (comp_name, comp_data) in enumerate(psds.items()):
+            # Get component labels
+            rot_label = f"{rot[0].stats.station}.{rot.select(channel=f'*{comp_name}')[0].stats.channel}"
+            acc_label = f"{acc[0].stats.station}.{acc.select(channel=f'*{comp_name}')[0].stats.channel}"
+            
+            if fill:
+                # Plot with fill
+                axes[i].fill_between(
+                    comp_data['rot'][0],
+                    comp_data['rot'][1],
+                    lw=lw,
+                    label=rot_label,
+                    color=rot_color,
+                    alpha=alpha,
+                    zorder=3
+                )
+                ax2 = axes[i].twinx()
+                ax2.fill_between(
+                    comp_data['acc'][0],
+                    comp_data['acc'][1],
+                    lw=lw,
+                    label=acc_label,
+                    color=acc_color,
+                    alpha=alpha,
+                    zorder=2
+                )
+            else:
+                # Plot lines
+                axes[i].plot(
+                    comp_data['rot'][0],
+                    comp_data['rot'][1],
+                    lw=lw,
+                    label=rot_label,
+                    color=rot_color,
+                    ls="-",
+                    zorder=3
+                )
+                ax2 = axes[i].twinx()
+                ax2.plot(
+                    comp_data['acc'][0],
+                    comp_data['acc'][1],
+                    lw=lw,
+                    label=acc_label,
+                    color=acc_color,
+                    zorder=2
+                )
+            
+            # Configure axes
+            axes[i].legend(loc=1, ncols=4)
+            if xlog:
+                axes[i].set_xscale("log")
+            if ylog:
+                axes[i].set_yscale("log")
+                ax2.set_yscale("log")
+            
+            axes[i].grid(which="both", alpha=0.5)
+            axes[i].tick_params(axis='y', colors=rot_color)
+            axes[i].set_ylim(bottom=0)
+            ax2.set_ylim(bottom=0)
+            
+            # Set frequency limits
+            xlim_right = fmax if fmax else rot[0].stats.sampling_rate * 0.5
+            axes[i].set_xlim(left=fmin, right=xlim_right)
+            ax2.set_xlim(left=fmin, right=xlim_right)
+            axes[i].set_xlabel("Frequency (Hz)", fontsize=font)
+
+            # Set legends
+            ax2.legend(loc=2)
+
+            # For the last panel (E component), don't create new y-axis ticks on the right
+            if i == 2:
+                ax2.set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
+            if i == 0:
+                axes[i].set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
+            
+            # Add component label
+            axes[i].set_title(f"Component {comp_name}", fontsize=font)
+
+        # Adjust layout to accommodate supertitle
+        plt.subplots_adjust(top=0.90)
+        
         return fig
 
     @staticmethod
@@ -6548,7 +6519,7 @@ class sixdegrees():
             title_parts.append(filter_info)
         
         if title_parts:
-            fig.suptitle(' | '.join(title_parts), y=0.95)
+            fig.suptitle(' | '.join(title_parts), y=0.99)
         
         # Adjust layout
         plt.tight_layout()

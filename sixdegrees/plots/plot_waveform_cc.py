@@ -9,11 +9,11 @@ from matplotlib.ticker import AutoMinorLocator
 from obspy import Stream
 from obspy.signal.cross_correlation import correlate, xcorr_max
 from obspy.signal.rotate import rotate_ne_rt
-
+from obspy.core.utcdatetime import UTCDateTime
 
 def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[float]=None, fmax: Optional[float]=None, wave_type: str="both",
                     pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, runit: str=r"rad/s", tunit: str=r"m/s$^2$",
-                    twin_sec: int=5, twin_overlap: float=0.5, unitscale: str="nano") -> plt.Figure:
+                    twin_sec: int=5, twin_overlap: float=0.5, unitscale: str="nano", t1:UTCDateTime=None, t2:UTCDateTime=None) -> plt.Figure:
 
     """
     Plot waveform cross-correlation.
@@ -46,7 +46,11 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
         Time window overlap
     unitscale : str
         Unit scale: "nano" or "micro"
-
+    t1 : UTCDateTime or None
+        Start time to trim data
+    t2 : UTCDateTime or None
+        End time to trim data
+    
     Returns:
     --------
     fig : plt.Figure
@@ -92,6 +96,11 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
     rot = rot0.copy()
     acc = acc0.copy()
 
+    # trim data
+    if t1 is not None and t2 is not None:
+        rot = rot.trim(t1, t2)
+        acc = acc.trim(t1, t2)
+
     # get sampling rate
     dt = rot[0].stats.delta
 
@@ -124,6 +133,8 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
     elif unitscale == "micro":
         acc_scaling, acc_unit = 1e3, f"m{tunit}"
         rot_scaling, rot_unit = 1e6, f"{mu}{runit}"
+    else:
+        raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
 
     # define linewidth and fontsize
     lw = 1
