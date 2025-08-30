@@ -57,11 +57,12 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
         Figure object
 
     """
+    import matplotlib.pyplot as plt
     from obspy.signal.cross_correlation import correlate
     from obspy.signal.rotate import rotate_ne_rt
     from numpy import linspace, ones, array
-    import matplotlib.pyplot as plt
     from matplotlib.ticker import AutoMinorLocator
+    from obspy.core.utcdatetime import UTCDateTime
 
     def _cross_correlation_windows(arr1: array, arr2: array, dt: float, Twin: float, overlap: float=0, lag: int=0, demean: bool=True, plot: bool=False) -> Tuple[array, array]:
 
@@ -95,6 +96,11 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
 
     rot = rot0.copy()
     acc = acc0.copy()
+
+    if t1 is not None and not isinstance(t1, UTCDateTime):
+        t1 = UTCDateTime(t1)
+    if t2 is not None and not isinstance(t2, UTCDateTime):
+        t2 = UTCDateTime(t2)
 
     # trim data
     if t1 is not None and t2 is not None:
@@ -287,7 +293,7 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
     sm.set_array([])
     cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal")
 
-    cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-53, color="k")
+    cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-55, color="k")
 
     # Set limits for scatter plots
     for cm in cms:
