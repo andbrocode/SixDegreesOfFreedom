@@ -5,3 +5,10 @@ __pycache__/
 # exclude figures
 figures/
 
+# exclude backup of .gitignore
+.gitignore~
+
+# exclude trash folder
+OLD/
+
+
