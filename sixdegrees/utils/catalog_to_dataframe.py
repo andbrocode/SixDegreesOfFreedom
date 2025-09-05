@@ -5,35 +5,49 @@ import pandas as pd
 
 def catalog_to_dataframe(catalog):
     """
-    Convert ObsPy catalog to pandas DataFrame.
+    Convert catalog to pandas DataFrame.
     
     Args:
-        catalog: ObsPy catalog object
+        catalog: Either an ObsPy catalog object or a dictionary with 'events' list
         
     Returns:
         pandas.DataFrame: DataFrame containing event information including:
-            - timestamp: Event origin time
+            - time: Event origin time
             - latitude: Event latitude
             - longitude: Event longitude
             - depth: Event depth
             - magnitude: Event magnitude
-            - type: Magnitude type
+            - magnitude_type: Magnitude type
     """
     data = []
-    for event in catalog:
-        try:
-            origin = event.preferred_origin() or event.origins[0]
-            magnitude = event.preferred_magnitude() or event.magnitudes[0]
-            
+    
+    # Handle dictionary input
+    if isinstance(catalog, dict) and 'events' in catalog:
+        for event in catalog['events']:
             data.append({
-                'timestamp': origin.time,
-                'latitude': origin.latitude,
-                'longitude': origin.longitude,
-                'depth': origin.depth,
-                'magnitude': magnitude.mag,
-                'type': magnitude.magnitude_type
+                'time': pd.to_datetime(event['time']),
+                'latitude': event['latitude'],
+                'longitude': event['longitude'],
+                'depth': event['depth'],
+                'magnitude': event['magnitude'],
+                'magnitude_type': event['magnitude_type']
             })
-        except:
-            continue
+    # Handle ObsPy catalog
+    else:
+        for event in catalog:
+            try:
+                origin = event.preferred_origin() or event.origins[0]
+                magnitude = event.preferred_magnitude() or event.magnitudes[0]
+                
+                data.append({
+                    'time': pd.to_datetime(origin.time.datetime),
+                    'latitude': origin.latitude,
+                    'longitude': origin.longitude,
+                    'depth': origin.depth,
+                    'magnitude': magnitude.mag,
+                    'magnitude_type': magnitude.magnitude_type
+                })
+            except:
+                continue
             
     return pd.DataFrame(data)
