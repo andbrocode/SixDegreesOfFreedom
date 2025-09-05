@@ -50,7 +50,8 @@ class sixdegrees():
         self.rot_inv = None
         self.rot_inv_file = None
         self.tra_inv_file = None
-
+        self.fmin = None
+        self.fmax = None
         # predefine results for backazimuth estimation
         self.baz_results = {}
 
@@ -772,6 +773,9 @@ class sixdegrees():
         # assign stream to object
         self.st = st0
 
+        # write polarity dictionary for all traces
+        self.pol_dict.update({tr.stats.channel[1:]: 1 for tr in self.st})
+
         # Check if all traces have the same sampling rate and add as attribute
         if len(self.st) > 0:
             sampling_rates = set(tr.stats.sampling_rate for tr in self.st)
@@ -825,11 +829,12 @@ class sixdegrees():
                                                 starttime=t1-1, endtime=t2+1)
                     
                 elif self.data_source.lower() == 'mseed_file':
+                    # check if mseed file exists
+                    if not os.path.exists(self.mseed_file):
+                        raise ValueError(f"Mseed file {self.mseed_file} does not exist!")
                     if self.verbose:
                         print(f"-> fetching {tseed} data from mseed file")
-                    # read directly from mseed file
-                    if self.mseed_file is None:
-                        raise ValueError("No mseed file path provided")
+
                     tra0 = read(self.mseed_file)
                     tra += tra0.select(network=net, station=sta, location=loc, channel=cha)
                     tra = tra.trim(t1-1, t2+1)
@@ -971,17 +976,20 @@ class sixdegrees():
                         rot += client.get_waveforms(net, sta, loc, cha, t1-1, t2+1)
 
                 elif self.data_source.lower() == 'mseed_file':
+                    # check if mseed file exists
+                    if not os.path.exists(self.mseed_file):
+                        raise ValueError(f"Mseed file {self.mseed_file} does not exist!")
                     # read directly from mseed file
                     if self.verbose:
                         print(f"-> fetching {rseed} data from mseed file")
-                    if self.mseed_file is None:
-                        raise ValueError("No mseed file path provided")
+
                     rot0 = read(self.mseed_file)
-                    rot += rot0.select(network=net,
-                                        station=sta,
-                                        location=loc,
-                                        channel=cha
-                                        )
+                    rot += rot0.select(
+                        network=net,
+                        station=sta,
+                        location=loc,
+                        channel=cha
+                    )
                     rot = rot.trim(t1-1, t2+1)
                 else:
                     raise ValueError(f"Unknown data source: {self.data_source}. Use 'sds' or 'fdsn'.")
@@ -1178,24 +1186,28 @@ class sixdegrees():
         '''
         Modify polarity of data
         '''
-        if self.pol_applied:
-            if self.pol_dict == pol_dict:
-                print("-> polarity already applied. Exiting...")
-                return
-            else:
-                print("-> polarity already applied. Applying new polarity...")
-        # apply polarity to data
-        for tr in self.st:
-            if tr.stats.channel[1:] in pol_dict.keys():
-                tr.data = tr.data * pol_dict[tr.stats.channel[1:]]
-        if raw:
-            for tr in self.st0:
-                if tr.stats.channel[1:] in pol_dict.keys():
-                    tr.data = tr.data * pol_dict[tr.stats.channel[1:]]
-        # update polarity dictionary
-        self.pol_dict = pol_dict
-        # update polarity status
-        self.pol_applied = True
+        
+        same_dict = [True if v == self.pol_dict[k] else False for k, v in pol_dict.items()]
+        if all(same_dict):
+            print("-> polarity already applied. Exiting...")
+            return
+        else:
+            self.pol_applied = True
+            for k, v in pol_dict.items():
+                if k not in self.pol_dict:
+                    raise ValueError(f"Channel {k} not found in polarity dictionary")
+                elif self.pol_dict[k] != v:
+                    print(f"-> polarity for channel {k} changed from {self.pol_dict[k]} to {v}")
+                    self.pol_dict[k] = v
+
+                    # apply polarity to data
+                    for tr in self.st:
+                        if k in tr.stats.channel:
+                            tr.data *= pol_dict[k]
+                    if raw:
+                        for tr in self.st0:
+                            if k in tr.stats.channel:
+                                tr.data *= pol_dict[k]
 
     @staticmethod
     def load_from_yaml(name: str):
@@ -6973,12 +6985,13 @@ class sixdegrees():
         title_parts.append(time_period)
         
         # Add filter info if available
+        filter_info = ""
         if hasattr(self, 'fmin') and hasattr(self, 'fmax'):
-            if self.fmin and self.fmax:
+            if self.fmin is not None and self.fmax is not None:
                 filter_info = f"Filter: {self.fmin:.3f} - {self.fmax:.3f} Hz"
-            elif self.fmin:
+            elif self.fmin is not None:
                 filter_info = f"Filter: > {self.fmin:.3f} Hz"
-            elif self.fmax:
+            elif self.fmax is not None:
                 filter_info = f"Filter: < {self.fmax:.3f} Hz"
             title_parts.append(filter_info)
         

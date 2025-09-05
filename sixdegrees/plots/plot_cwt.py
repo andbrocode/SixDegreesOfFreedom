@@ -3,7 +3,7 @@ Functions for plotting continuous wavelet transform analysis for a single compon
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Dict
+from typing import Dict, Union
 from matplotlib.gridspec import GridSpec
 from obspy import Stream
 
@@ -81,7 +81,7 @@ def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False,
     # Get data and scale
     tr = st.copy()[0]
     data = tr.data * scale
-    label = f"$\Omega_{tr.stats.channel[-1]}$"
+    label = fr"$\Omega_{tr.stats.channel[-1]}$"
     key = f"{tr.stats.channel}"
     
     # Get times from the current trace instead of rotation stream

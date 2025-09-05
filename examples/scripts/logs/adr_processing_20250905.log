@@ -1,0 +1,29 @@
+2025-09-05 16:41:04,426 - INFO - Array initialized successfully
+2025-09-05 16:41:04,432 - INFO - 
+Processing 10 days from 2024-01-01 to 2024-01-10
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-01: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-02: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-03: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-04: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-05: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-06: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-07: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-08: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,437 - ERROR - Failed to process 2024-01-09: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,438 - ERROR - Failed to process 2024-01-10: 'seismicarray' object has no attribute 'get_waveforms'
+2025-09-05 16:41:04,935 - INFO - 
+Processing Summary:
+2025-09-05 16:41:04,935 - INFO - Total days processed: 10
+2025-09-05 16:41:04,935 - INFO - Successful: 0
+2025-09-05 16:41:04,935 - INFO - Failed: 10
+2025-09-05 16:41:04,935 - INFO - 
+Average stations per day: 0.0
+2025-09-05 16:41:04,935 - INFO - Average processing time: 0.0s
+2025-09-05 16:41:04,935 - INFO - 
+Summary plot saved to: figures/processing_summary.png
+2025-09-05 16:41:04,935 - INFO - Statistics saved to: figures/processing_stats.csv
+2025-09-05 16:43:23,802 - INFO - Array initialized successfully
+2025-09-05 16:43:23,802 - INFO - 
+Processing 10 days from 2024-01-01 to 2024-01-10
+2025-09-05 16:47:55,698 - INFO - Array initialized successfully
+2025-09-05 16:47:55,704 - INFO - Processing 10 days from 2024-01-01 to 2024-01-10

@@ -11,4 +11,6 @@ figures/
 # exclude trash folder
 OLD/
 
+# exclude event_configs
+event_configs/
 

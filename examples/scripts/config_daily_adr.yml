@@ -1,0 +1,47 @@
+# Configuration for daily ADR processing
+
+# Processing time range
+start_date: 2024-01-01
+end_date: 2024-01-10
+
+# Directory structure
+base_dir: ./
+sds_dir: /home/andbro/cursorfiles/data/SDS
+log_dir: ./logs
+
+# Array configuration
+fdsn_client: IRIS
+stations:
+  - PY.PFOIX
+  - PY.BPH01
+  - PY.BPH02
+  - PY.BPH03
+  - PY.BPH04
+  - PY.BPH05
+  - PY.BPH06
+  - PY.BPH07
+  - PY.BPH08
+  - PY.BPH09
+  - PY.BPH10
+  - PY.BPH11
+  - PY.BPH12
+  - PY.BPH13
+reference_station: PY.PFOIX
+channel_prefix: B
+
+# Processing parameters
+response_output: VEL
+output_format: sds
+
+# Filter parameters
+filter_params:
+  type: bandpass
+  freqmin: 0.001  # 1000s period
+  freqmax: 10.0   # 0.1s period
+  corners: 4
+  zerophase: True
+
+# ADR parameters
+vp: 6200  # P-wave velocity in m/s
+vs: 3700  # S-wave velocity in m/s
+sigmau: 1e-9  # Uncertainty in displacement

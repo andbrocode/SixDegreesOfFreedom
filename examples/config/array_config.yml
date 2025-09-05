@@ -1,0 +1,22 @@
+channel_prefix: B
+fdsn_client: IRIS
+reference_station: PY.PFOIX
+response_output: VEL
+sigmau: 1.0e-09
+stations:
+- PY.PFOIX
+- PY.BPH01
+- PY.BPH02
+- PY.BPH03
+- PY.BPH04
+- PY.BPH05
+- PY.BPH06
+- PY.BPH07
+- PY.BPH08
+- PY.BPH09
+- PY.BPH10
+- PY.BPH11
+- PY.BPH12
+- PY.BPH13
+vp: 6200
+vs: 3700
