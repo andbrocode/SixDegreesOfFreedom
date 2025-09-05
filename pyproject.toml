@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
+requires = ["setuptools>=64.0.0", "wheel", "pip>=22.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,14 +10,11 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [
-    {name = "Andreas Brotzer",
-    email = "rotzleffel@tutanota.com"
-    },
+    {name = "Andreas Brotzer", email = "rotzleffel@tutanota.com"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Intended Audience :: Science/Research"
 ]
 
 dependencies = [
@@ -43,12 +40,19 @@ dev = [
     "notebook>=6.5.4",
 ]
 
+test = [
+    "pytest>=6.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/andbrocode/sixdegrees"
 "Bug Tracker" = "https://github.com/andbrocode/sixdegrees/issues"
 
-[tool.hatch.build.targets.wheel]
-packages = ["sixdegrees"]
+[tool.setuptools.packages.find]
+include = ["sixdegrees", "sixdegrees.*"]
+exclude = ["OLD*", "tests*", "examples*", "docs*", "event_configs*"]
 
 [tool.hatch.version]
 path = "sixdegrees/__init__.py"
