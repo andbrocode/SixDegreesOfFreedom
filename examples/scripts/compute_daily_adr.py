@@ -17,7 +17,6 @@ from tqdm import tqdm
 from sixdegrees.seismicarray import seismicarray
 
 
-
 class ProcessingStats:
     """Class to track processing statistics."""
     def __init__(self):
