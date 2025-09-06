@@ -54,7 +54,6 @@ The project is organized as follows:
   - Sample data files
 - `docs/`: Documentation and environment specifications
 - `tests/`: Test suite
-- `event_configs/`: Event configuration files
 
 ### Example Usage
 
