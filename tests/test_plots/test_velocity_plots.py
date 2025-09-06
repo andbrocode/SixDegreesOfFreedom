@@ -29,7 +29,8 @@ def sample_velocity_data():
         'parameters': {
             'wave_type': 'love',
             'win_time_s': 60,
-            'overlap': 0.5
+            'overlap': 0.5,
+            'baz': 180.0
         }
     }
     
@@ -67,26 +68,16 @@ def sample_method_comparison_data():
     """Create sample data for method comparison."""
     # Create methods and their results
     methods = ['Method A', 'Method B', 'Method C']
-    velocities = {
-        'Method A': {
-            'time': np.linspace(0, 3600, 50),
-            'velocity': np.random.normal(3000, 100, 50),
-            'ccoef': np.random.uniform(0.6, 0.9, 50),
-            'parameters': {'win_time_s': 60, 'overlap': 0.5}
-        },
-        'Method B': {
-            'time': np.linspace(0, 3600, 50),
-            'velocity': np.random.normal(3100, 150, 50),
-            'ccoef': np.random.uniform(0.5, 0.8, 50),
-            'parameters': {'win_time_s': 60, 'overlap': 0.5}
-        },
-        'Method C': {
-            'time': np.linspace(0, 3600, 50),
-            'velocity': np.random.normal(2900, 120, 50),
-            'ccoef': np.random.uniform(0.7, 1.0, 50),
+    velocities = {}
+    
+    for method in methods:
+        times = np.linspace(0, 3600, 50)
+        velocities[method] = {
+            'time': times,
+            'velocity': np.random.normal(3000, 100, len(times)),
+            'ccoef': np.random.uniform(0.6, 0.9, len(times)),
             'parameters': {'win_time_s': 60, 'overlap': 0.5}
         }
-    }
     
     return velocities
 
@@ -116,9 +107,9 @@ def sample_stream():
             'elevation': 565.0
         }
     
-    tr_z.stats.channel = 'BJZ'
-    tr_n.stats.channel = 'BJN'
-    tr_e.stats.channel = 'BJE'
+    tr_z.stats.channel = 'HHZ'  # Use HH channels for acceleration
+    tr_n.stats.channel = 'HHN'
+    tr_e.stats.channel = 'HHE'
     
     return Stream([tr_z, tr_n, tr_e])
 
@@ -139,6 +130,25 @@ def test_plot_velocities(sample_velocity_data, sample_stream, temp_output_dir):
             self.mu = "μ"
             self.st = stream
             self.sampling_rate = stream[0].stats.sampling_rate
+            self._stream = stream
+            self.tra_seed = ['BW.ROMY.00.HHN', 'BW.ROMY.00.HHE', 'BW.ROMY.00.HHZ']
+            self.rot_seed = ['BW.ROMY.00.BJN', 'BW.ROMY.00.BJE', 'BW.ROMY.00.BJZ']
+        
+        def get_stream(self, data_type):
+            if data_type == "rotation":
+                # Create rotation stream
+                t = np.linspace(0, 3600, 3600)
+                data = np.sin(2 * np.pi * 0.1 * t)
+                tr = Trace(data=data)
+                tr.stats.sampling_rate = 1.0
+                tr.stats.starttime = UTCDateTime('2023-01-01')
+                tr.stats.network = 'BW'
+                tr.stats.station = 'ROMY'
+                tr.stats.channel = 'BJZ'  # Use BJ channels for rotation
+                return Stream([tr])
+            else:
+                # Return acceleration stream
+                return self._stream.copy()
     
     # Plot velocities
     fig = plot_velocities(
@@ -168,6 +178,25 @@ def test_plot_velocities_win(sample_window_data, sample_stream, temp_output_dir)
             self.mu = "μ"
             self.st = stream
             self.sampling_rate = stream[0].stats.sampling_rate
+            self._stream = stream
+            self.tra_seed = ['BW.ROMY.00.HHN', 'BW.ROMY.00.HHE', 'BW.ROMY.00.HHZ']
+            self.rot_seed = ['BW.ROMY.00.BJN', 'BW.ROMY.00.BJE', 'BW.ROMY.00.BJZ']
+        
+        def get_stream(self, data_type):
+            if data_type == "rotation":
+                # Create rotation stream
+                t = np.linspace(0, 3600, 3600)
+                data = np.sin(2 * np.pi * 0.1 * t)
+                tr = Trace(data=data)
+                tr.stats.sampling_rate = 1.0
+                tr.stats.starttime = UTCDateTime('2023-01-01')
+                tr.stats.network = 'BW'
+                tr.stats.station = 'ROMY'
+                tr.stats.channel = 'BJZ'  # Use BJ channels for rotation
+                return Stream([tr])
+            else:
+                # Return acceleration stream
+                return self._stream.copy()
     
     # Plot windowed velocities
     fig = plot_velocities_win(
@@ -239,6 +268,25 @@ def test_plot_velocities_invalid_input(sample_stream):
             self.mu = "μ"
             self.st = stream
             self.sampling_rate = stream[0].stats.sampling_rate
+            self._stream = stream
+            self.tra_seed = ['BW.ROMY.00.HHN', 'BW.ROMY.00.HHE', 'BW.ROMY.00.HHZ']
+            self.rot_seed = ['BW.ROMY.00.BJN', 'BW.ROMY.00.BJE', 'BW.ROMY.00.BJZ']
+        
+        def get_stream(self, data_type):
+            if data_type == "rotation":
+                # Create rotation stream
+                t = np.linspace(0, 3600, 3600)
+                data = np.sin(2 * np.pi * 0.1 * t)
+                tr = Trace(data=data)
+                tr.stats.sampling_rate = 1.0
+                tr.stats.starttime = UTCDateTime('2023-01-01')
+                tr.stats.network = 'BW'
+                tr.stats.station = 'ROMY'
+                tr.stats.channel = 'BJZ'  # Use BJ channels for rotation
+                return Stream([tr])
+            else:
+                # Return acceleration stream
+                return self._stream.copy()
     
     # Create invalid results (missing required data)
     results = {
@@ -261,6 +309,25 @@ def test_plot_velocities_win_invalid_input(sample_stream):
             self.mu = "μ"
             self.st = stream
             self.sampling_rate = stream[0].stats.sampling_rate
+            self._stream = stream
+            self.tra_seed = ['BW.ROMY.00.HHN', 'BW.ROMY.00.HHE', 'BW.ROMY.00.HHZ']
+            self.rot_seed = ['BW.ROMY.00.BJN', 'BW.ROMY.00.BJE', 'BW.ROMY.00.BJZ']
+        
+        def get_stream(self, data_type):
+            if data_type == "rotation":
+                # Create rotation stream
+                t = np.linspace(0, 3600, 3600)
+                data = np.sin(2 * np.pi * 0.1 * t)
+                tr = Trace(data=data)
+                tr.stats.sampling_rate = 1.0
+                tr.stats.starttime = UTCDateTime('2023-01-01')
+                tr.stats.network = 'BW'
+                tr.stats.station = 'ROMY'
+                tr.stats.channel = 'BJZ'  # Use BJ channels for rotation
+                return Stream([tr])
+            else:
+                # Return acceleration stream
+                return self._stream.copy()
     
     # Create invalid results (missing required data)
     results = {

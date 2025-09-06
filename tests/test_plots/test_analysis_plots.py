@@ -71,6 +71,24 @@ def sample_cwt_data():
             'frequencies': freqs,
             'cwt_power': cwt,
             'cone': np.ones_like(times) * freqs[0]
+        },
+        'HHZ': {
+            'times': times,
+            'frequencies': freqs,
+            'cwt_power': cwt,
+            'cone': np.ones_like(times) * freqs[0]
+        },
+        'HHN': {
+            'times': times,
+            'frequencies': freqs,
+            'cwt_power': cwt,
+            'cone': np.ones_like(times) * freqs[0]
+        },
+        'HHE': {
+            'times': times,
+            'frequencies': freqs,
+            'cwt_power': cwt,
+            'cone': np.ones_like(times) * freqs[0]
         }
     }
     
@@ -94,7 +112,12 @@ def sample_frequency_time_data():
         'time_windows': [times] * len(freqs),
         'backazimuth_data': [baz[i] for i in range(len(freqs))],
         'correlation_data': [coh[i] for i in range(len(freqs))],
-        'window_factor': 10
+        'window_factor': 10,
+        'parameters': {
+            'wave_type': 'love',
+            'fmin': 0.01,
+            'fmax': 1.0
+        }
     }
     
     return results
@@ -133,10 +156,22 @@ def test_plot_cwt(sample_stream, sample_cwt_data, temp_output_dir):
 
 def test_plot_cwt_all(sample_stream, sample_cwt_data, temp_output_dir):
     """Test plotting CWT for all components."""
+    # Create streams with proper channel names
+    rot = Stream([
+        Trace(data=np.zeros(100), header={'channel': 'BJZ', 'sampling_rate': 1.0, 'starttime': UTCDateTime('2023-01-01')}),
+        Trace(data=np.zeros(100), header={'channel': 'BJN', 'sampling_rate': 1.0, 'starttime': UTCDateTime('2023-01-01')}),
+        Trace(data=np.zeros(100), header={'channel': 'BJE', 'sampling_rate': 1.0, 'starttime': UTCDateTime('2023-01-01')})
+    ])
+    acc = Stream([
+        Trace(data=np.zeros(100), header={'channel': 'HHZ', 'sampling_rate': 1.0, 'starttime': UTCDateTime('2023-01-01')}),
+        Trace(data=np.zeros(100), header={'channel': 'HHN', 'sampling_rate': 1.0, 'starttime': UTCDateTime('2023-01-01')}),
+        Trace(data=np.zeros(100), header={'channel': 'HHE', 'sampling_rate': 1.0, 'starttime': UTCDateTime('2023-01-01')})
+    ])
+    
     # Plot CWT for all components
     fig = plot_cwt_all(
-        rot=sample_stream,  # Use same stream for both rot and acc for testing
-        acc=sample_stream,
+        rot=rot,
+        acc=acc,
         cwt_output=sample_cwt_data,
         clog=False,
         ylim=0.5
@@ -189,7 +224,7 @@ def test_plot_cwt_invalid_input():
         plot_cwt(st, cwt_output)
     
     # Create stream with invalid frequency range
-    st = Stream([Trace(data=np.zeros(100))])
+    st = Stream([Trace(data=np.zeros(100), header={'channel': 'BJZ', 'sampling_rate': 1.0})])
     cwt_output = {
         'BJZ': {
             'times': np.zeros(90),  # Mismatched length
@@ -215,8 +250,8 @@ def test_plot_cwt_all_invalid_input():
         plot_cwt_all(rot, acc, cwt_output)
     
     # Create streams with invalid data
-    rot = Stream([Trace(data=np.zeros(100))])
-    acc = Stream([Trace(data=np.zeros(90))])  # Different length
+    rot = Stream([Trace(data=np.zeros(100), header={'channel': 'BJZ', 'sampling_rate': 1.0})])
+    acc = Stream([Trace(data=np.zeros(90), header={'channel': 'HHZ', 'sampling_rate': 1.0})])  # Different length
     cwt_output = {
         'BJZ': {
             'times': np.zeros(90),
@@ -239,7 +274,12 @@ def test_plot_frequency_time_map_adaptive_invalid_input():
         'time_windows': [np.linspace(0, 3600, 100)],
         'backazimuth_data': [np.zeros(90)],  # Mismatched length
         'correlation_data': [np.zeros(100)],
-        'window_factor': 10
+        'window_factor': 10,
+        'parameters': {
+            'wave_type': 'love',
+            'fmin': 0.01,
+            'fmax': 1.0
+        }
     }
     
     # Should raise ValueError for mismatched dimensions

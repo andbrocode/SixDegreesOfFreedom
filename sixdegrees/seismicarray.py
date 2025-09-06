@@ -50,9 +50,9 @@ class seismicarray:
         self.station_distances = {}
         self.failed_stations = []  # Track failed stations
         self.adr_parameters = {
-            'vp': self.config.get('vp', 6200),  # P-wave velocity in m/s
-            'vs': self.config.get('vs', 3700),  # S-wave velocity in m/s
-            'sigmau': self.config.get('sigmau', 1e-7)  # Uncertainty in displacement
+            'vp': float(self.config.get('vp', 6200.)),  # P-wave velocity in m/s
+            'vs': float(self.config.get('vs', 3700.)),  # S-wave velocity in m/s
+            'sigmau': float(self.config.get('sigmau', 1e-7))  # Uncertainty in displacement
         }
         
         # Validate configuration
@@ -261,9 +261,9 @@ class seismicarray:
                     coords = inventory.get_coordinates(f"{net}.{sta}..{self.channel_prefix}HZ")
                     self.inventories[station] = inventory
                     self.station_coordinates[station] = {
-                        'latitude': coords['latitude'],
-                        'longitude': coords['longitude'],
-                        'elevation': coords['elevation']
+                        'latitude': float(coords['latitude']),
+                        'longitude': float(coords['longitude']),
+                        'elevation': float(coords['elevation'])
                     }
                     successful_stations.append(station)
                     
@@ -483,7 +483,7 @@ class seismicarray:
             if verbose:
                 print(f" -> {station} coordinates [m]: E={x:.1f}, N={y:.1f}, Z={z:.1f}")
                 
-        return np.array(coordinates)
+        return np.array(coordinates, dtype=np.float64)
 
     def compute_adr(self, stream: Optional[Stream] = None, output: bool = False, verbose: bool = False) -> Stream:
         """
@@ -543,10 +543,10 @@ class seismicarray:
         if ref_stream is None:
             raise ValueError("Reference station data not found in stream")
 
-        # Convert lists to numpy arrays
-        tse = np.array(tse)
-        tsn = np.array(tsn)
-        tsz = np.array(tsz)
+        # Convert lists to numpy arrays with explicit float dtype
+        tse = np.array(tse, dtype=np.float64)
+        tsn = np.array(tsn, dtype=np.float64)
+        tsz = np.array(tsz, dtype=np.float64)
         
         # Get coordinates in correct format
         if verbose:

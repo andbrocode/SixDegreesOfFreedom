@@ -16,31 +16,7 @@ from obspy import UTCDateTime
 from tqdm import tqdm
 from sixdegrees.seismicarray import seismicarray
 
-def setup_logging(log_dir):
-    """Setup logging configuration."""
-    log_dir = Path(log_dir)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    
-    log_file = log_dir / f"adr_processing_{datetime.now().strftime('%Y%m%d')}.log"
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
 
-def load_config(config_file):
-    """Load configuration from YAML file."""
-    try:
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    except Exception as e:
-        logging.error(f"Failed to load configuration: {str(e)}")
-        sys.exit(1)
 
 class ProcessingStats:
     """Class to track processing statistics."""
@@ -87,6 +63,32 @@ class ProcessingStats:
         plt.savefig(Path(output_dir) / 'processing_summary.png')
         plt.close()
 
+def setup_logging(log_dir):
+    """Setup logging configuration."""
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    log_file = log_dir / f"adr_processing_{datetime.now().strftime('%Y%m%d')}.log"
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+def load_config(config_file):
+    """Load configuration from YAML file."""
+    try:
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
+    except Exception as e:
+        logging.error(f"Failed to load configuration: {str(e)}")
+        sys.exit(1)
+
 def process_day(array, date, sds_root, config):
     """Process one day of data."""
     try:
@@ -107,7 +109,7 @@ def process_day(array, date, sds_root, config):
             filter_params=config.get('filter_params', {
                 'type': 'bandpass',
                 'freqmin': 0.001,  # 1000s period
-                'freqmax': 10,     # 0.1s period
+                'freqmax': 1.0,     # 0.1s period
                 'corners': 4,
                 'zerophase': True
             }),
@@ -150,10 +152,9 @@ def main():
     base_dir = Path(config.get('base_dir', '.'))
     sds_root = base_dir / config.get('sds_dir', 'SDS')
     log_dir = base_dir / config.get('log_dir', 'logs')
-    fig_dir = base_dir / config.get('fig_dir', 'figures')
     
     # Create directories
-    for directory in [sds_root, log_dir, fig_dir]:
+    for directory in [sds_root, log_dir]:
         directory.mkdir(parents=True, exist_ok=True)
     
     # Setup logging
@@ -192,10 +193,10 @@ def main():
             failed_days += 1
     
     # Create summary plot
-    stats.plot_summary(fig_dir)
+    stats.plot_summary(log_dir)
     
     # Save statistics to CSV
-    stats_file = fig_dir / 'processing_stats.csv'
+    stats_file = log_dir / 'processing_stats.csv'
     stats.to_dataframe().to_csv(stats_file, index=False)
     
     # Log summary
@@ -205,7 +206,7 @@ def main():
     logging.info(f"Failed: {failed_days}")
     logging.info(f"Average stations per day: {np.mean(stats.station_counts):.1f}")
     logging.info(f"Average processing time: {np.mean(stats.processing_times):.1f}s")
-    logging.info(f"Summary plot saved to: {fig_dir}/processing_summary.png")
+    logging.info(f"Summary plot saved to: {log_dir}/processing_summary.png")
     logging.info(f"Statistics saved to: {stats_file}")
 
 if __name__ == "__main__":

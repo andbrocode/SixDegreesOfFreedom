@@ -125,8 +125,8 @@ def test_plot_waveform_cc_invalid_input():
         plot_waveform_cc(rot0=rot, acc0=acc, baz=45.0, wave_type="both")
     
     # Create mismatched streams
-    rot = Stream([Trace(data=np.zeros(100))])
-    acc = Stream([Trace(data=np.zeros(200))])  # Different length
+    rot = Stream([Trace(data=np.zeros(100), header={'channel': 'BJZ', 'sampling_rate': 1.0})])
+    acc = Stream([Trace(data=np.zeros(200), header={'channel': 'HHZ', 'sampling_rate': 1.0})])  # Different length
     
     # Should raise ValueError for mismatched data lengths
     with pytest.raises(ValueError):
@@ -144,14 +144,14 @@ def test_plot_spectra_invalid_input():
     
     # Create streams with invalid frequency range
     rot = Stream([
-        Trace(data=np.zeros(100), header={'channel': 'BJZ'}),
-        Trace(data=np.zeros(100), header={'channel': 'BJN'}),
-        Trace(data=np.zeros(100), header={'channel': 'BJE'})
+        Trace(data=np.zeros(100), header={'channel': 'BJZ', 'sampling_rate': 1.0}),
+        Trace(data=np.zeros(100), header={'channel': 'BJN', 'sampling_rate': 1.0}),
+        Trace(data=np.zeros(100), header={'channel': 'BJE', 'sampling_rate': 1.0})
     ])
     acc = Stream([
-        Trace(data=np.zeros(100), header={'channel': 'HHZ'}),
-        Trace(data=np.zeros(100), header={'channel': 'HHN'}),
-        Trace(data=np.zeros(100), header={'channel': 'HHE'})
+        Trace(data=np.zeros(100), header={'channel': 'HHZ', 'sampling_rate': 1.0}),
+        Trace(data=np.zeros(100), header={'channel': 'HHN', 'sampling_rate': 1.0}),
+        Trace(data=np.zeros(100), header={'channel': 'HHE', 'sampling_rate': 1.0})
     ])
     
     # Should raise ValueError for fmax <= fmin

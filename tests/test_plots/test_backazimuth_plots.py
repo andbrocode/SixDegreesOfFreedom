@@ -26,7 +26,12 @@ def sample_backazimuth_data():
         'love': {
             'baz': baz,
             'cc': cc,
-            'times': times
+            'cc_mid': cc,  # Use same values for cc_mid
+            'cc_max': cc,  # Use same values for cc_max
+            'times': times,
+            'twin_center': times[::2],  # Window centers
+            'twin_start': times[:-1:2],  # Window start times
+            'twin_end': times[1::2]  # Window end times
         }
     }
     
@@ -81,8 +86,10 @@ def sample_frequency_data():
             'backazimuth': baz,
             'coherence': cc,
             'frequencies': freqs,
-            'peak_baz': 180.0,
-            'peak_cc': 0.8
+            'peak_baz': np.array([180.0 + np.random.normal(0, 5) for _ in range(len(freqs))]),
+            'peak_cc': np.array([0.8 + np.random.normal(0, 0.1) for _ in range(len(freqs))]),
+            'kde_values': np.random.random((len(freqs), 36)),  # 36 backazimuth bins
+            'n_estimates': np.random.randint(10, 50, len(freqs))  # Number of estimates per frequency
         }
     }
     
@@ -96,15 +103,19 @@ def sample_frequency_data():
     # Create backazimuth grid
     baz_grid = np.linspace(0, 360, 36)
     
+    # Create parameters
+    parameters = {
+        'wave_type': 'love',
+        'fmin': 0.01,
+        'fmax': 1.0,
+        'octave_fraction': 3  # Number of bands per octave
+    }
+    
     return {
         'wave_types': wave_types,
         'frequency_bands': frequency_bands,
         'baz_grid': baz_grid,
-        'parameters': {
-            'wave_type': 'love',
-            'fmin': 0.01,
-            'fmax': 1.0
-        }
+        'parameters': parameters
     }
 
 @pytest.fixture
@@ -133,9 +144,9 @@ def sample_stream():
             'elevation': 565.0
         }
     
-    tr_z.stats.channel = 'BJZ'
-    tr_n.stats.channel = 'BJN'
-    tr_e.stats.channel = 'BJE'
+    tr_z.stats.channel = 'HHZ'  # Use HH channels for acceleration
+    tr_n.stats.channel = 'HHN'
+    tr_e.stats.channel = 'HHE'
     
     return Stream([tr_z, tr_n, tr_e])
 
@@ -176,9 +187,24 @@ def test_plot_backazimuth_results(sample_backazimuth_data, sample_stream, temp_o
             self.tunit = "m/s²"
             self.mu = "μ"
             self._stream = stream
+            self.tra_seed = ['BW.ROMY.00.HHN', 'BW.ROMY.00.HHE', 'BW.ROMY.00.HHZ']
+            self.rot_seed = ['BW.ROMY.00.BJN', 'BW.ROMY.00.BJE', 'BW.ROMY.00.BJZ']
         
         def get_stream(self, data_type):
-            return self._stream.copy()
+            if data_type == "rotation":
+                # Create rotation stream
+                t = np.linspace(0, 3600, 3600)
+                data = np.sin(2 * np.pi * 0.1 * t)
+                tr = Trace(data=data)
+                tr.stats.sampling_rate = 1.0
+                tr.stats.starttime = UTCDateTime('2023-01-01')
+                tr.stats.network = 'BW'
+                tr.stats.station = 'ROMY'
+                tr.stats.channel = 'BJZ'  # Use BJ channels for rotation
+                return Stream([tr])
+            else:
+                # Return acceleration stream
+                return self._stream.copy()
     
     # Plot results
     fig = plot_backazimuth_results(
@@ -263,9 +289,24 @@ def test_plot_backazimuth_results_invalid_input(sample_stream):
             self.tunit = "m/s²"
             self.mu = "μ"
             self._stream = stream
+            self.tra_seed = ['BW.ROMY.00.HHN', 'BW.ROMY.00.HHE', 'BW.ROMY.00.HHZ']
+            self.rot_seed = ['BW.ROMY.00.BJN', 'BW.ROMY.00.BJE', 'BW.ROMY.00.BJZ']
         
         def get_stream(self, data_type):
-            return self._stream.copy()
+            if data_type == "rotation":
+                # Create rotation stream
+                t = np.linspace(0, 3600, 3600)
+                data = np.sin(2 * np.pi * 0.1 * t)
+                tr = Trace(data=data)
+                tr.stats.sampling_rate = 1.0
+                tr.stats.starttime = UTCDateTime('2023-01-01')
+                tr.stats.network = 'BW'
+                tr.stats.station = 'ROMY'
+                tr.stats.channel = 'BJZ'  # Use BJ channels for rotation
+                return Stream([tr])
+            else:
+                # Return acceleration stream
+                return self._stream.copy()
     
     # Create mismatched data lengths
     times = [UTCDateTime('2023-01-01') + t for t in range(10)]
@@ -276,7 +317,12 @@ def test_plot_backazimuth_results_invalid_input(sample_stream):
     results = {
         'times': times,
         'baz': baz,
-        'cc': cc
+        'cc': cc,
+        'cc_mid': cc,  # Use same values for cc_mid
+        'cc_max': cc,  # Use same values for cc_max
+        'twin_center': times[::2],  # Window centers
+        'twin_start': times[:-1:2],  # Window start times
+        'twin_end': times[1::2]  # Window end times
     }
     
     # Should raise ValueError for mismatched lengths
