@@ -332,10 +332,10 @@ class sixdegrees():
                 'depth_km': float(origin.depth) / 1000 if origin.depth else None,
                 'magnitude': float(magnitude_obj.mag),
                 'magnitude_type': str(magnitude_obj.magnitude_type),
-                'distance_km': float(distance) / 1000,
+                'distance_km': round(float(distance) / 1000, 2),
                 'distance_deg': kilometers2degrees(float(distance) / 1000),
-                'azimuth': float(az),
-                'backazimuth': float(baz),
+                'azimuth': round(float(az), 2),
+                'backazimuth': round(float(baz), 2),
                 'catalog': str(self.base_catalog),
                 'event_id': str(event.resource_id.id)
             }
@@ -346,9 +346,9 @@ class sixdegrees():
                 print(f"Magnitude: {self.event_info['magnitude']} {self.event_info['magnitude_type']}")
                 print(f"Location: {self.event_info['latitude']:.3f}°N, {self.event_info['longitude']:.3f}°E")
                 print(f"Depth: {self.event_info['depth_km']:.1f} km")
-                print(f"Epicentral Distance: {self.event_info['distance_km']:.1f} km")
+                print(f"Epicentral Distance: {self.event_info['distance_km']:.2f} km")
                 print(f"Epicentral Distance: {self.event_info['distance_deg']:.1f}°")
-                print(f"Backazimuth: {self.event_info['backazimuth']:.1f}°")
+                print(f"Backazimuth: {self.event_info['backazimuth']:.2f}°")
             
             return self.event_info
             
