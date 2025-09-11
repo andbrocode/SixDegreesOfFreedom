@@ -242,22 +242,28 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     
     # Integrate translational data (acceleration to displacement)
     print("Integrating translational data (acceleration to displacement)...")
+    trans_integrated = trans_st.copy()
     for comp in components:
-        trans_data = trans_st.select(component=comp)[0].data
-        trans_st.select(component=comp)[0].data = integrate_twice(trans_data, dt)
-    
+        trans_data = trans_integrated.select(component=comp)[0].data
+        trans_integrated.select(component=comp)[0].data = integrate_twice(trans_data, dt)
+        trans_integrated.select(component=comp)[0].detrend('linear')
+
     # Integrate rotational data (rotation rate to rotation angle)
     print("Integrating rotational data (rotation rate to rotation angle)...")
+    rot_integrated = rot_st.copy()
     for comp in components:
-        rot_data = rot_st.select(component=comp)[0].data
-        rot_st.select(component=comp)[0].data = integrate_once(rot_data, dt)
-    
+        rot_data = rot_integrated.select(component=comp)[0].data
+        rot_integrated.select(component=comp)[0].data = integrate_once(rot_data, dt)
+        rot_integrated.select(component=comp)[0].detrend('linear')
+
     # Normalize all traces if requested (after integration, before plotting)
     if normalize_traces:
         print("Normalizing traces to [-1, 1] range...")
         for comp in components:
             trans_st.select(component=comp)[0].data = normalize_trace(trans_st.select(component=comp)[0].data)
             rot_st.select(component=comp)[0].data = normalize_trace(rot_st.select(component=comp)[0].data)
+            trans_integrated.select(component=comp)[0].data = normalize_trace(trans_integrated.select(component=comp)[0].data)
+            rot_integrated.select(component=comp)[0].data = normalize_trace(rot_integrated.select(component=comp)[0].data)
     else:
         print("Skipping trace normalization - using original amplitudes")
     
@@ -312,12 +318,16 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     offsets = np.arange(6) * 1.5  # Reduced spacing from 2.5 to 1.5
     trace_pairs = list(zip(components * 2, ['Translation'] * 3 + ['Rotation'] * 3, offsets))
     
-    # Initialize lines for each trace
+    # Initialize lines for each trace (using original data for waveforms)
     wave_lines_past = []
     wave_lines_future = []
     
     for comp, trace_type, offset in trace_pairs:
-        tr = trans_st.select(component=comp)[0] if trace_type == 'Translation' else rot_st.select(component=comp)[0]
+        # Use appropriate stream for waveform display
+        if trace_type == 'Translation':
+            tr = trans_st.select(component=comp)[0]
+        else:
+            tr = rot_st.select(component=comp)[0]
         color = 'k' if trace_type == 'Translation' else 'darkred'
         
         # Plot future data in grey
@@ -368,16 +378,21 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     ax_love.grid(True, ls='--', zorder=0)
     ax_rayleigh.grid(True, ls='--', zorder=0)
     
-    # Setup 3D cube plot
-    ax_cube.set_xlabel('X (Displacement)')
-    ax_cube.set_ylabel('Y (Displacement)')
-    ax_cube.set_zlabel('Z (Displacement)')
-    
     # Set 3D plot limits to -1, 1
     ax_cube.set_xlim(-1, 1)
     ax_cube.set_ylim(-1, 1)
     ax_cube.set_zlim(-1, 1)
-    
+
+    # Setup 3D cube plot
+    if rotate_zrt:
+        ax_cube.set_xlabel('R')
+        ax_cube.set_ylabel('T')
+        ax_cube.set_zlabel('Z')
+    else:
+        ax_cube.set_xlabel('E')
+        ax_cube.set_ylabel('N')
+        ax_cube.set_zlabel('Z')
+
     # Create initial cube at origin
     cube_vertices, cube_faces = create_cube(center=(0, 0, 0), size=cube_scale)
     
@@ -385,8 +400,12 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     face_colors = ['red', 'blue', 'green', 'yellow', 'orange', 'purple']
     
     # Create cube collection
-    cube_collection = Poly3DCollection([cube_vertices[face] for face in cube_faces], 
-                                      facecolors=face_colors, alpha=0.7, edgecolors='black')
+    cube_collection = Poly3DCollection(
+        [cube_vertices[face] for face in cube_faces], 
+        facecolors=face_colors,
+        alpha=0.7,
+        edgecolors='black'
+    )
     ax_cube.add_collection3d(cube_collection)
     
     # Create red fade colormap for particle motion trails
@@ -444,8 +463,12 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
         rayleigh_point.set_offsets(np.c_[[], []])
         trail_region.remove()  # Remove old region
         # Create new empty region
-        trail_region = ax_waves.fill_betweenx(np.array([-1, 9]), 0, 0,
-                                           color='lightblue', alpha=0.2, zorder=0)
+        trail_region = ax_waves.fill_betweenx(
+            np.array([-1, 9]), 0, 0,
+            color='lightblue',
+            alpha=0.2,
+            zorder=0
+        )
         return wave_lines_past + [love_trail, rayleigh_trail, love_point, rayleigh_point, cursor_line, trail_region]
     
     def animate(frame):
@@ -462,12 +485,21 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
         # Update trail region by removing old and creating new
         trail_region.remove()
         start_time = max(0, current_time - tail_duration)
-        trail_region = ax_waves.fill_betweenx(np.array([-1, 9]), start_time, current_time,
-                                           color='lightblue', alpha=0.2, zorder=0)
+        trail_region = ax_waves.fill_betweenx(
+            np.array([-1, 9]),
+            start_time,
+            current_time,
+            color='lightblue',
+            alpha=0.2,
+            zorder=0
+        )
         
-        # Update waveform lines
+        # Update waveform lines (using original data)
         for i, (comp, trace_type, offset) in enumerate(trace_pairs):
-            tr = trans_st.select(component=comp)[0] if trace_type == 'Translation' else rot_st.select(component=comp)[0]
+            if trace_type == 'Translation':
+                tr = trans_st.select(component=comp)[0]
+            else:
+                tr = rot_st.select(component=comp)[0]
             mask = t_trans <= current_time
             wave_lines_past[i].set_data(t_trans[mask], tr.data[mask] + offset)
         
@@ -478,11 +510,11 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
             start_idx = max(0, current_idx - tail_samples)
             
             if rotate_zrt:  # Only show particle motion in ZRT coordinates
-                # Get relevant components for Love waves (HT and RZ)
+                # Get relevant components for Love waves (HT and RZ) - using original data
                 rz = rot_st.select(component='Z')[0].data[start_idx:current_idx+1]
                 ht = trans_st.select(component='Z')[0].data[start_idx:current_idx+1]
                 
-                # Get relevant components for Rayleigh waves (RT and HZ)
+                # Get relevant components for Rayleigh waves (RT and HZ) - using original data
                 hz = trans_st.select(component='Z')[0].data[start_idx:current_idx+1]
                 rt = rot_st.select(component='T')[0].data[start_idx:current_idx+1]
                 
@@ -503,31 +535,31 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
                     rayleigh_trail.set_array(fade_values)
                     rayleigh_point.set_offsets([[rt[-1], hz[-1]]])  # Current point is at the end
             
-            # Update 3D cube
+            # Update 3D cube (using integrated data)
             if current_idx < len(t_trans):
                 # Get current translational values (X, Y, Z) - now displacement after integration
                 if rotate_zrt:
-                    # Use ZRT components
-                    x_trans = trans_st.select(component='R')[0].data[current_idx] if 'R' in components else 0
-                    y_trans = trans_st.select(component='T')[0].data[current_idx] if 'T' in components else 0
-                    z_trans = trans_st.select(component='Z')[0].data[current_idx]
+                    # Use ZRT components from integrated data
+                    x_trans = trans_integrated.select(component='R')[0].data[current_idx] if 'R' in components else 0
+                    y_trans = trans_integrated.select(component='T')[0].data[current_idx] if 'T' in components else 0
+                    z_trans = trans_integrated.select(component='Z')[0].data[current_idx]
                 else:
-                    # Use ZNE components
-                    x_trans = trans_st.select(component='E')[0].data[current_idx] if 'E' in components else 0
-                    y_trans = trans_st.select(component='N')[0].data[current_idx] if 'N' in components else 0
-                    z_trans = trans_st.select(component='Z')[0].data[current_idx]
+                    # Use ZNE components from integrated data
+                    x_trans = trans_integrated.select(component='E')[0].data[current_idx] if 'E' in components else 0
+                    y_trans = trans_integrated.select(component='N')[0].data[current_idx] if 'N' in components else 0
+                    z_trans = trans_integrated.select(component='Z')[0].data[current_idx]
                 
                 # Get current rotational values (X, Y, Z) - now rotation angles after integration
                 if rotate_zrt:
-                    # Use ZRT components
-                    x_rot = rot_st.select(component='R')[0].data[current_idx] if 'R' in components else 0
-                    y_rot = rot_st.select(component='T')[0].data[current_idx] if 'T' in components else 0
-                    z_rot = rot_st.select(component='Z')[0].data[current_idx]
+                    # Use ZRT components from integrated data
+                    x_rot = rot_integrated.select(component='R')[0].data[current_idx] if 'R' in components else 0
+                    y_rot = rot_integrated.select(component='T')[0].data[current_idx] if 'T' in components else 0
+                    z_rot = rot_integrated.select(component='Z')[0].data[current_idx]
                 else:
-                    # Use ZNE components
-                    x_rot = rot_st.select(component='E')[0].data[current_idx] if 'E' in components else 0
-                    y_rot = rot_st.select(component='N')[0].data[current_idx] if 'N' in components else 0
-                    z_rot = rot_st.select(component='Z')[0].data[current_idx]
+                    # Use ZNE components from integrated data
+                    x_rot = rot_integrated.select(component='E')[0].data[current_idx] if 'E' in components else 0
+                    y_rot = rot_integrated.select(component='N')[0].data[current_idx] if 'N' in components else 0
+                    z_rot = rot_integrated.select(component='Z')[0].data[current_idx]
                 
                 # Scale the translations and rotations for visualization
                 translation_scale = 0.5  # Scale down displacement for better visualization
