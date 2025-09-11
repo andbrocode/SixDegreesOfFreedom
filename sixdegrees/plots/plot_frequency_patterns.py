@@ -203,13 +203,14 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
             ax.set_yscale('log')
         
         # Add radial axis label
-        ylabel_angle = 120  # degrees
+        ylabel_angle = 110  # degrees
         ylabel_angle_rad = np.radians(ylabel_angle)
-        ax.text(ylabel_angle_rad, ax.get_ylim()[1] * 0.8, 'Frequency (Hz)', 
-                fontsize=12, ha='center', va='center', 
-                rotation=ylabel_angle - 90,
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+        ax.text(ylabel_angle_rad, ax.get_ylim()[1] * 1.1, 'Frequency (Hz)', 
+                fontsize=12, ha='center', va='center')
         
+        # Set rlabel position
+        ax.set_rlabel_position(ylabel_angle)
+
         # Increase tick label sizes
         ax.tick_params(axis='both', which='major', labelsize=10)
     

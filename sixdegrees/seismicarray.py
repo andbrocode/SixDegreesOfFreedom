@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from .utils.print_dict_tree import print_dict_tree
 from .plots.plot_azimuth_distance_range import plot_azimuth_distance_range
 from .plots.plot_frequency_patterns import plot_frequency_patterns, plot_frequency_patterns_simple
-from .plots.plot_frequency_limits import plot_frequency_limits, plot_frequency_limits_simple
+from .plots.plot_frequency_limits import plot_frequency_limits
 from .plots.plot_array_geometry import plot_array_geometry
 
 
@@ -106,6 +106,38 @@ class seismicarray:
         
         # Validate configuration
         self._validate_config()
+
+    def copy(self):
+        """
+        Create a deep copy of the seismicarray object.
+        
+        Returns:
+            seismicarray: A new seismicarray instance with copied attributes
+        """
+        import copy
+        
+        # Create a new instance with the same configuration
+        new_instance = seismicarray.__new__(seismicarray)
+        
+        # Copy all attributes that may have been modified during the object's lifecycle
+        attributes_to_copy = [
+            'config', 'clients', 'client_mapping', 'client', 'stations', 'reference_station',
+            'channel_prefix', 'response_output', 'output_format', 'combined_stream',
+            'inventories', 'stream', 'rot_stream', 'station_coordinates', 'station_distances',
+            'failed_stations', 'adr_parameters', 'azimuthal_distances'
+        ]
+        
+        for attr in attributes_to_copy:
+            if hasattr(self, attr):
+                original_value = getattr(self, attr)
+                if original_value is not None:
+                    # Deep copy for complex objects, shallow copy for simple ones
+                    if isinstance(original_value, (dict, list, Stream, Inventory)):
+                        setattr(new_instance, attr, copy.deepcopy(original_value))
+                    else:
+                        setattr(new_instance, attr, copy.copy(original_value))
+        
+        return new_instance
 
     def _load_config(self, config_file: str) -> Dict:
         """
@@ -1038,6 +1070,7 @@ class seismicarray:
             else:
                 min_projections.append(np.nan)
                 max_projections.append(np.nan)
+        
         # Convert to numpy arrays
         azimuth_bins = np.array(azimuth_bins)
         min_projections = np.array(min_projections)
@@ -1223,34 +1256,4 @@ class seismicarray:
         plot_frequency_limits(freq_results, velocity_range, amplitude_uncertainty, 
                             log_scale, figsize, save_path)
     
-    def plot_frequency_limits_simple(self, velocity_range: Optional[List[float]] = None,
-                                   amplitude_uncertainty: float = 0.02,
-                                   log_scale: bool = True,
-                                   figsize: tuple = (10, 8),
-                                   save_path: Optional[str] = None) -> None:
-        """
-        Simple version: Plot frequency limits directly from projection data.
-        
-        Args:
-            velocity_range (List[float], optional): List of velocities in m/s. 
-                                                  If None, uses [1000, 2000, 3000, 4000]
-            amplitude_uncertainty (float): Amplitude uncertainty factor (default: 0.02)
-            log_scale (bool): Whether to use logarithmic scale (default: True)
-            figsize (tuple): Figure size (width, height) (default: (10, 8))
-            save_path (str, optional): Path to save the plot. If None, displays the plot
-        """
-        # First compute azimuthal distances if not available
-        if self.azimuthal_distances['azimuth_angles'] is None:
-            print("Computing azimuthal distances first...")
-            self.compute_azimuth_distance_range(azimuth_step=5.0, plot=False)
-        
-        # Get data
-        azimuth_angles = self.azimuthal_distances['azimuth_angles']
-        min_projections = self.azimuthal_distances['min_projections']
-        max_projections = self.azimuthal_distances['max_projections']
-        
-        # Call the plotting function
-        plot_frequency_limits_simple(azimuth_angles, min_projections, max_projections, 
-                                   velocity_range, amplitude_uncertainty, 
-                                   log_scale, figsize, save_path)
     

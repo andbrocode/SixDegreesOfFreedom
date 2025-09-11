@@ -2,7 +2,7 @@
 
 ## Basic Codes for 6-DoF Analysis
 
-The codes in this package enable basic seismological processing of 6 degree-of-freedom (DoF) data processing. A 6-DoF station ideally combines co-located observations of three components of translation and three components of rotation data.
+The codes in this package enable comprehensive seismological processing of 6 degree-of-freedom (DoF) data. A 6-DoF station ideally combines co-located observations of three components of translation and three components of rotation data. The package provides well-documented functions for array-derived rotation computation, backazimuth analysis, velocity estimation, and advanced visualization tools.
 
 ## Installation
 
@@ -10,7 +10,7 @@ The codes in this package enable basic seismological processing of 6 degree-of-f
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/sixdegrees.git
+git clone https://github.com/andbrocode/sixdegrees.git
 cd sixdegrees
 ```
 
@@ -44,16 +44,16 @@ For a complete list of dependencies, see `docs/environment.yml`.
 
 The project is organized as follows:
 - `sixdegrees/`: Core package code
-  - `sixdegrees.py`: Main implementation
-  - `seismicarray.py`: Seismic array processing
-  - `plots/`: Visualization modules
-  - `utils/`: Utility functions
+  - `sixdegrees.py`: Main implementation with comprehensive docstrings
+  - `seismicarray.py`: Seismic array processing with full documentation
+  - `plots/`: Visualization modules for data analysis and plotting
+  - `utils/`: Utility functions for data processing
 - `examples/`: Jupyter notebooks and example scripts
   - Various demonstration notebooks for different analysis types
   - Example configuration files
   - Sample data files
 - `docs/`: Documentation and environment specifications
-- `tests/`: Test suite
+- `tests/`: Comprehensive test suite
 
 ### Example Usage
 
@@ -61,6 +61,13 @@ The package includes several Jupyter notebooks in the `examples/` directory that
 - Example to compute array-derived rotations from the Pinon Flats seismic array
 - Examples of how to obtain data from G-ring laser and BSPF station
 - Analyses examples for BSPF station at Pinon Flats observatory, for the ROMY ring laser and G-ring laser
+
+## Recent Updates
+
+### Version 0.1.1
+- **Enhanced Documentation**: Added comprehensive docstrings to all core functions in `sixdegrees.py`
+- **Improved Code Quality**: All functions now have proper type hints and detailed parameter descriptions
+- **Better Developer Experience**: Enhanced code readability and maintainability
 
 ## Testing
 

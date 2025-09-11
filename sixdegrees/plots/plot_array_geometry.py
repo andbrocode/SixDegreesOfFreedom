@@ -34,7 +34,7 @@ def plot_array_geometry(station_coordinates: dict, reference_station: str,
     ref_lon = ref_coords['longitude']
     
     # Create figure with white background
-    plt.figure(figsize=(10, 10), facecolor='white')
+    plt.figure(figsize=(8, 8), facecolor='white')
     ax = plt.gca()
     ax.set_facecolor('white')
     
@@ -85,6 +85,7 @@ def plot_array_geometry(station_coordinates: dict, reference_station: str,
             active_x, active_y, 
             c='dodgerblue',
             s=100,
+            marker='^', 
             label='Active Stations', 
             zorder=2
         )
@@ -120,8 +121,8 @@ def plot_array_geometry(station_coordinates: dict, reference_station: str,
         ref_scatter = plt.scatter(
             ref_coords_plot['x'], ref_coords_plot['y'], 
             c='green', 
-            s=200,
-            marker='*', 
+            s=100,
+            marker='o', 
             label='Reference Station', 
             zorder=3
         )
@@ -196,9 +197,9 @@ def plot_array_geometry(station_coordinates: dict, reference_station: str,
     plt.ylim(-max_range - margin, max_range + margin)
     
     # Add labels and title
-    plt.xlabel('East-West Distance (m)')
-    plt.ylabel('North-South Distance (m)')
-    plt.title('Array Geometry', pad=20)
+    plt.xlabel('Easting (m)',fontsize=13)
+    plt.ylabel('Northing (m)',fontsize=13)
+    plt.title('Array Geometry', pad=15,fontsize=14)
     
     # Adjust legend with collected elements
     if legend_elements:

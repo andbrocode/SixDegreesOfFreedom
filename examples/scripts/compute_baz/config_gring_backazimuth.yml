@@ -1,0 +1,50 @@
+# Configuration for G-ring backazimuth processing
+# Secondary microseismic band analysis (10s to 7s period)
+
+# Data source
+data_source: fdsn
+
+# FDSN clients
+fdsn_client_rot: LMU  # For rotation data (RLAS)
+fdsn_client_tra: BGR  # For translation data (WET)
+
+# SEED identifiers for G-ring
+seed: XX.RLAS..  # Output stream identifier
+rot_seed:
+  - BW.RLAS..BJZ  # Rotation sensor (vertical rotation rate)
+
+tra_seed:
+  - GR.WET..BHZ   # Translation sensor (vertical)
+  - GR.WET..BHN   # Translation sensor (north)
+  - GR.WET..BHE   # Translation sensor (east)
+
+# Data processing parameters
+rot_remove_response: true
+tra_remove_response: true
+
+# Output directories
+output_dir: ./output
+log_dir: ./logs
+
+# Processing parameters (can be overridden in the script)
+baz_step: 1          # Backazimuth step in degrees
+baz_win_sec: 50     # Window length in seconds (50 seconds)
+baz_win_overlap: 0.5 # Window overlap fraction
+
+# Frequency band for secondary microseisms (10s to 7s period)
+freq_min: 0.1        # 10s period
+freq_max: 0.15      # ~7s period
+
+# Wave type for backazimuth computation
+wave_type: love      # Secondary microseisms are typically Love waves
+
+# Quality control parameters
+cc_threshold: 0.8  # Minimum correlation threshold
+
+# Station information (for reference)
+station_name: G-ring
+station_latitude: 49.146019  # Approximate latitude
+station_longitude: 12.876 # Approximate longitude
+
+# Number of processes to use
+Nprocesses: 4

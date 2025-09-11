@@ -222,3 +222,100 @@ def test_romy_rotation_config():
     assert sd.use_romy_zne is True
     assert sd.keep_z is False
     assert sd.rot_target == 'ZNE'  # Only test rot_target as rot_components is set internally
+
+def test_copy_method():
+    """Test the copy method for sixdegrees objects."""
+    config = {
+        'fdsn_client_rot': 'IRIS',
+        'fdsn_client_tra': 'IRIS',
+        'rot_seed': 'BW.ROMY..BJZ',
+        'tra_seed': 'BW.ROMY..BJZ',
+        'tbeg': '2023-01-01',
+        'tend': '2023-01-02',
+        'project': 'test_project',
+        'station_lon': 11.2752,
+        'station_lat': 47.7714
+    }
+    
+    # Create original object
+    original = sixdegrees(config)
+    
+    # Modify some attributes to test copying
+    original.baz_results = {'test': 'data'}
+    original.fmin = 0.1
+    original.fmax = 0.5
+    original.verbose = True
+    
+    # Create copy
+    copied = original.copy()
+    
+    # Test that copy is a different object
+    assert copied is not original
+    
+    # Test that basic attributes are copied
+    assert copied.fdsn_client_rot == original.fdsn_client_rot
+    assert copied.fdsn_client_tra == original.fdsn_client_tra
+    assert copied.rot_seed == original.rot_seed
+    assert copied.tra_seed == original.tra_seed
+    assert copied.tbeg == original.tbeg
+    assert copied.tend == original.tend
+    assert copied.project == original.project
+    assert copied.station_longitude == original.station_longitude
+    assert copied.station_latitude == original.station_latitude
+    
+    # Test that modified attributes are copied
+    assert copied.baz_results == original.baz_results
+    assert copied.fmin == original.fmin
+    assert copied.fmax == original.fmax
+    assert copied.verbose == original.verbose
+    
+    # Test that modifying the copy doesn't affect the original
+    copied.baz_results['new_key'] = 'new_value'
+    assert 'new_key' not in original.baz_results
+    
+    # Test that modifying the original doesn't affect the copy
+    original.fmin = 0.2
+    assert copied.fmin == 0.1
+
+def test_copy_method_with_complex_data():
+    """Test the copy method with complex data structures."""
+    config = {
+        'fdsn_client_rot': 'IRIS',
+        'fdsn_client_tra': 'IRIS',
+        'rot_seed': 'BW.ROMY..BJZ',
+        'tra_seed': 'BW.ROMY..BJZ',
+        'tbeg': '2023-01-01',
+        'tend': '2023-01-02'
+    }
+    
+    # Create original object
+    original = sixdegrees(config)
+    
+    # Add some complex data structures
+    original.baz_results = {
+        'love': {'baz': [0, 90, 180, 270], 'cc': [0.8, 0.9, 0.7, 0.6]},
+        'rayleigh': {'baz': [45, 135, 225, 315], 'cc': [0.7, 0.8, 0.6, 0.5]}
+    }
+    original.event_info = {
+        'origin_time': '2023-01-01T12:00:00',
+        'magnitude': 6.5,
+        'latitude': 40.0,
+        'longitude': 15.0
+    }
+    
+    # Create copy
+    copied = original.copy()
+    
+    # Test that complex data is deep copied
+    assert copied.baz_results == original.baz_results
+    assert copied.event_info == original.event_info
+    
+    # Test that modifying nested data in copy doesn't affect original
+    copied.baz_results['love']['baz'].append(360)
+    assert len(original.baz_results['love']['baz']) == 4
+    assert len(copied.baz_results['love']['baz']) == 5
+    
+    # Test that modifying nested data in original doesn't affect copy
+    original.event_info['magnitude'] = 7.0
+    assert copied.event_info['magnitude'] == 6.5
+    assert original.event_info['magnitude'] == 7.0

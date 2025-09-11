@@ -38,7 +38,13 @@ from scipy.signal import hilbert
 class sixdegrees():
 
     def __init__(self, conf: Dict={}):
+        """
+        Initialize sixdegrees object with configuration dictionary.
 
+        Args:
+            conf (Dict): Configuration dictionary containing parameters for data processing.
+                        Defaults to empty dictionary if not provided.
+        """
         # define configurations
         self.config = conf
 
@@ -210,6 +216,44 @@ class sixdegrees():
 
         return checks
 
+    def copy(self):
+        """
+        Create a deep copy of the sixdegrees object.
+        
+        Returns:
+            sixdegrees: A new sixdegrees instance with copied attributes
+        """
+        import copy
+        
+        # Create a new instance with the same configuration
+        new_instance = sixdegrees(self.config)
+        
+        # Copy all attributes that may have been modified during the object's lifecycle
+        attributes_to_copy = [
+            'data_source', 'fdsn_client_rot', 'fdsn_client_tra', 'tra_inv', 'rot_inv',
+            'rot_inv_file', 'tra_inv_file', 'fmin', 'fmax', 'baz_results', 'baz_theo',
+            'tbeg', 'tend', 'verbose', 'net', 'sta', 'loc', 'cha', 'rot_seed', 'tra_seed',
+            'station_longitude', 'station_latitude', 'project', 'workdir', 'path_to_data_out',
+            'path_to_figs_out', 'rot_sds', 'tra_sds', 'mseed_file', 'dummy_trace',
+            'rotate_zne', 'tra_remove_response', 'rot_remove_response', 'tra_output',
+            'runit', 'tunit', 'mu', 'pol_applied', 'pol_dict', 'rot_components',
+            'rot_target', 'use_romy_zne', 'keep_z', 'base_catalog', 'event_info',
+            'time_intervals', 'f_center', 'f_lower', 'f_upper', 'st0', 'st', 'sampling_rate',
+            'baz_step', 'baz_win_sec', 'baz_win_overlap', 'spectra'
+        ]
+        
+        for attr in attributes_to_copy:
+            if hasattr(self, attr):
+                original_value = getattr(self, attr)
+                if original_value is not None:
+                    # Deep copy for complex objects, shallow copy for simple ones
+                    if isinstance(original_value, (dict, list, Stream, Inventory)):
+                        setattr(new_instance, attr, copy.deepcopy(original_value))
+                    else:
+                        setattr(new_instance, attr, copy.copy(original_value))
+        
+        return new_instance
+
     def attributes(self) -> List[str]:
         """
         Get list of instance attributes
@@ -231,6 +275,18 @@ class sixdegrees():
             print(f" -> {dir_to_check} exists")
 
     def get_stream(self, stream_type: str="all", raw: bool=False) -> Stream:
+        """
+        Get stream data based on specified type and processing level.
+
+        Args:
+            stream_type (str): Type of stream to return. Options: "rotation", "translation", or "all".
+                              Defaults to "all".
+            raw (bool): If True, returns raw unprocessed data. If False, returns processed data.
+                       Defaults to False.
+
+        Returns:
+            Stream: ObsPy Stream object containing the requested data.
+        """
         if stream_type == "rotation":
             if raw:
                 return self.st0.select(channel="*J*").copy()
@@ -505,6 +561,17 @@ class sixdegrees():
         return self.f_lower, self.f_upper, self.f_center
 
     def add_dummy_trace(self, stream, template_seed: str="XX.XXXX..XXX"):
+        """
+        Add a dummy trace to the stream based on a template seed.
+
+        Args:
+            stream: ObsPy Stream object to add the dummy trace to.
+            template_seed (str): Template seed ID in format "NET.STA.LOC.CHA".
+                               Defaults to "XX.XXXX..XXX".
+
+        Returns:
+            Stream: Stream with the added dummy trace.
+        """
         from obspy import Trace
         from numpy import zeros
         # get template seed
@@ -667,6 +734,16 @@ class sixdegrees():
             print(f"Error writing to SDS: {e}")#
 
     def sort_channels(self, stream, components: str):
+        """
+        Sort stream channels by specified components.
+
+        Args:
+            stream: ObsPy Stream object to sort.
+            components (str): String of component letters to select and sort by.
+
+        Returns:
+            Stream: New stream with channels sorted by the specified components.
+        """
         stsort = Stream()
         for c in components:
             stsort += stream.select(component=c)
@@ -1109,13 +1186,54 @@ class sixdegrees():
         
         return rot
 
-    def filter_data(self, fmin: Optional[float]=0.1, fmax: Optional[float]=0.5, output: bool=False):
+    def filter_data(self, fmin: Optional[float]=None, fmax: Optional[float]=None, output: bool=False):
+        """
+        Apply bandpass filter to the data stream.
+
+        Args:
+            fmin (Optional[float]): Minimum frequency for bandpass filter in Hz. If None, no lower limit.
+            fmax (Optional[float]): Maximum frequency for bandpass filter in Hz. If None, no upper limit.
+            output (bool): Whether to return the filtered stream. Defaults to False.
+
+        Returns:
+            Stream: Filtered stream if output=True, otherwise None.
+        """
+        if fmin is None and fmax is None:
+            print("WARNING: No frequencies specified. Returning original stream.")
 
         # reset stream to raw stream
         self.st = self.st0.copy()
 
         # set fmin and fmax
-        self.fmin = fmin
+        if fmin is not None:
+            self.fmin = fmin
+        if fmax is not None:
+            self.fmax = fmax
+
+        # detrend and filter
+        self.st = self.st.detrend("linear")
+        self.st = self.st.detrend("demean")
+        self.st = self.st.taper(0.05)
+
+        if fmin is not None and fmax is not None:
+            self.st = self.st.filter("bandpass", freqmin=fmin, freqmax=fmax, corners=4, zerophase=True) 
+        elif fmin is not None:
+            self.st = self.st.filter("lowpass", freq=fmin, corners=4, zerophase=True)
+        elif fmax is not None:
+            self.st = self.st.filter("highpass", freq=fmax, corners=4, zerophase=True)
+
+        # return stream if output is True
+        if output:
+            return self.st
+
+    def trim_stream(self, set_common: bool=True, set_interpolate: bool=False):
+        """
+        Trim and process the stream data with detrending, tapering, and optional filtering.
+
+        Args:
+            set_common (bool): Whether to set common time range for all traces. Defaults to True.
+            set_interpolate (bool): Whether to interpolate data to common sampling rate. Defaults to False.
+        """
         self.fmax = fmax
 
         # detrend and filter
@@ -1292,7 +1410,10 @@ class sixdegrees():
         from concurrent.futures import ThreadPoolExecutor
         from functools import partial
 
-        def filter_stream(stream: Stream, fmin: float, fmax: float) -> Stream:
+        def filter_stream(stream: Stream, fmin: Optional[float]=None, fmax: Optional[float]=None) -> Stream:
+            if fmin is None and fmax is None:
+                print("WARNING: No frequencies specified. Returning original stream.")
+                return stream
             stream_copy = stream.copy()
             stream_copy.detrend('linear')
             stream_copy.taper(max_percentage=0.01)
@@ -2017,6 +2138,8 @@ class sixdegrees():
             Overlap between windows as fraction (0-1) (default: 0.5)
         tangent_components : str
             Components to use for tangent method ('rotation' or 'acceleration')
+        cc_threshold : float
+            Minimum correlation coefficient threshold (default: 0.0)
         out : bool
             Return detailed output dictionary if True
             
@@ -4494,9 +4617,11 @@ class sixdegrees():
         kde_angles_new = kde_angles_new[idx]
         kde_values_new = kde_values_new[idx]
 
-        # get deviation
+        # get standard deviation
         dev = int(np.round(np.sqrt(np.cov(_baz_shifted, aweights=_ccc)), 0))
 
+        # get median absolute deviation
+        mad = int(np.round(np.median(np.abs(_baz_shifted - baz_estimate)), 0))
 
         if plot:
             plt.figure(figsize=(10, 5))
@@ -4537,6 +4662,7 @@ class sixdegrees():
             'kde_values': kde_values_new,
             'kde_angles': kde_angles_new,
             'kde_dev': dev,
+            'kde_mad': mad,
         }
 
         return out

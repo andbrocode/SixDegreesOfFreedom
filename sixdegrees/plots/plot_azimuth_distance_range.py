@@ -37,18 +37,44 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
         max_proj = results['max_projections'][valid_proj_mask]
         
         # Scatter plots for projections
-        ax.scatter(min_az_rad, min_proj, 
-                  c='cyan', s=60, alpha=0.8, 
-                  label='Min Projection', zorder=4, marker='v')
-        ax.scatter(min_az_rad, max_proj, 
-                  c='blue', s=60, alpha=0.8, 
-                  label='Max Projection', zorder=4, marker='d')
+        # ax.scatter(
+        #     min_az_rad, min_proj, 
+        #     c='cyan',
+        #     s=60,
+        #     alpha=0.8, 
+        #     zorder=4,
+        #     marker='v'
+        # )
+        ax.scatter(
+            min_az_rad,
+            max_proj, 
+            c='blue',
+            s=60,
+            alpha=0.8, 
+            zorder=4,
+            marker='d'
+        )
         
         # Line plots for projections
-        ax.plot(min_az_rad, min_proj, 'c-', 
-               linewidth=3, alpha=0.8, zorder=3)
-        ax.plot(min_az_rad, max_proj, 'blue', 
-               linewidth=3, alpha=0.8, zorder=3)
+        ax.plot(
+            min_az_rad,
+            min_proj,
+            'c-', 
+            linewidth=3,
+            label='Min. Distance',
+            alpha=0.8,
+            zorder=3
+        )
+        ax.plot(
+            min_az_rad,
+            max_proj,
+            'blue',
+            marker='d',
+            linewidth=3,
+            label='Max. Distance',
+            alpha=0.8,
+            zorder=3
+        )
         
         # Fill between min and max projections
         # ax.fill_between(min_az_rad, min_proj, max_proj, 
@@ -58,16 +84,29 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
     station_data = results['station_data']
     for station in station_data:
         az_rad = np.radians(station['azimuth'])
-        ax.scatter(az_rad, station['distance'], 
-                   c='red', s=150, alpha=0.9, zorder=6, marker='^')
+        ax.scatter(
+            az_rad,
+            station['distance'], 
+            c='red',
+            s=150,
+            alpha=0.9,
+            zorder=6,
+            marker='^'
+        )
         
         # Add station labels only if requested
         if show_station_labels:
-            ax.annotate(station['station'].split('.')[1], 
-                        (az_rad, station['distance']),
-                        xytext=(10, 10), textcoords='offset points',
-                        fontsize=10, alpha=0.9, fontweight='bold',
-                        bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.9))
+            ax.annotate(
+                station['station'].split('.')[1], 
+                (az_rad, station['distance']),
+                xytext=(10, 10),
+                textcoords='offset points',
+                fontsize=10,
+                alpha=0.9,
+                fontweight='bold',
+                marker='t',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.9)
+            )
     
     # Configure polar plot
     ax.set_title('Maximum and Minimum Range vs Azimuth\nfrom Reference Station', 
@@ -86,8 +125,14 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
                              np.nanmax(results['max_projections'])])
     
     # Position the label at the edge of the plot
-    ax.text(ylabel_angle_rad, max_distance * 1.2, 'Distance (m)', 
-            fontsize=14, ha='center', va='center')
+    ax.text(
+        ylabel_angle_rad,
+        max_distance * 1.15,
+        'Distance (m)', 
+        fontsize=14,
+        ha='center',
+        va='center'
+    )
 
     # Set rlabel position
     ax.set_rlabel_position(110)
@@ -96,7 +141,7 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
     ax.tick_params(axis='both', which='major', labelsize=12)
     
     # Add legend
-    ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.0), fontsize=13)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.05, 1.0), fontsize=13)
     
     # Add grid
     ax.grid(True, alpha=0.3)
