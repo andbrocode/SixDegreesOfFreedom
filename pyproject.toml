@@ -33,11 +33,14 @@ dependencies = [
     "requests>=2.25.0,<3.0.0",
     "tqdm>=4.65.0,<5.0.0",
     "typing-extensions>=4.5.0,<5.0.0",
-    "cartopy>=0.20.0,<0.21.0",
     "acoustics>=0.2.3",
 ]
 
 [project.optional-dependencies]
+cartopy = [
+    "cartopy>=0.20.0,<0.21.0",
+    "setuptools>=65.0.0",
+]
 dev = [
     "ipykernel>=6.25.0",
     "ipython>=8.11.0",
@@ -45,7 +48,6 @@ dev = [
     "ipywidgets>=8.1.0",
     "notebook>=6.5.4",
 ]
-
 test = [
     "pytest>=6.0.0",
     "pytest-cov>=4.0.0",
@@ -53,8 +55,8 @@ test = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/andbrocode/sixdegrees"
-"Bug Tracker" = "https://github.com/andbrocode/sixdegrees/issues"
+"Homepage" = "https://github.com/andbrocode/SixDegreesOfFreedom"
+"Bug Tracker" = "https://github.com/andbrocode/SixDegreesOfFreedom/issues"
 
 [tool.setuptools.packages.find]
 include = ["sixdegrees", "sixdegrees.*"]

@@ -10,8 +10,8 @@ The codes in this package enable comprehensive seismological processing of 6 deg
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/andbrocode/sixdegrees.git
-cd sixdegrees
+git clone https://github.com/andbrocode/SixDegreesOfFreedom.git
+cd SixDegreesOfFreedom/
 ```
 
 2. Create and activate the conda environment:
