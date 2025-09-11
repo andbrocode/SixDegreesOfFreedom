@@ -17,6 +17,9 @@ from obspy.signal import array_analysis as AA
 from typing import List, Dict, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 from .utils.print_dict_tree import print_dict_tree
+from .plots.plot_azimuth_distance_range import plot_azimuth_distance_range
+from .plots.plot_frequency_patterns import plot_frequency_patterns, plot_frequency_patterns_simple
+from .plots.plot_array_geometry import plot_array_geometry
 
 
 class seismicarray:
@@ -53,6 +56,14 @@ class seismicarray:
             'vp': float(self.config.get('vp', 6200.)),  # P-wave velocity in m/s
             'vs': float(self.config.get('vs', 3700.)),  # S-wave velocity in m/s
             'sigmau': float(self.config.get('sigmau', 1e-7))  # Uncertainty in displacement
+        }
+        
+        # Store azimuthal distance results
+        self.azimuthal_distances = {
+            'azimuth_angles': None,
+            'min_projections': None,
+            'max_projections': None,
+            'azimuth_step': None
         }
         
         # Validate configuration
@@ -749,190 +760,299 @@ class seismicarray:
         """
         if not self.station_coordinates:
             raise ValueError("No station coordinates available. Run get_station_inventories first.")
+        
+        # Call the plotting function
+        plot_array_geometry(self.station_coordinates, self.reference_station, 
+                           self.failed_stations, show_distances, show_dropped, save_path)
+
+
+
+    def compute_azimuth_distance_range(self, azimuth_step: float = 1.0, plot: bool = True, 
+                                     save_path: Optional[str] = None, show_station_labels: bool = True) -> Dict:
+        """
+        Compute the minimal and maximal distance with respect to the reference station 
+        for each azimuth angle using both radial distance and projection methods.
+        
+        Args:
+            azimuth_step (float): Step size for azimuth angles in degrees (default: 1.0)
+            plot (bool): Whether to create a plot showing the results (default: True)
+            save_path (str, optional): Path to save the plot. If None, displays the plot
+            show_station_labels (bool): Whether to show station labels on the plot (default: True)
+            
+        Returns:
+            Dict: Dictionary containing azimuth angles, min/max distances, and projections
+            
+        Raises:
+            ValueError: If station coordinates are not available
+        """
+
+        def project_station_onto_azimuth(station_x: float, station_y: float, azimuth_degrees: float) -> float:
+            """
+            Project a station position onto a specific azimuth direction.
+            
+            Args:
+                station_x: East-West coordinate of station (meters)
+                station_y: North-South coordinate of station (meters)
+                azimuth_degrees: Azimuth angle in degrees (0-360)
+            
+            Returns:
+                Projection distance along the azimuth direction (meters)
+            """
+            # Convert azimuth to unit vector
+            azimuth_rad = np.radians(azimuth_degrees)
+            azimuth_vector = np.array([np.sin(azimuth_rad), np.cos(azimuth_rad)])
+            
+            # Station position vector
+            station_vector = np.array([station_x, station_y])
+            
+            # Project station onto azimuth direction
+            projection = np.dot(station_vector, azimuth_vector)
+            
+            return projection
+    
+        if not self.station_coordinates:
+            raise ValueError("Station coordinates not available. Run request_inventories first.")
             
         # Get reference station coordinates
         ref_coords = self.station_coordinates[self.reference_station]
         ref_lat = ref_coords['latitude']
         ref_lon = ref_coords['longitude']
         
-        # Create figure with white background
-        plt.figure(figsize=(10, 10), facecolor='white')
-        ax = plt.gca()
-        ax.set_facecolor('white')
-        
-        # Prepare station categories
-        active_stations = []
-        failed_stations = []
-        ref_coords = None
-        
-        # Process all stations
+        # Prepare data for all stations (excluding reference)
+        station_data = []
         for station, coords in self.station_coordinates.items():
-            # Convert to local coordinate system (in km)
-            x, y = util_geo_km(
+            if station == self.reference_station:
+                continue
+                
+            # Convert to local coordinate system (in meters)
+            lon, lat = util_geo_km(
                 ref_lon,
                 ref_lat,
                 coords['longitude'],
                 coords['latitude']
             )
             
-            # Convert to meters
-            x *= 1000
-            y *= 1000
+            x = lon * 1000  # E-W distance in meters
+            y = lat * 1000  # N-S distance in meters
             
-            station_info = {
+            # Calculate distance and azimuth
+            distance = np.sqrt(x**2 + y**2)
+            azimuth = np.degrees(np.arctan2(x, y))  # Azimuth from North (0-360)
+            if azimuth < 0:
+                azimuth += 360
+                
+            station_data.append({
+                'station': station,
                 'x': x,
                 'y': y,
-                'label': station.split('.')[1],
-                'full_name': station
-            }
-            
-            if station in self.failed_stations:
-                failed_stations.append(station_info)
-            elif station == self.reference_station:
-                ref_coords = station_info
-            else:
-                active_stations.append(station_info)
+                'distance': distance,
+                'azimuth': azimuth
+            })
         
-        # Plot grid (behind everything)
-        plt.grid(True, linestyle='--', alpha=0.3, zorder=0)
+        if not station_data:
+            raise ValueError("No stations available for distance calculation")
         
-        # Plot stations by status
-        legend_elements = []
+        # Create azimuth bins
+        azimuth_bins = np.arange(0, 360, azimuth_step)
+        min_projections = []
+        max_projections = []
         
-        # Plot active stations
-        if active_stations:
-            active_x = [s['x'] for s in active_stations]
-            active_y = [s['y'] for s in active_stations]
-            active_scatter = plt.scatter(
-                active_x, active_y, 
-                c='dodgerblue',
-                s=100,
-                label='Active Stations', 
-                zorder=2
-            )
-            legend_elements.append(active_scatter)
-            
-            # Add labels and distances for active stations
-            for station in active_stations:
-                # Station label
-                plt.annotate(
-                    station['label'], 
-                    (station['x'], station['y']),
-                    xytext=(5, 5), 
-                    textcoords='offset points',
-                    color='black',
-                    zorder=4
-                )
-                
-                # Distance label if requested
-                if show_distances:
-                    distance = self.station_distances[station['full_name']]
-                    plt.annotate(
-                        f'{distance:.1f}m',
-                        (station['x'], station['y']),
-                        xytext=(5, -15),
-                        textcoords='offset points',
-                        fontsize=8,
-                        color='gray',
-                        zorder=4
-                    )
-        
-        # Plot reference station
-        if ref_coords:
-            ref_scatter = plt.scatter(
-                ref_coords['x'], ref_coords['y'], 
-                c='green', 
-                s=200,
-                marker='*', 
-                label='Reference Station', 
-                zorder=3
-            )
-            legend_elements.append(ref_scatter)
-            
-            # Add reference station label
-            plt.annotate(
-                ref_coords['label'], 
-                (ref_coords['x'], ref_coords['y']),
-                xytext=(5, 5), 
-                textcoords='offset points',
-                fontweight='bold',
-                color='red',
-                zorder=4
-            )
-        
-        # Plot failed/dropped stations
-        if show_dropped and failed_stations:
-            # Plot markers
-            failed_x = [s['x'] for s in failed_stations]
-            failed_y = [s['y'] for s in failed_stations]
-            
-            # Plot dropped station markers
-            dropped_scatter = plt.scatter(
-                failed_x, failed_y, 
-                c='lightgray',
-                s=80,
-                marker='d',  # square marker
-                label='Dropped Stations', 
-                alpha=0.9,
-                zorder=1
-            )
-            legend_elements.append(dropped_scatter)
-            
-            # Add 'x' overlay on dropped stations
-            plt.scatter(
-                failed_x,
-                failed_y,
-                c='red',
-                s=50,
-                marker='x',
-                alpha=0.9,
-                zorder=1
-            )
-            
-            # Add labels for dropped stations
-            for station in failed_stations:
-                plt.annotate(
-                    station['label'],
-                    (station['x'], station['y']),
-                    xytext=(5, 5),
-                    textcoords='offset points',
-                    color='gray',
-                    alpha=0.7,
-                    style='italic',
-                    zorder=4
-                )
+        for az in azimuth_bins:
 
-        # Calculate plot limits
-        all_x = [s['x'] for s in active_stations + failed_stations + ([ref_coords] if ref_coords else [])]
-        all_y = [s['y'] for s in active_stations + failed_stations + ([ref_coords] if ref_coords else [])]
+            # Project all stations onto this azimuth direction
+            projections = []
+            for station in station_data:
+                projection = project_station_onto_azimuth(station['x'], station['y'], az)
+                projections.append(abs(projection))
+            
+            if projections:
+                min_projections.append(min(projections))
+                max_projections.append(max(projections))
+            else:
+                min_projections.append(np.nan)
+                max_projections.append(np.nan)
+        print(min_projections)
+        print(max_projections)
+        # Convert to numpy arrays
+        azimuth_bins = np.array(azimuth_bins)
+        min_projections = np.array(min_projections)
+        max_projections = np.array(max_projections)
         
-        max_range = max(
-            abs(max(all_x, default=0)), abs(min(all_x, default=0)),
-            abs(max(all_y, default=0)), abs(min(all_y, default=0))
-        )
+        # Create results dictionary
+        results = {
+            'azimuth_angles': azimuth_bins,
+            'min_projections': min_projections,
+            'max_projections': max_projections,
+            'azimuth_step': azimuth_step,
+            'station_data': station_data
+        }
         
-        # Set equal aspect ratio and limits
-        plt.axis('equal')
-        margin = max_range * 0.1
-        plt.xlim(-max_range - margin, max_range + margin)
-        plt.ylim(-max_range - margin, max_range + margin)
+        # Store results in the object
+        self.azimuthal_distances = {
+            'azimuth_angles': azimuth_bins,
+            'min_projections': min_projections,
+            'max_projections': max_projections,
+            'azimuth_step': azimuth_step
+        }
         
-        # Add labels and title
-        plt.xlabel('East-West Distance (m)')
-        plt.ylabel('North-South Distance (m)')
-        plt.title('Array Geometry', pad=20)
+        # Create plot if requested
+        if plot:
+            plot_azimuth_distance_range(results, save_path, show_station_labels)
         
-        # Adjust legend with collected elements
-        if legend_elements:
-            plt.legend(
-                handles=legend_elements, 
-                loc='upper right',
-            )
+        return results
+    
+    def convert_distances_to_frequencies(self, apparent_velocity: float, 
+                                       optional_amplitude_uncertainty: float = 1e-7) -> Dict:
+        """
+        Convert azimuthal distances to frequency bounds using the formulas:
+        fmin = optional_amplitude_uncertainty * apparent_velocity / distance_max
+        fmax = 0.25 * apparent_velocity / distance_min
         
-        # Save or show the plot
-        if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
-            plt.close()
+        Args:
+            apparent_velocity (float): Apparent velocity in m/s
+            optional_amplitude_uncertainty (float): Amplitude uncertainty (default: 1e-7)
+            
+        Returns:
+            Dict: Dictionary containing azimuth angles, min/max frequencies, and parameters
+            
+        Raises:
+            ValueError: If azimuthal distances are not available
+        """
+        if self.azimuthal_distances['azimuth_angles'] is None:
+            raise ValueError("Azimuthal distances not available. Run compute_azimuth_distance_range first.")
+        
+        # Get stored data
+        azimuth_angles = self.azimuthal_distances['azimuth_angles']
+        min_projections = self.azimuthal_distances['min_projections']
+        max_projections = self.azimuthal_distances['max_projections']
+        
+        # Print formulas as LaTeX
+        # print("\\textbf{Frequency Calculation Formulas:}")
+        # print("\\begin{align}")
+        # print(f"f_{{min}} &= \\sigma_u \\cdot \\frac{{v_{{app}}}}{{d_{{max}}}} = {optional_amplitude_uncertainty:.2e} \\cdot \\frac{{{apparent_velocity:.0f}}}{{d_{{max}}}} \\\\")
+        # print(f"f_{{max}} &= 0.25 \\cdot \\frac{{v_{{app}}}}{{d_{{min}}}} = 0.25 \\cdot \\frac{{{apparent_velocity:.0f}}}{{d_{{min}}}}")
+        # print("\\end{align}")
+        # print("\\textbf{Where:}")
+        # print("\\begin{itemize}")
+        # print(f"\\item $\\sigma_u$ = amplitude uncertainty = {optional_amplitude_uncertainty:.2e}")
+        # print(f"\\item $v_{{app}}$ = apparent velocity = {apparent_velocity:.0f} m/s")
+        # print("\\item $d_{{max}}$ = maximum projection distance per azimuth")
+        # print("\\item $d_{{min}}$ = minimum projection distance per azimuth")
+        # print("\\end{itemize}")
+        # print()
+        
+        # filter min projections with threshold 10 m 
+        min_projections = np.where(min_projections > 10, min_projections, np.nan)
+
+        # Calculate frequencies
+        # fmin = optional_amplitude_uncertainty * apparent_velocity / distance_max
+        fmin = optional_amplitude_uncertainty * apparent_velocity / max_projections
+        
+        # fmax = 0.25 * apparent_velocity / distance_min
+        fmax = 0.25 * apparent_velocity / min_projections
+        
+        # Handle NaN and inf values (where no stations were found or division by zero)
+        fmin = np.where(np.isnan(fmin) | np.isinf(fmin), np.nan, fmin)
+        fmax = np.where(np.isnan(fmax) | np.isinf(fmax), np.nan, fmax)
+        
+        # Round to two decimal places (only for finite values)
+        fmin = np.where(np.isfinite(fmin), np.round(fmin, 2), fmin)
+        fmax = np.where(np.isfinite(fmax), np.round(fmax, 2), fmax)
+        
+        # Calculate optimistic and conservative bounds
+        # Get finite values only for bounds calculation
+        finite_fmin = fmin[np.isfinite(fmin)]
+        finite_fmax = fmax[np.isfinite(fmax)]
+        
+        if len(finite_fmin) > 0 and len(finite_fmax) > 0:
+            # Optimistic: maximum range for all azimuths (best case scenario)
+            fmin_optimistic = np.round(np.min(finite_fmin), 2)  # Lowest minimum frequency across all azimuths
+            fmax_optimistic = np.round(np.max(finite_fmax), 2)  # Highest maximum frequency across all azimuths
+            
+            # Conservative: minimum range for all azimuths (worst case scenario)
+            fmin_conservative = np.round(np.max(finite_fmin), 2)  # Highest minimum frequency across all azimuths
+            fmax_conservative = np.round(np.min(finite_fmax), 2)  # Lowest maximum frequency across all azimuths
         else:
-            plt.tight_layout()
-            plt.show()
+            # If no finite values, set to NaN
+            fmin_optimistic = np.nan
+            fmax_optimistic = np.nan
+            fmin_conservative = np.nan
+            fmax_conservative = np.nan
+        
+        # Create results dictionary
+        frequency_results = {
+            'azimuth_angles': azimuth_angles,
+            'fmin': fmin,
+            'fmax': fmax,
+            'fmin_optimistic': fmin_optimistic,
+            'fmax_optimistic': fmax_optimistic,
+            'fmin_conservative': fmin_conservative,
+            'fmax_conservative': fmax_conservative,
+            'apparent_velocity': apparent_velocity,
+            'amplitude_uncertainty': optional_amplitude_uncertainty,
+            'min_projections': min_projections,
+            'max_projections': max_projections
+        }
+        
+        return frequency_results
+    
+    def plot_frequency_patterns(self, velocity_range: List[float], 
+                              optional_amplitude_uncertainty: float = 1e-7,
+                              log_scale: bool = False,
+                              save_path: Optional[str] = None) -> None:
+        """
+        Plot frequency patterns for different apparent velocities on polar plots.
+        Creates two subplots side by side: minimum and maximum frequencies.
+        Each velocity is shown as a different color.
+        
+        Args:
+            velocity_range (List[float]): List of apparent velocities in m/s
+            optional_amplitude_uncertainty (float): Amplitude uncertainty (default: 1e-7)
+            log_scale (bool): Whether to use logarithmic scale for frequency axis (default: False)
+            save_path (str, optional): Path to save the plot. If None, displays the plot
+            
+        Raises:
+            ValueError: If azimuthal distances are not available
+        """
+        if self.azimuthal_distances['azimuth_angles'] is None:
+            raise ValueError("Azimuthal distances not available. Run compute_azimuth_distance_range first.")
+        
+        # Get stored data
+        azimuth_angles = self.azimuthal_distances['azimuth_angles']
+        min_projections = self.azimuthal_distances['min_projections']
+        max_projections = self.azimuthal_distances['max_projections']
+        
+        # Call the plotting function
+        plot_frequency_patterns(azimuth_angles, min_projections, max_projections, 
+                               velocity_range, optional_amplitude_uncertainty, 
+                               log_scale, save_path)
+    
+    def plot_frequency_patterns_simple(self, velocity_range: List[float], 
+                                     optional_amplitude_uncertainty: float = 1e-7,
+                                     log_scale: bool = False,
+                                     save_path: Optional[str] = None) -> None:
+        """
+        Simple version: Convert azimuthal distances to frequencies and plot on polar maps.
+        Creates two subplots side by side: minimum and maximum frequencies.
+        
+        Args:
+            velocity_range (List[float]): List of apparent velocities in m/s
+            optional_amplitude_uncertainty (float): Amplitude uncertainty (default: 1e-7)
+            log_scale (bool): Whether to use logarithmic scale for frequency axis (default: False)
+            save_path (str, optional): Path to save the plot. If None, displays the plot
+        """
+        # First compute azimuthal distances if not available
+        if self.azimuthal_distances['azimuth_angles'] is None:
+            print("Computing azimuthal distances first...")
+            self.compute_azimuth_distance_range(azimuth_step=5.0, plot=False)
+        
+        # Get data
+        azimuth_angles = self.azimuthal_distances['azimuth_angles']
+        min_projections = self.azimuthal_distances['min_projections']
+        max_projections = self.azimuthal_distances['max_projections']
+        
+        # Call the plotting function
+        plot_frequency_patterns_simple(azimuth_angles, min_projections, max_projections, 
+                                     velocity_range, optional_amplitude_uncertainty, 
+                                     log_scale, save_path)
+    

@@ -1,5 +1,5 @@
 """
-Functions for animating waveforms and particle motion.
+Functions for animating waveforms, particle motion, and 3D cube visualization.
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,17 +8,20 @@ import matplotlib.gridspec as gridspec
 from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.colors as mcolors
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from obspy import Stream, UTCDateTime
 from obspy.signal.rotate import rotate_ne_rt
 from typing import Optional, Union
 
 
-def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = None,
-                     save_path: Optional[str] = None, dpi: int = 150, show_arrivals: bool = False,
-                     rotate_zrt: bool = False, tail_duration: float = 50.0, baz: Optional[float] = None,
-                     n_frames: Optional[int] = None) -> FuncAnimation:
+def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] = None,
+                        save_path: Optional[str] = None, dpi: int = 150, show_arrivals: bool = False,
+                        rotate_zrt: bool = False, tail_duration: float = 50.0, baz: Optional[float] = None,
+                        n_frames: Optional[int] = None, cube_scale: float = 0.3, 
+                        normalize_traces: bool = True) -> FuncAnimation:
     """
-    Create an animation of waveforms and particle motion.
+    Create an animation of waveforms, particle motion, and 3D cube visualization.
     
     Parameters:
     -----------
@@ -42,6 +45,10 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
         Backazimuth in degrees. If provided, overrides event-based backazimuth
     n_frames : int, optional
         Number of frames for the animation. If provided, adjusts duration accordingly
+    cube_scale : float
+        Scale factor for cube size (default: 0.3)
+    normalize_traces : bool
+        Whether to normalize each trace individually to [-1, 1] (default: True)
     
     Returns:
     --------
@@ -55,6 +62,72 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
         if max_val > 0:
             return data / max_val
         return data
+
+    def integrate_twice(data, dt):
+        """Double integrate acceleration to get displacement."""
+        # First integration: acceleration to velocity
+        velocity = np.cumsum(data) * dt
+        # Second integration: velocity to displacement
+        displacement = np.cumsum(velocity) * dt
+        return displacement
+
+    def integrate_once(data, dt):
+        """Single integrate rotation rate to get rotation angle."""
+        # Integration: rotation rate to rotation angle
+        rotation = np.cumsum(data) * dt
+        return rotation
+
+    def create_cube(center=(0, 0, 0), size=0.2):
+        """Create a cube centered at the given point."""
+        # Define the 8 vertices of the cube
+        vertices = np.array([
+            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],  # bottom face
+            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]       # top face
+        ]) * size / 2
+        
+        # Translate to center
+        vertices += np.array(center)
+        
+        # Define the 6 faces of the cube
+        faces = [
+            [0, 1, 2, 3],  # bottom
+            [4, 5, 6, 7],  # top
+            [0, 1, 5, 4],  # front
+            [2, 3, 7, 6],  # back
+            [0, 3, 7, 4],  # left
+            [1, 2, 6, 5]   # right
+        ]
+        
+        return vertices, faces
+
+    def apply_rotation(vertices, rotation_angles):
+        """Apply rotation around x, y, z axes."""
+        rx, ry, rz = rotation_angles
+        
+        # Rotation matrices
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)]
+        ])
+        
+        Ry = np.array([
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)]
+        ])
+        
+        Rz = np.array([
+            [np.cos(rz), -np.sin(rz), 0],
+            [np.sin(rz), np.cos(rz), 0],
+            [0, 0, 1]
+        ])
+        
+        # Combined rotation matrix
+        R = Rz @ Ry @ Rx
+        
+        # Apply rotation
+        return vertices @ R.T
 
     # Get streams
     trans_st = sd.get_stream(stream_type="translation")
@@ -167,14 +240,30 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
     print(f"Number of frames: {n_frames}")
     print(f"Frame rate: {1/time_step:.1f} fps")
     
-    # Normalize all traces
-    for comp in components:
-        trans_st.select(component=comp)[0].data = normalize_trace(trans_st.select(component=comp)[0].data)
-        rot_st.select(component=comp)[0].data = normalize_trace(rot_st.select(component=comp)[0].data)
+    # Normalize all traces if requested
+    if normalize_traces:
+        print("Normalizing traces to [-1, 1] range...")
+        for comp in components:
+            trans_st.select(component=comp)[0].data = normalize_trace(trans_st.select(component=comp)[0].data)
+            rot_st.select(component=comp)[0].data = normalize_trace(rot_st.select(component=comp)[0].data)
+    else:
+        print("Skipping trace normalization - using original amplitudes")
     
-    # Set up the figure with two rows
-    fig = plt.figure(figsize=(15, 10))
-    gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1.5])  # Adjusted height ratio
+    # Integrate translational data (acceleration to displacement)
+    print("Integrating translational data (acceleration to displacement)...")
+    for comp in components:
+        trans_data = trans_st.select(component=comp)[0].data
+        trans_st.select(component=comp)[0].data = integrate_twice(trans_data, dt)
+    
+    # Integrate rotational data (rotation rate to rotation angle)
+    print("Integrating rotational data (rotation rate to rotation angle)...")
+    for comp in components:
+        rot_data = rot_st.select(component=comp)[0].data
+        rot_st.select(component=comp)[0].data = integrate_once(rot_data, dt)
+    
+    # Set up the figure with three panels
+    fig = plt.figure(figsize=(18, 10))
+    gs = gridspec.GridSpec(2, 3, height_ratios=[1, 1.5], width_ratios=[1, 1, 1])
     
     # Generate title with time period, frequency range, and station name
     def generate_title():
@@ -214,9 +303,10 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
     # First row: single panel for all waveforms
     ax_waves = fig.add_subplot(gs[0, :])
     
-    # Second row: two panels for particle motion
+    # Second row: three panels - Love, 3D Cube, Rayleigh
     ax_love = fig.add_subplot(gs[1, 0])
-    ax_rayleigh = fig.add_subplot(gs[1, 1])
+    ax_cube = fig.add_subplot(gs[1, 1], projection='3d')
+    ax_rayleigh = fig.add_subplot(gs[1, 2])
     
     # Setup waveform plot with closer vertical offsets
     offsets = np.arange(6) * 1.5  # Reduced spacing from 2.5 to 1.5
@@ -259,6 +349,7 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
     
     # Set titles and labels
     ax_love.set_title('Love Wave Particle Motion')
+    ax_cube.set_title('3D Seismic Motion')
     ax_rayleigh.set_title('Rayleigh Wave Particle Motion')
     
     ax_love.set_xlabel(f'HT')
@@ -276,6 +367,27 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
     # Add grid to particle motion plots
     ax_love.grid(True, ls='--', zorder=0)
     ax_rayleigh.grid(True, ls='--', zorder=0)
+    
+    # Setup 3D cube plot
+    ax_cube.set_xlabel('X (Displacement)')
+    ax_cube.set_ylabel('Y (Displacement)')
+    ax_cube.set_zlabel('Z (Displacement)')
+    
+    # Set 3D plot limits to -1, 1
+    ax_cube.set_xlim(-1, 1)
+    ax_cube.set_ylim(-1, 1)
+    ax_cube.set_zlim(-1, 1)
+    
+    # Create initial cube at origin
+    cube_vertices, cube_faces = create_cube(center=(0, 0, 0), size=cube_scale)
+    
+    # Define colors for each face
+    face_colors = ['red', 'blue', 'green', 'yellow', 'orange', 'purple']
+    
+    # Create cube collection
+    cube_collection = Poly3DCollection([cube_vertices[face] for face in cube_faces], 
+                                      facecolors=face_colors, alpha=0.7, edgecolors='black')
+    ax_cube.add_collection3d(cube_collection)
     
     # Create red fade colormap for particle motion trails
     cmap = plt.cm.Blues
@@ -391,14 +503,64 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
                     rayleigh_trail.set_array(fade_values)
                     rayleigh_point.set_offsets([[rt[-1], hz[-1]]])  # Current point is at the end
             
+            # Update 3D cube
+            if current_idx < len(t_trans):
+                # Get current translational values (X, Y, Z) - now displacement after integration
+                if rotate_zrt:
+                    # Use ZRT components
+                    x_trans = trans_st.select(component='R')[0].data[current_idx] if 'R' in components else 0
+                    y_trans = trans_st.select(component='T')[0].data[current_idx] if 'T' in components else 0
+                    z_trans = trans_st.select(component='Z')[0].data[current_idx]
+                else:
+                    # Use ZNE components
+                    x_trans = trans_st.select(component='E')[0].data[current_idx] if 'E' in components else 0
+                    y_trans = trans_st.select(component='N')[0].data[current_idx] if 'N' in components else 0
+                    z_trans = trans_st.select(component='Z')[0].data[current_idx]
+                
+                # Get current rotational values (X, Y, Z) - now rotation angles after integration
+                if rotate_zrt:
+                    # Use ZRT components
+                    x_rot = rot_st.select(component='R')[0].data[current_idx] if 'R' in components else 0
+                    y_rot = rot_st.select(component='T')[0].data[current_idx] if 'T' in components else 0
+                    z_rot = rot_st.select(component='Z')[0].data[current_idx]
+                else:
+                    # Use ZNE components
+                    x_rot = rot_st.select(component='E')[0].data[current_idx] if 'E' in components else 0
+                    y_rot = rot_st.select(component='N')[0].data[current_idx] if 'N' in components else 0
+                    z_rot = rot_st.select(component='Z')[0].data[current_idx]
+                
+                # Scale the translations and rotations for visualization
+                translation_scale = 0.5  # Scale down displacement for better visualization
+                rotation_scale = 1.0     # Use rotation angles directly
+                
+                # Calculate new cube center (origin + displacement)
+                new_center = (x_trans * translation_scale, 
+                             y_trans * translation_scale, 
+                             z_trans * translation_scale)
+                
+                # Calculate rotation angles (in radians)
+                rotation_angles = (x_rot * rotation_scale, 
+                                  y_rot * rotation_scale, 
+                                  z_rot * rotation_scale)
+                
+                # Create new cube vertices
+                new_vertices, _ = create_cube(center=new_center, size=cube_scale)
+                
+                # Apply rotation
+                rotated_vertices = apply_rotation(new_vertices - np.array(new_center), rotation_angles)
+                rotated_vertices += np.array(new_center)
+                
+                # Update cube collection
+                cube_collection.set_verts([rotated_vertices[face] for face in cube_faces])
+            
         except Exception as e:
-            print(f"Warning: Error updating particle motion: {e}")
+            print(f"Warning: Error updating particle motion or cube: {e}")
         
         return wave_lines_past + [love_trail, rayleigh_trail, love_point, rayleigh_point, cursor_line, trail_region]
     
     # Create animation
     anim = FuncAnimation(fig, animate, init_func=init, frames=n_frames,
-                        interval=time_step*10, blit=True)
+                        interval=time_step*10, blit=False)  # blit=False for 3D plots
     
     # Save or display animation
     if save_path:
