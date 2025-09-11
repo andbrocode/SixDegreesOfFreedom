@@ -29,110 +29,79 @@ def plot_frequency_patterns(azimuth_angles: np.ndarray, min_projections: np.ndar
         log_scale (bool): Whether to use logarithmic scale for frequency axis (default: False)
         save_path (str, optional): Path to save the plot. If None, displays the plot
     """
-    # replace inf or 0 with nan
-    max_projections = np.where(np.logical_or(np.isinf(max_projections), max_projections == 0), np.nan, max_projections)
-    min_projections = np.where(np.logical_or(np.isinf(min_projections), min_projections == 0), np.nan, min_projections)
-
-    # Convert to radians for polar plot
+    # Convert azimuth to radians for polar plot
     azimuth_rad = np.radians(azimuth_angles)
     
+    # Ensure projections are positive and handle invalid values
+    max_projections = np.abs(max_projections)
+    min_projections = np.abs(min_projections)
+    
+    # Replace invalid values with NaN
+    max_projections = np.where(np.isfinite(max_projections) & (max_projections > 0), max_projections, np.nan)
+    min_projections = np.where(np.isfinite(min_projections) & (min_projections > 0), min_projections, np.nan)
+    
     # Create figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10), facecolor='white',
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8), facecolor='white',
                                   subplot_kw=dict(projection='polar'))
     
     # Define colors for different velocities
     colors = plt.cm.viridis(np.linspace(0, 1, len(velocity_range)))
     
-    # Calculate all frequencies first to determine plot limits
-    all_fmin = []
-    all_fmax = []
-    
-    for velocity in velocity_range:
-        fmin = optional_amplitude_uncertainty * velocity / max_projections
-        fmax = 0.25 * velocity / min_projections
-        
-        # Handle NaN and inf values
-        fmin = np.where(np.isnan(fmin) | np.isinf(fmin), np.nan, fmin)
-        fmax = np.where(np.isnan(fmax) | np.isinf(fmax), np.nan, fmax)
-        
-        # Only add finite values
-        valid_fmin = fmin[np.isfinite(fmin)]
-        valid_fmax = fmax[np.isfinite(fmax)]
-        
-        all_fmin.extend(valid_fmin)
-        all_fmax.extend(valid_fmax)
-    
-    # Set plot limits
-    if all_fmin:
-        min_freq = min(all_fmin)
-        max_freq = max(all_fmax) if all_fmax else max(all_fmin)
-    else:
-        min_freq, max_freq = 0.001, 1.0
-    
-    # Plot frequency patterns for each velocity
+    # Calculate and plot frequencies for each velocity
     for i, velocity in enumerate(velocity_range):
-        # Calculate frequencies for this velocity
+        # Calculate frequencies
         fmin = optional_amplitude_uncertainty * velocity / max_projections
-        fmax = 0.25 * velocity / min_projections
+        fmax = 0.25 * velocity / max_projections
         
-        # Handle NaN and inf values - replace with NaN for consistent handling
-        fmin = np.where(np.isnan(fmin) | np.isinf(fmin), np.nan, fmin)
-        fmax = np.where(np.isnan(fmax) | np.isinf(fmax), np.nan, fmax)
+        # Handle invalid values
+        fmin = np.where(np.isfinite(fmin) & (fmin > 0), fmin, np.nan)
+        fmax = np.where(np.isfinite(fmax) & (fmax > 0), fmax, np.nan)
         
-        # Create valid mask for finite values only
+        # Find valid data points
         valid_mask = np.isfinite(fmin) & np.isfinite(fmax)
         
         if np.any(valid_mask):
+            # Get valid data
             valid_az_rad = azimuth_rad[valid_mask]
             valid_fmin = fmin[valid_mask]
             valid_fmax = fmax[valid_mask]
             
-            # Ensure we have the same azimuth sampling by sorting
+            # Sort by azimuth for smooth plotting
             sort_idx = np.argsort(valid_az_rad)
             valid_az_rad = valid_az_rad[sort_idx]
             valid_fmin = valid_fmin[sort_idx]
             valid_fmax = valid_fmax[sort_idx]
             
-            # Plot min frequencies on left subplot
+            # Plot frequencies
             ax1.plot(valid_az_rad, valid_fmin, 
                     color=colors[i], linewidth=2, alpha=0.8,
                     label=f'v={velocity:.0f} m/s')
             
-            # Plot max frequencies on right subplot
             ax2.plot(valid_az_rad, valid_fmax, 
                     color=colors[i], linewidth=2, alpha=0.8,
                     label=f'v={velocity:.0f} m/s')
     
     # Configure both subplots
-    for ax, title, freq_type in [(ax1, 'Minimum Frequencies', 'fmin'), (ax2, 'Maximum Frequencies', 'fmax')]:
+    for ax, title in [(ax1, 'Minimum Frequencies'), (ax2, 'Maximum Frequencies')]:
         ax.set_title(f'{title} vs Azimuth', pad=20, fontsize=14, fontweight='bold')
         ax.set_theta_zero_location('N')  # North at top
         ax.set_theta_direction(-1)  # Clockwise
-        ax.set_ylim(0, None)  # Start from center
+        ax.grid(True, alpha=0.3)
         
-        # Set log scale if requested
+        # Set y-axis scale
         if log_scale:
             ax.set_yscale('log')
-            ax.set_ylim(min_freq * 0.5, max_freq * 2)
-        else:
-            ax.set_ylim(0, max_freq * 1.1)
         
         # Add radial axis label
-        ylabel_angle = 120  # degrees (East direction)
+        ylabel_angle = 120  # degrees
         ylabel_angle_rad = np.radians(ylabel_angle)
-        
-        # Position the label at the edge of the plot
-        label_freq = max_freq * 1.2 if not log_scale else max_freq * 2
-        ax.text(ylabel_angle_rad, label_freq, f'Frequency (Hz)', 
+        ax.text(ylabel_angle_rad, ax.get_ylim()[1] * 0.8, 'Frequency (Hz)', 
                 fontsize=12, ha='center', va='center', 
                 rotation=ylabel_angle - 90,
                 bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
         
         # Increase tick label sizes
         ax.tick_params(axis='both', which='major', labelsize=10)
-        
-        # Add grid
-        ax.grid(True, alpha=0.3)
     
     # Add legends
     ax1.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0), fontsize=9)
@@ -170,15 +139,19 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
         log_scale (bool): Whether to use logarithmic scale for frequency axis (default: False)
         save_path (str, optional): Path to save the plot. If None, displays the plot
     """
-    # replace inf or 0 with nan
-    max_projections = np.where(np.logical_or(np.isinf(max_projections), max_projections == 0), np.nan, max_projections)
-    min_projections = np.where(np.logical_or(np.isinf(min_projections), min_projections == 0), np.nan, min_projections)
-    
-    # Convert to radians for polar plot
+    # Convert azimuth to radians for polar plot
     azimuth_rad = np.radians(azimuth_angles)
     
+    # Ensure projections are positive and handle invalid values
+    max_projections = np.abs(max_projections)
+    min_projections = np.abs(min_projections)
+    
+    # Replace invalid values with NaN
+    max_projections = np.where(np.isfinite(max_projections) & (max_projections > 0), max_projections, np.nan)
+    min_projections = np.where(np.isfinite(min_projections) & (min_projections > 0), min_projections, np.nan)
+    
     # Create figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10), facecolor='white',
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8), facecolor='white',
                                   subplot_kw=dict(projection='polar'))
     
     # Define colors for different velocities
@@ -188,16 +161,17 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
     for i, velocity in enumerate(velocity_range):
         # Calculate frequencies
         fmin = optional_amplitude_uncertainty * velocity / max_projections
-        fmax = 0.25 * velocity / min_projections
+        fmax = 0.25 * velocity / max_projections
         
-        # Handle NaN and inf values
-        fmin = np.where(np.isnan(fmin) | np.isinf(fmin), np.nan, fmin)
-        fmax = np.where(np.isnan(fmax) | np.isinf(fmax), np.nan, fmax)
+        # Handle invalid values
+        fmin = np.where(np.isfinite(fmin) & (fmin > 0), fmin, np.nan)
+        fmax = np.where(np.isfinite(fmax) & (fmax > 0), fmax, np.nan)
         
-        # Create valid mask for finite values only
+        # Find valid data points
         valid_mask = np.isfinite(fmin) & np.isfinite(fmax)
         
         if np.any(valid_mask):
+            # Get valid data
             valid_az_rad = azimuth_rad[valid_mask]
             valid_fmin = fmin[valid_mask]
             valid_fmax = fmax[valid_mask]
@@ -208,12 +182,11 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
             valid_fmin = valid_fmin[sort_idx]
             valid_fmax = valid_fmax[sort_idx]
             
-            # Plot min frequencies on left subplot
+            # Plot frequencies
             ax1.plot(valid_az_rad, valid_fmin, 
                     color=colors[i], linewidth=2, alpha=0.8,
                     label=f'v={velocity:.0f} m/s')
             
-            # Plot max frequencies on right subplot
             ax2.plot(valid_az_rad, valid_fmax, 
                     color=colors[i], linewidth=2, alpha=0.8,
                     label=f'v={velocity:.0f} m/s')
@@ -223,13 +196,15 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
         ax.set_title(f'{title} vs Azimuth', pad=20, fontsize=14, fontweight='bold')
         ax.set_theta_zero_location('N')  # North at top
         ax.set_theta_direction(-1)  # Clockwise
-        ax.set_ylim(0, None)  # Start from center
+        ax.grid(True, alpha=0.3)
+        
+        # Set y-axis scale
+        if log_scale:
+            ax.set_yscale('log')
         
         # Add radial axis label
         ylabel_angle = 120  # degrees
         ylabel_angle_rad = np.radians(ylabel_angle)
-        
-        # Position the label at the edge of the plot
         ax.text(ylabel_angle_rad, ax.get_ylim()[1] * 0.8, 'Frequency (Hz)', 
                 fontsize=12, ha='center', va='center', 
                 rotation=ylabel_angle - 90,
@@ -237,9 +212,6 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
         
         # Increase tick label sizes
         ax.tick_params(axis='both', which='major', labelsize=10)
-        
-        # Add grid
-        ax.grid(True, alpha=0.3)
     
     # Add legends
     ax1.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0), fontsize=9)

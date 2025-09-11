@@ -1,0 +1,19 @@
+channel_prefix: B
+fdsn_client:
+- BGR
+- LMU
+reference_station: GR.FUR
+response_output: VEL
+sigmau: 1.0e-09
+stations:
+- GR.FUR
+- BW.FFB1
+- BW.FFB2
+- BW.FFB3
+- BW.TON
+- BW.BIB
+- BW.GRMB
+- BW.GELB
+- BW.ALFT
+vp: 6200
+vs: 3700

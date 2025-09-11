@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from .utils.print_dict_tree import print_dict_tree
 from .plots.plot_azimuth_distance_range import plot_azimuth_distance_range
 from .plots.plot_frequency_patterns import plot_frequency_patterns, plot_frequency_patterns_simple
+from .plots.plot_frequency_limits import plot_frequency_limits, plot_frequency_limits_simple
 from .plots.plot_array_geometry import plot_array_geometry
 
 
@@ -39,9 +40,46 @@ class seismicarray:
             config_file (str): Path to YAML configuration file containing array setup
         """
         self.config = self._load_config(config_file)
-        self.client = Client(self.config.get('fdsn_client', 'IRIS'))
+        
+        # Handle client configuration - can be string or list
+        fdsn_client = self.config.get('fdsn_client', 'IRIS')
+        self.clients = {}
+        self.client_mapping = {}
+        
+        if isinstance(fdsn_client, str):
+            # Single client
+            client = Client(fdsn_client)
+            self.clients[fdsn_client] = client
+            self.client = client  # Keep backward compatibility
+        elif isinstance(fdsn_client, list):
+            # Multiple clients - initialize all available ones
+            available_clients = []
+            for client_name in fdsn_client:
+                try:
+                    client = Client(client_name)
+                    self.clients[client_name] = client
+                    available_clients.append(client_name)
+                except Exception as e:
+                    print(f"Warning: Failed to initialize client '{client_name}': {str(e)}")
+            
+            if not available_clients:
+                raise ValueError(f"All FDSN clients failed to initialize: {fdsn_client}")
+            
+            self.client = self.clients[available_clients[0]]  # Use first available as default
+        else:
+            raise ValueError("fdsn_client must be a string or list of strings")
+        
         self.stations = self.config['stations']
         self.reference_station = self.config['reference_station']
+        
+        # Auto-map clients to stations if multiple clients available
+        if len(self.clients) > 1:
+            self._auto_map_clients()
+        
+        # If auto-mapping failed or only one client, map all stations to default client
+        if not self.client_mapping:
+            for station in self.stations:
+                self.client_mapping[station] = list(self.clients.keys())[0]
         self.channel_prefix = self.config.get('channel_prefix', 'B')  # Default to broadband
         self.response_output = self.config.get('response_output', 'VEL')  # Default to velocity
         self.output_format = self.config.get('output_format', 'file')
@@ -85,6 +123,115 @@ class seismicarray:
             return config
         except Exception as e:
             raise ValueError(f"Failed to load configuration file: {str(e)}")
+
+    def _auto_map_clients(self, test_duration_hours: float = 1.0, verbose: bool = True):
+        """
+        Automatically map clients to stations by doing trial runs.
+        
+        Args:
+            test_duration_hours (float): Duration in hours for test data requests
+            verbose (bool): Whether to print progress information
+        """
+
+        # Use a recent time window for testing
+        from obspy import UTCDateTime
+        end_time = UTCDateTime.now() - 10*86400
+        start_time = end_time - (test_duration_hours * 3600)
+        
+        successful_mappings = {}
+        failed_stations = []
+        
+        for station in self.stations:
+            net, sta = station.split(".")
+            station_success = False
+            
+
+            # Try each client for this station
+            for client_name, client in self.clients.items():
+                try:
+
+                    # Test inventory request
+                    inventory = client.get_stations(
+                        network=net,
+                        station=sta,
+                        starttime=start_time,
+                        endtime=end_time,
+                        level="response"
+                    )
+                    
+                    # Test if we can get coordinates
+                    try:
+                        coords = inventory.get_coordinates(f"{net}.{sta}..{self.channel_prefix}HZ")
+                    except Exception as e:
+                        coords = inventory.get_coordinates(f"{net}.{sta}..BHZ")
+                    
+                    # If we get here, this client works for this station
+                    successful_mappings[station] = client_name
+                    station_success = True
+
+                    break
+                    
+                except Exception as e:
+                    continue
+            
+            if not station_success:
+                failed_stations.append(station)
+
+        # Store the successful mappings
+        self.client_mapping = successful_mappings
+        
+        # if verbose:
+        #     print(f"\nAuto-mapping completed:")
+        # #     print(f"  Successfully mapped: {len(successful_mappings)} stations")
+        # #     print(f"  Failed stations: {len(failed_stations)}")
+        # #     if failed_stations:
+        # #         print(f"  Failed stations: {failed_stations}")
+            
+        #     print(f"\nClient usage summary:")
+        #     client_usage = {}
+        #     for station, client_name in successful_mappings.items():
+        #         client_usage[client_name] = client_usage.get(client_name, 0) + 1
+        #     for client_name, count in client_usage.items():
+        #         print(f"  {client_name}: {count} stations")
+
+    def get_client_for_station(self, station: str):
+        """
+        Get the appropriate client for a given station.
+        
+        Args:
+            station (str): Station code (e.g., 'PY.PFOIX')
+            
+        Returns:
+            Client: The appropriate FDSN client for this station
+        """
+        if station in self.client_mapping:
+            client_name = self.client_mapping[station]
+            return self.clients[client_name]
+        else:
+            # Fallback to default client
+            return self.client
+
+    def show_client_mapping(self):
+        """Display the current client-to-station mapping."""
+        print("Client-to-Station Mapping:")
+        print("=" * 40)
+        
+        if not self.client_mapping:
+            print("No client mapping available. Using default client for all stations.")
+            return
+        
+        for station, client_name in self.client_mapping.items():
+            status = "✓" if client_name in self.clients else "✗"
+            print(f"  {station} -> {client_name} {status}")
+        
+        # Show usage summary
+        client_usage = {}
+        for station, client_name in self.client_mapping.items():
+            client_usage[client_name] = client_usage.get(client_name, 0) + 1
+        
+        print(f"\nClient usage summary:")
+        for client_name, count in client_usage.items():
+            print(f"  {client_name}: {count} stations")
 
     def _validate_config(self):
         """Validate the loaded configuration."""
@@ -256,10 +403,14 @@ class seismicarray:
         for station in self.stations[:]:  # Create copy to allow modification during iteration
             net, sta = station.split(".")
             try:
+                # Get appropriate client for this station
+                client = self.get_client_for_station(station)
+                client_name = self.client_mapping.get(station, "default")
+                
                 if verbose:
-                    print(f" -> requesting inventory for station {station}")
+                    print(f" -> requesting inventory for station {station} using {client_name}")
                     
-                inventory = self.client.get_stations(
+                inventory = client.get_stations(
                     network=net,
                     station=sta,
                     starttime=starttime,
@@ -279,7 +430,7 @@ class seismicarray:
                     successful_stations.append(station)
                     
                     if verbose:
-                        print(f" -> successfully obtained inventory for {station}")
+                        print(f" -> successfully obtained inventory for {station} using {client_name}")
                 except Exception as e:
                     self._remove_station(station, f"Invalid channel configuration: {str(e)}", verbose)
                     failed_stations.append(station)
@@ -293,8 +444,12 @@ class seismicarray:
             raise ValueError(f"Could not obtain inventory for reference station {self.reference_station}")
             
         # Check if we have enough stations
+        if len(successful_stations) < 1:
+            raise ValueError(f"Not enough station inventories obtained. Found {len(successful_stations)}, need at least 1")
+        
+        # Warn if very few stations
         if len(successful_stations) < 3:
-            raise ValueError(f"Not enough station inventories obtained. Found {len(successful_stations)}, need at least 3")
+            print(f"Warning: Only {len(successful_stations)} stations available. Array analysis may be limited.")
             
         if verbose:
             print(f"\nInventory status:")
@@ -341,13 +496,17 @@ class seismicarray:
 
         for station in self.stations:
             net, sta = station.split(".")
+            
+            # Get appropriate client for this station
+            client = self.get_client_for_station(station)
+            client_name = self.client_mapping.get(station, "default")
 
             if verbose:
                 print(20*"-")
-                print(f"requesting waveforms for station {station}")
+                print(f"requesting waveforms for station {station} using {client_name}")
             try:
                 # get waveforms
-                st = self.client.get_waveforms(
+                st = client.get_waveforms(
                     network=net,
                     station=sta,
                     location="*",
@@ -383,6 +542,9 @@ class seismicarray:
                     st.detrend('demean')
 
                 self.stream += st
+                
+                if verbose:
+                    print(f" -> successfully obtained waveforms for {station} using {client_name}")
 
             except Exception as e:
                 # add station to failed stations
@@ -742,6 +904,8 @@ class seismicarray:
             'reference_station': self.reference_station,
             'channel_prefix': self.channel_prefix,
             'response_output': self.response_output,
+            'fdsn_clients': list(self.clients.keys()),
+            'client_mapping': self.client_mapping,
             'adr_parameters': self.adr_parameters,
             'station_coordinates': self.station_coordinates,
             'station_distances': self.station_distances
@@ -853,7 +1017,7 @@ class seismicarray:
             raise ValueError("No stations available for distance calculation")
         
         # Create azimuth bins
-        azimuth_bins = np.arange(0, 360, azimuth_step)
+        azimuth_bins = np.arange(0, 360+azimuth_step, azimuth_step)
         min_projections = []
         max_projections = []
         
@@ -861,18 +1025,19 @@ class seismicarray:
 
             # Project all stations onto this azimuth direction
             projections = []
+            projections_abs = []
             for station in station_data:
                 projection = project_station_onto_azimuth(station['x'], station['y'], az)
-                projections.append(abs(projection))
+                projections.append(projection)
+                projections_abs.append(abs(projection))
             
             if projections:
-                min_projections.append(min(projections))
+                # min_projections.append(min(projections))
+                min_projections.append(min(projections_abs))
                 max_projections.append(max(projections))
             else:
                 min_projections.append(np.nan)
                 max_projections.append(np.nan)
-        print(min_projections)
-        print(max_projections)
         # Convert to numpy arrays
         azimuth_bins = np.array(azimuth_bins)
         min_projections = np.array(min_projections)
@@ -941,37 +1106,30 @@ class seismicarray:
         # print("\\end{itemize}")
         # print()
         
-        # filter min projections with threshold 10 m 
+        # filter projections with threshold to avoid division issues
         min_projections = np.where(min_projections > 10, min_projections, np.nan)
+
 
         # Calculate frequencies
         # fmin = optional_amplitude_uncertainty * apparent_velocity / distance_max
         fmin = optional_amplitude_uncertainty * apparent_velocity / max_projections
         
         # fmax = 0.25 * apparent_velocity / distance_min
-        fmax = 0.25 * apparent_velocity / min_projections
+        fmax = 0.25 * apparent_velocity / max_projections
         
         # Handle NaN and inf values (where no stations were found or division by zero)
         fmin = np.where(np.isnan(fmin) | np.isinf(fmin), np.nan, fmin)
         fmax = np.where(np.isnan(fmax) | np.isinf(fmax), np.nan, fmax)
+    
         
-        # Round to two decimal places (only for finite values)
-        fmin = np.where(np.isfinite(fmin), np.round(fmin, 2), fmin)
-        fmax = np.where(np.isfinite(fmax), np.round(fmax, 2), fmax)
-        
-        # Calculate optimistic and conservative bounds
-        # Get finite values only for bounds calculation
-        finite_fmin = fmin[np.isfinite(fmin)]
-        finite_fmax = fmax[np.isfinite(fmax)]
-        
-        if len(finite_fmin) > 0 and len(finite_fmax) > 0:
+        if len(fmin) > 0 and len(fmax) > 0:
             # Optimistic: maximum range for all azimuths (best case scenario)
-            fmin_optimistic = np.round(np.min(finite_fmin), 2)  # Lowest minimum frequency across all azimuths
-            fmax_optimistic = np.round(np.max(finite_fmax), 2)  # Highest maximum frequency across all azimuths
+            fmin_optimistic = np.round(np.min(fmin), 2)  # Lowest minimum frequency across all azimuths
+            fmax_optimistic = np.round(np.max(fmax), 2)  # Highest maximum frequency across all azimuths
             
             # Conservative: minimum range for all azimuths (worst case scenario)
-            fmin_conservative = np.round(np.max(finite_fmin), 2)  # Highest minimum frequency across all azimuths
-            fmax_conservative = np.round(np.min(finite_fmax), 2)  # Lowest maximum frequency across all azimuths
+            fmin_conservative = np.round(np.max(fmin), 2)  # Highest minimum frequency across all azimuths
+            fmax_conservative = np.round(np.min(fmax), 2)  # Lowest maximum frequency across all azimuths
         else:
             # If no finite values, set to NaN
             fmin_optimistic = np.nan
@@ -1027,18 +1185,58 @@ class seismicarray:
                                velocity_range, optional_amplitude_uncertainty, 
                                log_scale, save_path)
     
-    def plot_frequency_patterns_simple(self, velocity_range: List[float], 
-                                     optional_amplitude_uncertainty: float = 1e-7,
-                                     log_scale: bool = False,
-                                     save_path: Optional[str] = None) -> None:
+    def plot_frequency_limits(self, velocity_range: Optional[List[float]] = None,
+                            amplitude_uncertainty: float = 0.02,
+                            log_scale: bool = True,
+                            figsize: tuple = (10, 8),
+                            save_path: Optional[str] = None) -> None:
         """
-        Simple version: Convert azimuthal distances to frequencies and plot on polar maps.
-        Creates two subplots side by side: minimum and maximum frequencies.
+        Plot frequency limits (fmin and fmax) for different velocities on polar plots.
         
         Args:
-            velocity_range (List[float]): List of apparent velocities in m/s
-            optional_amplitude_uncertainty (float): Amplitude uncertainty (default: 1e-7)
-            log_scale (bool): Whether to use logarithmic scale for frequency axis (default: False)
+            velocity_range (List[float], optional): List of velocities in m/s. 
+                                                  If None, uses [1000, 2000, 3000, 4000]
+            amplitude_uncertainty (float): Amplitude uncertainty factor (default: 0.02)
+            log_scale (bool): Whether to use logarithmic scale (default: True)
+            figsize (tuple): Figure size (width, height) (default: (10, 8))
+            save_path (str, optional): Path to save the plot. If None, displays the plot
+            
+        Raises:
+            ValueError: If azimuthal distances are not available
+        """
+        if self.azimuthal_distances['azimuth_angles'] is None:
+            raise ValueError("Azimuthal distances not available. Run compute_azimuth_distance_range first.")
+        
+        # Get stored data
+        azimuth_angles = self.azimuthal_distances['azimuth_angles']
+        min_projections = self.azimuthal_distances['min_projections']
+        max_projections = self.azimuthal_distances['max_projections']
+        
+        # Create freq_results dictionary
+        freq_results = {
+            'azimuth_angles': azimuth_angles,
+            'min_projections': min_projections,
+            'max_projections': max_projections
+        }
+        
+        # Call the plotting function
+        plot_frequency_limits(freq_results, velocity_range, amplitude_uncertainty, 
+                            log_scale, figsize, save_path)
+    
+    def plot_frequency_limits_simple(self, velocity_range: Optional[List[float]] = None,
+                                   amplitude_uncertainty: float = 0.02,
+                                   log_scale: bool = True,
+                                   figsize: tuple = (10, 8),
+                                   save_path: Optional[str] = None) -> None:
+        """
+        Simple version: Plot frequency limits directly from projection data.
+        
+        Args:
+            velocity_range (List[float], optional): List of velocities in m/s. 
+                                                  If None, uses [1000, 2000, 3000, 4000]
+            amplitude_uncertainty (float): Amplitude uncertainty factor (default: 0.02)
+            log_scale (bool): Whether to use logarithmic scale (default: True)
+            figsize (tuple): Figure size (width, height) (default: (10, 8))
             save_path (str, optional): Path to save the plot. If None, displays the plot
         """
         # First compute azimuthal distances if not available
@@ -1052,7 +1250,7 @@ class seismicarray:
         max_projections = self.azimuthal_distances['max_projections']
         
         # Call the plotting function
-        plot_frequency_patterns_simple(azimuth_angles, min_projections, max_projections, 
-                                     velocity_range, optional_amplitude_uncertainty, 
-                                     log_scale, save_path)
+        plot_frequency_limits_simple(azimuth_angles, min_projections, max_projections, 
+                                   velocity_range, amplitude_uncertainty, 
+                                   log_scale, figsize, save_path)
     

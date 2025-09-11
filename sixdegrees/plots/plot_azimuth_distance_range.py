@@ -41,13 +41,13 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
                   c='cyan', s=60, alpha=0.8, 
                   label='Min Projection', zorder=4, marker='v')
         ax.scatter(min_az_rad, max_proj, 
-                  c='orange', s=60, alpha=0.8, 
-                  label='Max Projection', zorder=4, marker='^')
+                  c='blue', s=60, alpha=0.8, 
+                  label='Max Projection', zorder=4, marker='d')
         
         # Line plots for projections
         ax.plot(min_az_rad, min_proj, 'c-', 
                linewidth=3, alpha=0.8, zorder=3)
-        ax.plot(min_az_rad, max_proj, 'orange', 
+        ax.plot(min_az_rad, max_proj, 'blue', 
                linewidth=3, alpha=0.8, zorder=3)
         
         # Fill between min and max projections
@@ -59,7 +59,7 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
     for station in station_data:
         az_rad = np.radians(station['azimuth'])
         ax.scatter(az_rad, station['distance'], 
-                   c='red', s=100, alpha=0.9, zorder=6, marker='^')
+                   c='red', s=150, alpha=0.9, zorder=6, marker='^')
         
         # Add station labels only if requested
         if show_station_labels:
@@ -78,7 +78,7 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
     
     # Add radial axis label positioned at a specific azimuth angle
     # Position the ylabel at 120 degrees azimuth
-    ylabel_angle = 120  # degrees
+    ylabel_angle = 110  # degrees
     ylabel_angle_rad = np.radians(ylabel_angle)
     
     # Get the maximum distance for positioning
@@ -86,16 +86,17 @@ def plot_azimuth_distance_range(results: Dict, save_path: Optional[str] = None,
                              np.nanmax(results['max_projections'])])
     
     # Position the label at the edge of the plot
-    ax.text(ylabel_angle_rad, max_distance * 1.1, 'Distance (m)', 
-            fontsize=14, ha='center', va='center', 
-            rotation=ylabel_angle - 90,  # Rotate text to be perpendicular to radius
-            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+    ax.text(ylabel_angle_rad, max_distance * 1.2, 'Distance (m)', 
+            fontsize=14, ha='center', va='center')
+
+    # Set rlabel position
+    ax.set_rlabel_position(110)
 
     # Increase tick label sizes
     ax.tick_params(axis='both', which='major', labelsize=12)
     
     # Add legend
-    ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.0), fontsize=12)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.0), fontsize=13)
     
     # Add grid
     ax.grid(True, alpha=0.3)

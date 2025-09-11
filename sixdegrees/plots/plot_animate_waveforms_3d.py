@@ -240,15 +240,6 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     print(f"Number of frames: {n_frames}")
     print(f"Frame rate: {1/time_step:.1f} fps")
     
-    # Normalize all traces if requested
-    if normalize_traces:
-        print("Normalizing traces to [-1, 1] range...")
-        for comp in components:
-            trans_st.select(component=comp)[0].data = normalize_trace(trans_st.select(component=comp)[0].data)
-            rot_st.select(component=comp)[0].data = normalize_trace(rot_st.select(component=comp)[0].data)
-    else:
-        print("Skipping trace normalization - using original amplitudes")
-    
     # Integrate translational data (acceleration to displacement)
     print("Integrating translational data (acceleration to displacement)...")
     for comp in components:
@@ -260,6 +251,15 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     for comp in components:
         rot_data = rot_st.select(component=comp)[0].data
         rot_st.select(component=comp)[0].data = integrate_once(rot_data, dt)
+    
+    # Normalize all traces if requested (after integration, before plotting)
+    if normalize_traces:
+        print("Normalizing traces to [-1, 1] range...")
+        for comp in components:
+            trans_st.select(component=comp)[0].data = normalize_trace(trans_st.select(component=comp)[0].data)
+            rot_st.select(component=comp)[0].data = normalize_trace(rot_st.select(component=comp)[0].data)
+    else:
+        print("Skipping trace normalization - using original amplitudes")
     
     # Set up the figure with three panels
     fig = plt.figure(figsize=(18, 10))
@@ -298,7 +298,7 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
         return title
     
     # Set the figure title
-    fig.suptitle(generate_title(), fontsize=14, y=0.95)
+    fig.suptitle(generate_title(), fontsize=14, y=0.97)
     
     # First row: single panel for all waveforms
     ax_waves = fig.add_subplot(gs[0, :])
