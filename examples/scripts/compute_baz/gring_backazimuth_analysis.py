@@ -100,38 +100,42 @@ def process_hour(sd, config, hour_beg, hour_end):
 
         # compute kde stats for max approach
         if len(baz_max_masked) > 5:  # Need at least 5 points for KDE
-            # get kde stats
-            kde_stats = sixdegrees.get_kde_stats(
-                baz_max_masked,
-                cc_max_masked,
-                _baz_steps=0.5,
-                Ndegree=60,
-                plot=False
-            )
+            try:
+                # get kde stats
+                kde_stats = sixdegrees.get_kde_stats(
+                    baz_max_masked,
+                    cc_max_masked,
+                    _baz_steps=0.5,
+                    Ndegree=60,
+                    plot=False
+                )
 
-            # add results to dataframe
-            hourly_df.loc[0, 'baz_max'] = kde_stats['baz_estimate']
-            hourly_df.loc[0, 'baz_max_std'] = kde_stats['kde_dev']
-            hourly_df.loc[0, 'baz_max_mad'] = kde_stats['kde_mad']
-            hourly_df.loc[0, 'count_max'] = len(baz_max_masked)
-
+                # add results to dataframe
+                hourly_df.loc[0, 'baz_max'] = kde_stats['baz_estimate']
+                hourly_df.loc[0, 'baz_max_std'] = kde_stats['kde_dev']
+                hourly_df.loc[0, 'baz_max_mad'] = kde_stats['kde_mad']
+                hourly_df.loc[0, 'count_max'] = len(baz_max_masked)
+            except:
+                pass
         if len(baz_mid_masked) > 5:  # Need at least 5 points for KDE
-            # get kde stats
-            kde_stats = sixdegrees.get_kde_stats(
-                baz_mid_masked,
-                cc_mid_masked,
-                _baz_steps=0.5,
-                Ndegree=60,
-                plot=False
-            )
+            try:
+                # get kde stats
+                kde_stats = sixdegrees.get_kde_stats(
+                    baz_mid_masked,
+                    cc_mid_masked,
+                    _baz_steps=0.5,
+                    Ndegree=60,
+                    plot=False
+                )
 
-            # add results to dataframe
-            hourly_df.loc[0, 'baz_mid'] = kde_stats['baz_estimate']
-            hourly_df.loc[0, 'baz_mid_std'] = kde_stats['kde_dev']
-            hourly_df.loc[0, 'baz_mid_mad'] = kde_stats['kde_mad']
-            hourly_df.loc[0, 'count_mid'] = len(baz_mid_masked)
+                # add results to dataframe
+                hourly_df.loc[0, 'baz_mid'] = kde_stats['baz_estimate']
+                hourly_df.loc[0, 'baz_mid_std'] = kde_stats['kde_dev']
+                hourly_df.loc[0, 'baz_mid_mad'] = kde_stats['kde_mad']
+                hourly_df.loc[0, 'count_mid'] = len(baz_mid_masked)
+            except:
+                pass
 
-        print(hourly_df)
         gc.collect()
         del sd_hour, results
 

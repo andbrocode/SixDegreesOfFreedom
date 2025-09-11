@@ -1,0 +1,8 @@
+2025-09-11 15:58:37,307 - INFO - Starting G-ring backazimuth processing from 2024-01-01 to 2024-01-04
+2025-09-11 15:58:37,307 - INFO - Processing 4 days using 4 processes
+2025-09-11 15:59:00,816 - INFO - Processed 2024-01-03: 24 windows, saved to output/backazimuth_data/gring_backazimuth_2024-01-03.csv
+2025-09-11 15:59:04,712 - INFO - Processed 2024-01-02: 24 windows, saved to output/backazimuth_data/gring_backazimuth_2024-01-02.csv
+2025-09-11 15:59:06,093 - INFO - Processed 2024-01-01: 24 windows, saved to output/backazimuth_data/gring_backazimuth_2024-01-01.csv
+2025-09-11 15:59:07,759 - INFO - Processed 2024-01-04: 24 windows, saved to output/backazimuth_data/gring_backazimuth_2024-01-04.csv
+2025-09-11 15:59:07,786 - INFO - Processing Summary: Total days: 4, Successful: 4, Failed: 0
+2025-09-11 15:59:07,796 - INFO - Processing completed! Results saved to: output
