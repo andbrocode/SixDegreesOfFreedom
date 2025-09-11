@@ -34,7 +34,9 @@ The package requires Python ≥3.9 and the following main dependencies:
 - obspy ≥1.3.0
 - pandas ≥1.3.0
 - scikit-learn ≥0.24.0
-- cartopy ≥0.21.0 (optional, for map plotting)
+- pyyaml ≥6.0
+- acoustics ≥0.2.3
+- cartopy ≥0.20.0 (optional, for map plotting)
 
 For a complete list of dependencies, see `docs/environment.yml`.
 
