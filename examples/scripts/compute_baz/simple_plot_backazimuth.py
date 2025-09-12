@@ -139,10 +139,10 @@ def plot_backazimuth_simple(csv_file, error_type='mad', plot_type='both', date1=
                 error_data = max_data[error_col]
                 ax1.errorbar(x_data, y_data, 
                            yerr=error_data, 
-                           fmt='ro', alpha=0.3, markersize=4, capsize=0)
+                           fmt='ro', alpha=0.3, markersize=1, capsize=0)
             
             ax1.scatter(x_data, y_data, 
-                        color='red', alpha=0.8, label='baz_max', s=20)
+                        color='red', alpha=0.8, label='baz_max', s=10)
 
     if plot_type in ['mid', 'both'] and 'baz_mid' in df.columns:
         mid_data = df.dropna(subset=['baz_mid'])
@@ -183,16 +183,17 @@ def plot_backazimuth_simple(csv_file, error_type='mad', plot_type='both', date1=
         plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45)
     
     # Plot 2: Histogram
+    bins = np.arange(0, 360+5, 5)
     if plot_type in ['max', 'both'] and 'baz_max' in df.columns:
         max_data = df['baz_max'].dropna()
         if len(max_data) > 0:
-            ax2.hist(max_data, bins=36, alpha=0.7, color='red', 
+            ax2.hist(max_data, bins=bins, alpha=0.7, color='red', 
                    label='baz_max', edgecolor='black')
     
     if plot_type in ['mid', 'both'] and 'baz_mid' in df.columns:
         mid_data = df['baz_mid'].dropna()
         if len(mid_data) > 0:
-            ax2.hist(mid_data, bins=36, alpha=0.7, color='blue', 
+            ax2.hist(mid_data, bins=bins, alpha=0.7, color='blue', 
                    label='baz_mid', edgecolor='black')
     
     ax2.set_xlabel('Backazimuth (degrees)')
