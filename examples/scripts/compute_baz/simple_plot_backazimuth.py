@@ -11,6 +11,41 @@ import numpy as np
 import argparse
 from datetime import datetime
 
+def align_data_by_time(x_data, y_data, x_times, y_times):
+    """
+    Align x and y data using time as reference, filling missing values with NaN.
+    
+    Parameters:
+    -----------
+    x_data : array-like
+        X-axis data (time values)
+    y_data : array-like  
+        Y-axis data (backazimuth values)
+    x_times : array-like
+        Time stamps corresponding to x_data
+    y_times : array-like
+        Time stamps corresponding to y_data
+        
+    Returns:
+    --------
+    aligned_x : array
+        Aligned x data
+    aligned_y : array
+        Aligned y data with NaN for missing time points
+    """
+    # Convert to pandas Series for easier handling
+    x_series = pd.Series(x_data, index=x_times)
+    y_series = pd.Series(y_data, index=y_times)
+    
+    # Get all unique time points from both series
+    all_times = pd.Index(x_series.index).union(pd.Index(y_series.index)).sort_values()
+    
+    # Reindex both series to the common time index, filling missing values with NaN
+    x_aligned = x_series.reindex(all_times)
+    y_aligned = y_series.reindex(all_times)
+    
+    return x_aligned.values, y_aligned.values
+
 def plot_backazimuth_simple(csv_file, error_type='mad', plot_type='both', date1=None, date2=None):
     """Simple backazimuth plotting function."""
     
@@ -68,14 +103,36 @@ def plot_backazimuth_simple(csv_file, error_type='mad', plot_type='both', date1=
             error_col = f'baz_max_{error_type}' if f'baz_max_{error_type}' in df.columns else 'baz_max_std'
             
             # Use relative time if available, otherwise use timestamp
-            x_data = time_relative if time_relative is not None else max_data['timestamp']
+            if time_relative is not None:
+                # Align time_relative with baz_max data using timestamp as reference
+                aligned_time, aligned_baz = align_data_by_time(
+                    time_relative, max_data['baz_max'], 
+                    df['timestamp'], max_data['timestamp']
+                )
+                # Remove NaN values for plotting
+                valid_mask = ~np.isnan(aligned_baz)
+                x_data = aligned_time[valid_mask]
+                y_data = aligned_baz[valid_mask]
+            else:
+                x_data = max_data['timestamp']
+                y_data = max_data['baz_max']
             
             if error_col in df.columns:
-                ax1.errorbar(x_data, max_data['baz_max'], 
-                           yerr=max_data[error_col], 
+                # Align error data as well
+                if time_relative is not None:
+                    _, aligned_error = align_data_by_time(
+                        time_relative, max_data[error_col], 
+                        df['timestamp'], max_data['timestamp']
+                    )
+                    error_data = aligned_error[valid_mask]
+                else:
+                    error_data = max_data[error_col]
+                
+                ax1.errorbar(x_data, y_data, 
+                           yerr=error_data, 
                            fmt='ro', alpha=0.7, label='baz_max', markersize=4, capsize=3)
             else:
-                ax1.scatter(x_data, max_data['baz_max'], 
+                ax1.scatter(x_data, y_data, 
                           color='red', alpha=0.7, label='baz_max', s=20)
     
     if plot_type in ['mid', 'both'] and 'baz_mid' in df.columns:
@@ -85,14 +142,36 @@ def plot_backazimuth_simple(csv_file, error_type='mad', plot_type='both', date1=
             error_col = f'baz_mid_{error_type}' if f'baz_mid_{error_type}' in df.columns else 'baz_mid_std'
             
             # Use relative time if available, otherwise use timestamp
-            x_data = time_relative if time_relative is not None else mid_data['timestamp']
+            if time_relative is not None:
+                # Align time_relative with baz_mid data using timestamp as reference
+                aligned_time, aligned_baz = align_data_by_time(
+                    time_relative, mid_data['baz_mid'], 
+                    df['timestamp'], mid_data['timestamp']
+                )
+                # Remove NaN values for plotting
+                valid_mask = ~np.isnan(aligned_baz)
+                x_data = aligned_time[valid_mask]
+                y_data = aligned_baz[valid_mask]
+            else:
+                x_data = mid_data['timestamp']
+                y_data = mid_data['baz_mid']
             
             if error_col in df.columns:
-                ax1.errorbar(x_data, mid_data['baz_mid'], 
-                           yerr=mid_data[error_col], 
+                # Align error data as well
+                if time_relative is not None:
+                    _, aligned_error = align_data_by_time(
+                        time_relative, mid_data[error_col], 
+                        df['timestamp'], mid_data['timestamp']
+                    )
+                    error_data = aligned_error[valid_mask]
+                else:
+                    error_data = mid_data[error_col]
+                
+                ax1.errorbar(x_data, y_data, 
+                           yerr=error_data, 
                            fmt='bs', alpha=0.7, label='baz_mid', markersize=4, capsize=3)
             else:
-                ax1.scatter(x_data, mid_data['baz_mid'], 
+                ax1.scatter(x_data, y_data, 
                           color='blue', alpha=0.7, label='baz_mid', s=20)
     
     ax1.set_ylabel('Backazimuth (degrees)')
