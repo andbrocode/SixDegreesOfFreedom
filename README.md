@@ -50,19 +50,34 @@ The project is organized as follows:
   - `seismicarray.py`: Seismic array processing with full documentation
   - `plots/`: Visualization modules for data analysis and plotting
   - `utils/`: Utility functions for data processing
-- `examples/`: Jupyter notebooks and example scripts
+- `examples/`: Jupyter notebooks, example scripts, and workflows
+  - `workflows/`: Ready-to-use processing workflows
+    - `compute_adr/`: Array-derived rotation computation workflows
+    - `compute_baz/`: Backazimuth analysis workflows
   - Various demonstration notebooks for different analysis types
-  - Example configuration files
-  - Sample data files
+  - Example configuration files and sample data
 - `docs/`: Documentation and environment specifications
 - `tests/`: Comprehensive test suite
 
 ### Example Usage
 
-The package includes several Jupyter notebooks in the `examples/` directory that demonstrate various use cases:
-- Example to compute array-derived rotations from the Pinon Flats seismic array
-- Examples of how to obtain data from G-ring laser and BSPF station
-- Analyses examples for BSPF station at Pinon Flats observatory, for the ROMY ring laser and G-ring laser
+The package includes several Jupyter notebooks and workflows in the `examples/` directory:
+
+#### Jupyter Notebooks
+- Array-derived rotation computation from the Pinon Flats seismic array
+- Data acquisition examples for G-ring laser and BSPF station
+- Analysis examples for BSPF station, ROMY ring laser, and G-ring laser
+- Backazimuth analysis and visualization demos
+
+#### Processing Workflows
+- **Array-Derived Rotation (ADR)**: `examples/workflows/compute_adr/`
+  - Daily continuous 6-DoF data creation from array data
+  - SDS format storage and management
+- **Backazimuth Analysis**: `examples/workflows/compute_baz/`
+  - Automated backazimuth estimation and analysis
+  - Data merging and visualization tools
+
+See individual workflow README files for detailed usage instructions.
 
 ## Recent Updates
 
