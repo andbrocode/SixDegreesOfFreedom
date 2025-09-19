@@ -142,10 +142,17 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
         ax_wave2.minorticks_on()
     
     # Add colorbar
-    cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
+    # cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
+    # cb = plt.colorbar(scatter, cax=cbar_ax)
+    # cb.set_label('cross-correlation coefficient', fontsize=font)
+
+    # Add colorbar
+    cbar_ax = ax_vel.inset_axes([1.02, 0., 0.02, 1])
     cb = plt.colorbar(scatter, cax=cbar_ax)
-    cb.set_label('cross-correlation coefficient', fontsize=font)
-    
+    cb.set_label("CC coefficient", fontsize=font)
+    cb.set_ticks([0, 0.5, 1])
+    cb.set_ticklabels([0, 0.5, 1])
+
     # Add title
     title = f"{velocity_results['parameters']['wave_type'].capitalize()} Waves"
     title += (f" | {sd.tbeg.date} {str(sd.tbeg.time).split('.')[0]} UTC"

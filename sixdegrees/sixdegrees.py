@@ -1267,7 +1267,8 @@ class sixdegrees():
 
         # check if all traces have same amount of samples
         if not all(x == n_samples[0] for x in n_samples):
-            print(f" -> stream size inconsistent: {n_samples}")
+            if self.verbose:
+                print(f" -> stream size inconsistent: {n_samples}")
 
             # if difference not larger than one -> adjust
             if any([abs(x-n_samples[0]) > 1 for x in n_samples]):
@@ -1277,7 +1278,8 @@ class sixdegrees():
                     _tbeg = max([tr.stats.starttime for tr in self.st])
                     _tend = min([tr.stats.endtime for tr in self.st])
                     self.st = self.st.trim(_tbeg, _tend, nearest_sample=True)
-                    print(f"  -> adjusted: {_get_size(self.st)}")
+                    if self.verbose:
+                        print(f"  -> adjusted: {_get_size(self.st)}")
 
                     if set_interpolate:
                         _times = arange(0, min(_get_size(self.st)), self.st[0].stats.delta)
@@ -1287,7 +1289,8 @@ class sixdegrees():
                 # adjust for difference of one sample
                 for tr in self.st:
                     tr.data = tr.data[:min(n_samples)]
-                print(f"  -> adjusted: {_get_size(self.st)}")
+                if self.verbose:
+                    print(f"  -> adjusted: {_get_size(self.st)}")
 
     def correct_tilt(self, g: float=9.81, raw: bool=False):
         '''
@@ -1477,9 +1480,11 @@ class sixdegrees():
                 if wave_type.lower() == 'love':
                     signal1 = rot_z[i1:i2]
                     signal2 = acc_t
-                else:  # rayleigh
+                elif wave_type.lower() == 'rayleigh':
                     signal1 = rot_t
                     signal2 = acc_z[i1:i2, np.newaxis]
+                else:
+                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
                 
                 # Vectorized correlation computation
                 cc_values = np.array([xcorr_max(correlate(signal1, sig2, 0))[1] for sig2 in signal2.T])
@@ -1639,196 +1644,171 @@ class sixdegrees():
             }
         }
 
-    def regression(self, features: List[str], target: str, reg: str = "theilsen", 
-              zero_intercept: bool = False, verbose: bool = True) -> Dict:
+    def regression(self, x_data: np.ndarray, y_data: np.ndarray, method: str = "odr", 
+                   zero_intercept: bool = True, verbose: bool = False) -> Dict:
         """
         Perform regression analysis using various methods.
         
-        Args:
-            features: List of feature columns
-            target: Target variable column
-            reg: Regression method ('ols', 'ransac', 'theilsen', 'odr')
-            zero_intercept: Force intercept through zero if True
-            verbose: Print regression results if True
+        Parameters:
+        -----------
+        x_data : np.ndarray
+            Input data (e.g., rotation data)
+        y_data : np.ndarray
+            Target data (e.g., translation data)
+        method : str, optional
+            Regression method ('odr', 'ransac', 'theilsen', 'ols'), by default 'odr'
+        zero_intercept : bool, optional
+            Force intercept through zero if True, by default True
+        verbose : bool, optional
+            Print regression results if True, by default False
         
         Returns:
-            Dictionary containing regression results including:
-            - model: Fitted regression model
-            - r2: R-squared score
-            - tp: Time points
-            - dp: Model predictions
-            - slope: Regression slope(s)
-            - inter: Y-intercept (0 if zero_intercept=True)
+        --------
+        Dict
+            Dictionary containing:
+            - slope: Regression slope
+            - intercept: Y-intercept (0 if zero_intercept=True)
+            - r_squared: R-squared value
+            - method: Method used
         """
-        from sklearn import linear_model
-        from sklearn.linear_model import LinearRegression, RANSACRegressor, HuberRegressor, TheilSenRegressor
+        import numpy as np
+        from sklearn.linear_model import LinearRegression, RANSACRegressor, TheilSenRegressor
         from scipy import odr
-        from numpy import array, std, ones, mean, ones_like
-        import pandas as pd
-
-        # Validate regression method
-        valid_methods = ['ols', 'ransac', 'theilsen', 'odr']
-        if reg.lower() not in valid_methods:
-            raise ValueError(f"Invalid regression method. Must be one of {valid_methods}")
-
-        # Create DataFrame if needed
-        if isinstance(features, pd.DataFrame):
-            _df = features.copy()
-        else:
-            # Create DataFrame from stream data
-            data = {}
-            for tr in self.st:
-                data[tr.stats.channel] = tr.data
-            _df = pd.DataFrame(data)
-            _df['time'] = self.st[0].times()
-
-        # Remove time and target from features if present
-        if target in features:
-            features.remove(target)
-        if "time" in features:
-            features.remove("time")
-
-        # Define x and y data
-        X = _df[features].values.reshape(-1, len(features))
-        y = _df[target].values
-
-        # Initialize predictions list and model
-        model_predict = []
-        model = None
-
-        # Rest of regression code remains the same as in baroseis...
-        if reg.lower() == "ols":
-            model = linear_model.LinearRegression(fit_intercept=not zero_intercept)
-            model.fit(X, y)
-            if verbose:
-                print("R2:", model.score(X, y))
-                if not zero_intercept:
-                    print("X0:", model.intercept_)
-                print("Coef: ", model.coef_)
-                for _f, _c in zip(features, model.coef_):
-                    print(f"{_f} : {_c}")
-            
-            # Make predictions
-            for o, row in _df[features].iterrows():
-                x_pred = array([row[feat] for feat in features]).reshape(-1, len(features))
-                model_predict.append(model.predict(x_pred)[0])
-
-        elif reg.lower() == "ransac":
-            try:
-                model = RANSACRegressor(
-                    estimator=LinearRegression(fit_intercept=not zero_intercept),
-                    random_state=1
-                ).fit(X, y)
-            except TypeError:
-                model = RANSACRegressor(
-                    base_estimator=LinearRegression(fit_intercept=not zero_intercept),
-                    random_state=1
-                ).fit(X, y)
-                
-            if verbose:
-                print("R2:", model.score(X, y))
-                if not zero_intercept:
-                    print("IC: ", model.estimator_.intercept_)
-                print("Coef: ", model.estimator_.coef_)
-                for _f, _c in zip(features, model.estimator_.coef_):
-                    print(f"{_f} : {_c}")
-            
-            # Make predictions
-            for o, row in _df[features].iterrows():
-                x_pred = array([row[feat] for feat in features]).reshape(-1, len(features))
-                model_predict.append(model.predict(x_pred)[0])
-
-        elif reg.lower() == "theilsen":
-            model = TheilSenRegressor(fit_intercept=not zero_intercept).fit(X, y)
-            if verbose:
-                print("R2:", model.score(X, y))
-                if not zero_intercept:
-                    print("X0:", model.intercept_)
-                print("Coef: ", model.coef_)
-                for _f, _c in zip(features, model.coef_):
-                    print(f"{_f} : {_c}")
-            
-            # Make predictions
-            for o, row in _df[features].iterrows():
-                x_pred = array([row[feat] for feat in features]).reshape(-1, len(features))
-                model_predict.append(model.predict(x_pred)[0])
-
-        elif reg.lower() == "odr":
-            # Define ODR model function for single feature
-            def f(B, x):
-                if zero_intercept:
-                    return B[0] * x
-                else:
-                    return B[0] * x + B[1]
-            
-            # Create ODR model
-            linear = odr.Model(f)
-            
-            # Prepare data for ODR (ensure correct shapes)
-            X_odr = X.reshape(-1)  # Flatten for single feature
-            
-            # Estimate data uncertainties if not provided
-            sx = std(X_odr) * ones_like(X_odr)
-            sy = std(y) * ones_like(y)
-            
-            # Create ODR data object
-            data = odr.RealData(X_odr, y, sx=sx, sy=sy)
-            
-            # Set initial parameter guess
-            if zero_intercept:
-                beta0 = [1.0]
-            else:
-                beta0 = [1.0, 0.0]
-            
-            # Create ODR object and fit
-            odr_obj = odr.ODR(data, linear, beta0=beta0)
-            model = odr_obj.run()
-            
-            if verbose:
-                print("R2:", 1 - (model.sum_square / sum((y - mean(y))**2)))
-                print("Parameters:", model.beta)
-                print("Parameter errors:", model.sd_beta)
-                if not zero_intercept:
-                    print("Intercept:", model.beta[1])
-                print(f"Slope: {model.beta[0]}")
-
-            # Make predictions for ODR
-            for o, row in _df[features].iterrows():
-                x_pred = array([row[feat] for feat in features]).reshape(-1)[0]  # Get single value
-                if zero_intercept:
-                    pred = model.beta[0] * x_pred
-                else:
-                    pred = model.beta[0] * x_pred + model.beta[1]
-                model_predict.append(pred)
-
-        # Verify model was created
-        if model is None:
-            raise RuntimeError("Failed to create regression model")
-
-        # Prepare output dictionary
-        out = {
-            'model': model,
-            'r2': (1 - (model.sum_square / sum((y - mean(y))**2))) if reg.lower() == "odr" 
-                  else model.score(X, y),
-            'tp': _df.time,
-            'dp': model_predict
+        from scipy.stats import pearsonr
+        
+        # Validate inputs
+        if len(x_data) != len(y_data):
+            raise ValueError("x_data and y_data must have the same length")
+        
+        if len(x_data) < 2:
+            raise ValueError("Need at least 2 data points for regression")
+        
+        # Remove NaN values
+        valid_mask = ~(np.isnan(x_data) | np.isnan(y_data))
+        x_clean = x_data[valid_mask]
+        y_clean = y_data[valid_mask]
+        
+        if len(x_clean) < 2:
+            raise ValueError("Not enough valid data points after removing NaN values")
+        
+        # Reshape for sklearn compatibility
+        X = x_clean.reshape(-1, 1)
+        y = y_clean
+        
+        # Initialize results
+        result = {
+            'slope': np.nan,
+            'intercept': 0.0 if zero_intercept else np.nan,
+            'r_squared': np.nan,
+            'method': method.lower()
         }
+        
+        try:
+            if method.lower() == "odr":
+                # Orthogonal Distance Regression
+                def linear_func(B, x):
+                    if zero_intercept:
+                        return B[0] * x
+                    else:
+                        return B[0] * x + B[1]
+                
+                # Create ODR model
+                model = odr.Model(linear_func)
+                
+                # Estimate uncertainties
+                sx = np.std(x_clean) * np.ones_like(x_clean)
+                sy = np.std(y_clean) * np.ones_like(y_clean)
+                
+                # Create ODR data object
+                data = odr.RealData(x_clean, y_clean, sx=sx, sy=sy)
+                
+                # Set initial parameters
+                if zero_intercept:
+                    beta0 = [np.mean(y_clean) / np.mean(x_clean)]
+                else:
+                    beta0 = [np.mean(y_clean) / np.mean(x_clean), 0.0]
+                
+                # Fit model
+                odr_obj = odr.ODR(data, model, beta0=beta0)
+                output = odr_obj.run()
+                
+                result['slope'] = output.beta[0]
+                if not zero_intercept:
+                    result['intercept'] = output.beta[1]
+                
+                # Calculate R-squared
+                if zero_intercept:
+                    y_pred = output.beta[0] * x_clean
+                else:
+                    y_pred = output.beta[0] * x_clean + output.beta[1]
+                
+                # Calculate R-squared
+                r, _ = pearsonr(x_clean, y_clean)
+                r_squared = r**2
 
-        # Add slope and intercept based on regression method
-        if reg.lower() == "ransac":
-            out['slope'] = model.estimator_.coef_[0]
-            out['inter'] = 0.0 if zero_intercept else model.estimator_.intercept_
-        elif reg.lower() == "theilsen":
-            out['slope'] = model.coef_[0]
-            out['inter'] = 0.0 if zero_intercept else model.intercept_
-        elif reg.lower() == "ols":
-            out['slope'] = model.coef_[0]
-            out['inter'] = 0.0 if zero_intercept else model.intercept_
-        elif reg.lower() == "odr":
-            out['slope'] = model.beta[0]
-            out['inter'] = 0.0 if zero_intercept else model.beta[1]
-
-        return out
+                if verbose:
+                    print(f"ODR Results: slope={result['slope']:.6f}, R²={result['r_squared']:.4f}")
+            
+            elif method.lower() == "ransac":
+                # RANSAC regression
+                try:
+                    model = RANSACRegressor(
+                        estimator=LinearRegression(fit_intercept=not zero_intercept),
+                        random_state=42,
+                        max_trials=1000
+                    ).fit(X, y)
+                except TypeError:
+                    # Fallback for older sklearn versions
+                    model = RANSACRegressor(
+                        base_estimator=LinearRegression(fit_intercept=not zero_intercept),
+                        random_state=42,
+                        max_trials=1000
+                    ).fit(X, y)
+                
+                result['slope'] = model.estimator_.coef_[0]
+                if not zero_intercept:
+                    result['intercept'] = model.estimator_.intercept_
+                result['r_squared'] = model.score(X, y)
+                
+                if verbose:
+                    print(f"RANSAC Results: slope={result['slope']:.6f}, R²={result['r_squared']:.4f}")
+            
+            elif method.lower() == "theilsen":
+                # Theil-Sen regression
+                model = TheilSenRegressor(fit_intercept=not zero_intercept, random_state=42).fit(X, y)
+                
+                result['slope'] = model.coef_[0]
+                if not zero_intercept:
+                    result['intercept'] = model.intercept_
+                result['r_squared'] = model.score(X, y)
+                
+                if verbose:
+                    print(f"Theil-Sen Results: slope={result['slope']:.6f}, R²={result['r_squared']:.4f}")
+            
+            elif method.lower() == "ols":
+                # Ordinary Least Squares
+                model = LinearRegression(fit_intercept=not zero_intercept).fit(X, y)
+                
+                result['slope'] = model.coef_[0]
+                if not zero_intercept:
+                    result['intercept'] = model.intercept_
+                result['r_squared'] = model.score(X, y)
+                
+                if verbose:
+                    print(f"OLS Results: slope={result['slope']:.6f}, R²={result['r_squared']:.4f}")
+            
+            else:
+                raise ValueError(f"Invalid method: {method}. Use 'odr', 'ransac', 'theilsen', or 'ols'")
+        
+        except Exception as e:
+            if verbose:
+                print(f"Regression failed: {str(e)}")
+            # Return NaN values if regression fails
+            result['slope'] = np.nan
+            result['intercept'] = np.nan if not zero_intercept else 0.0
+            result['r_squared'] = np.nan
+        
+        return result
 
     def rotate_romy_zne(self, st: Stream, inv: Inventory, use_components: List[str] = ["Z", "U", "V"], keep_z: bool = True) -> Stream:
         """
@@ -2119,7 +2099,7 @@ class sixdegrees():
         
         return final_results
 
-    def compute_backazimuth(self, wave_type: str="", baz_step: int=1, baz_win_sec: float=30.0, 
+    def compute_backazimuth_old(self, wave_type: str="", baz_step: int=1, baz_win_sec: float=30.0, 
                         rotation_data: Stream=None, translation_data: Stream=None,
                         baz_win_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=False,
                         out: bool=False, cc_threshold: float=0.0) -> Dict:
@@ -2154,7 +2134,7 @@ class sixdegrees():
         from numpy.linalg import eigh
         from numpy import argsort
 
-        def padding(_baz, _ccc, _baz_steps, Ndegree=60):
+        def _padding(_baz, _ccc, _baz_steps, Ndegree=60):
 
             # get lower and upper array that is padded
             _baz_lower = np.arange(-Ndegree, 0, _baz_steps)
@@ -2171,7 +2151,7 @@ class sixdegrees():
 
             return _baz_pad, _ccc_pad
 
-        def get_zero_crossings(arr):
+        def _get_zero_crossings(arr):
 
             # get nullstellen by sign function and then the difference
             nullstellen = np.diff(np.sign(arr))
@@ -2443,10 +2423,10 @@ class sixdegrees():
             for _k, _win in enumerate(range(0, n_windows)):
 
                 # pad baz array and cc array
-                baz_pad, cc_pad = padding(backazimuths, corrbaz[:, _win], baz_step, Ndegree=180)
+                baz_pad, cc_pad = _padding(backazimuths, corrbaz[:, _win], baz_step, Ndegree=180)
 
                 # get zero crossings of cc function
-                null1, null2 = get_zero_crossings(cc_pad)
+                null1, null2 = _get_zero_crossings(cc_pad)
 
                 # get middle baz
                 baz_lower = baz_pad[null1]
@@ -2504,21 +2484,27 @@ class sixdegrees():
         if out:
             return output
 
-    # OLD
-    def compute_backazimuth_fast(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, 
-                        baz_win_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=True,
-                        out: bool=False, n_jobs: int=-1) -> Dict:
+    def compute_backazimuth(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, 
+                        rotation_data: Stream=None, translation_data: Stream=None,
+                        baz_win_overlap: float=0.5, tangent_components: str="rotation", verbose: bool=False,
+                        out: bool=False, cc_threshold: float=0.0, cc_method: str="both") -> Dict:
         """
-        Estimate backazimuth for Love, Rayleigh, or tangent waves (optimized with parallelization)
+        Fast backazimuth estimation using two-stage grid search:
+        1. Coarse search with 10° steps to find approximate maximum
+        2. Fine search with 1° steps around the maximum
         
         Parameters:
         -----------
         wave_type : str
             Type of wave to analyze ('love', 'rayleigh', or 'tangent')
         baz_step : int
-            Step size in degrees for backazimuth search (default: 1)
+            Final step size in degrees for backazimuth search (default: 1)
         baz_win_sec : float
             Length of backazimuth estimation windows in seconds (default: 30.0)
+        rotation_data : Stream, optional
+            Rotation data stream (if None, uses self.get_stream("rotation"))
+        translation_data : Stream, optional
+            Translation data stream (if None, uses self.get_stream("translation"))
         baz_win_overlap : float
             Overlap between windows as fraction (0-1) (default: 0.5)
         tangent_components : str
@@ -2527,24 +2513,150 @@ class sixdegrees():
             Print progress information
         out : bool
             Return detailed output dictionary if True
-        n_jobs : int
-            Number of parallel jobs (-1 for all cores, 1 for sequential)
-        
+        cc_threshold : float
+            Minimum correlation coefficient threshold (default: 0.0)
+        cc_method : str
+            Method to use for correlation coefficient ('max', 'mid', 'both') (default: 'both')
         Returns:
         --------
         Dict : Backazimuth estimation results
         """
+        import scipy.stats as sts
         from obspy.signal.rotate import rotate_ne_rt
         from obspy.signal.cross_correlation import correlate, xcorr_max
         from numpy import linspace, ones, array, nan, meshgrid, arange, zeros, cov, pi, arctan
         from numpy.linalg import eigh
         from numpy import argsort
-        from joblib import Parallel, delayed
-        import numpy as np
+
+        def _padding(_baz, _ccc, _baz_steps, Ndegree=60):
+            # get lower and upper array that is padded
+            _baz_lower = np.arange(-Ndegree, 0, _baz_steps)
+            _baz_upper = np.arange(max(_baz)+_baz_steps, max(_baz)+Ndegree, _baz_steps)
+
+            # pad input baz array
+            _baz_pad = np.append(np.append(_baz_lower, _baz), _baz_upper)
+
+            # get sampled size
+            Nsample = int(Ndegree/_baz_steps)
+
+            # pad ccc array by  asymetric reflection
+            _ccc_pad = np.append(np.append(_ccc[-Nsample-1:-1], _ccc), _ccc[1:Nsample])
+
+            return _baz_pad, _ccc_pad
+
+        def _get_zero_crossings(arr):
+            # get nullstellen by sign function and then the difference
+            nullstellen = np.diff(np.sign(arr))
+
+            # there should only be one from negative to positive
+            # this is a positive value
+            nullstelle1 = np.argmax(nullstellen)
+
+            # look for second zero crossing after the first one
+            shift = nullstelle1+1
+            nullstelle2 = np.argmax(abs(nullstellen[shift:]))+ shift
+
+            return nullstelle1, nullstelle2
+
+        def _get_fine_grid(backazimuth, search_range, baz_step):
+            """
+            Generate fine grid search around given backazimuths.
+            
+            Parameters:
+            -----------
+            backazimuths : array-like
+                Backazimuth values to search around
+            search_range : float
+                Range in degrees around each backazimuth
+            baz_step : float
+                Step size in degrees for the fine grid
+                
+            Returns:
+            --------
+            numpy.ndarray
+                Fine grid backazimuths around the input backazimuths
+            """            
+            # Create range around this backazimuth
+            fine_start = backazimuth - search_range
+            fine_end = backazimuth + search_range
+            
+            # Ensure we stay within 0-360 range
+            if fine_start < 0:
+                fine_start += 360
+            if fine_end > 360:
+                fine_end -= 360
+            
+            # Create fine search backazimuths
+            if fine_start < fine_end:
+                fine_baz = np.arange(fine_start, fine_end + baz_step, baz_step)
+            else:
+                # Handle wrap-around case
+                fine_baz1 = np.arange(fine_start, 360, baz_step)
+                fine_baz2 = np.arange(0, fine_end + baz_step, baz_step)
+                fine_baz = np.concatenate([fine_baz1, fine_baz2])
+            
+                # Normalize to 0-360
+                fine_baz = fine_baz % 360
+            
+            # Remove duplicates and sort
+            return fine_baz
+
+        def _compute_correlation_for_baz(backazimuth_val, idx1, idx2, wave_type, ACC, ROT):
+            """Compute correlation for a specific backazimuth value"""
+            try:
+                if wave_type.lower() == "love":
+                    # rotate NE to RT
+                    HR, HT = rotate_ne_rt(
+                        ACC.select(channel='*N')[0].data,
+                        ACC.select(channel='*E')[0].data,
+                        backazimuth_val
+                    )
+
+                    JZ = ROT.select(channel="*Z")[0].data
+
+                    # compute correlation for backazimuth
+                    ccorr = correlate(
+                        JZ[idx1:idx2],
+                        HT[idx1:idx2],
+                        0, demean=True, normalize='naive', method='auto'
+                    )
+
+                    # get maximum correlation
+                    xshift, cc_max = xcorr_max(ccorr)
+                    return cc_max
+
+                elif wave_type.lower() == "rayleigh":
+                    # rotate NE to RT
+                    JR, JT = rotate_ne_rt(
+                        ROT.select(channel='*N')[0].data,
+                        ROT.select(channel='*E')[0].data,
+                        backazimuth_val
+                    )
+
+                    HZ = ACC.select(channel="*Z")[0].data
+
+                    # compute correlation for backazimuth
+                    ccorr = correlate(
+                        HZ[idx1:idx2],
+                        JT[idx1:idx2],
+                        0, demean=True, normalize='naive', method='auto'
+                    )
+
+                    # get maximum correlation
+                    xshift, cc_max = xcorr_max(ccorr)
+                    return cc_max
+
+                else:
+                    return nan
+
+            except Exception as e:
+                if verbose:
+                    print(f"Error computing correlation for baz={backazimuth_val}: {e}")
+                return nan
 
         # Check config keywords
         keywords = ['tbeg', 'tend', 'sampling_rate',
-                'station_latitude', 'station_longitude']
+                    'station_latitude', 'station_longitude']
 
         for key in keywords:
             if key not in self.attributes():
@@ -2557,8 +2669,14 @@ class sixdegrees():
         self.baz_win_overlap = baz_win_overlap
 
         # Prepare streams
-        ACC = self.get_stream("translation").copy()
-        ROT = self.get_stream("rotation").copy()
+        if rotation_data is None and translation_data is None:
+            ACC = self.get_stream("translation").copy()
+            ROT = self.get_stream("rotation").copy()
+        elif rotation_data is not None and translation_data is not None:
+            ACC = translation_data.copy()
+            ROT = rotation_data.copy()
+        else:
+            raise ValueError("no rotation or translation data provided")
 
         if wave_type.lower() == "tangent":
             # revert polarity if applied
@@ -2571,238 +2689,370 @@ class sixdegrees():
                         if tr.stats.channel[1:] in self.pol_dict:
                             tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
 
+        # sampling rate
+        df = ROT[0].stats.sampling_rate
+
         # Get amount of samples for data
-        n_samples = len(ROT.select(channel="*Z")[0])
+        n_data = min([len(tr.data) for tr in ROT])
 
-        # Calculate overlap in samples
-        overlap = int(baz_win_overlap * baz_win_sec * self.sampling_rate)
+        # Calculate window parameters
+        win_samples = int(baz_win_sec * df)
+        overlap_samples = int(win_samples * baz_win_overlap)
+        step = win_samples - overlap_samples
 
-        # Prepare time windows for loop
-        n_windows = n_samples // (int(self.sampling_rate * baz_win_sec))
+        if step == 0:
+            print("step is 0, setting to 1")
+            step = 1
 
-        # Prepare backazimuths for loop using integer step size
-        backazimuths = linspace(0, 360 - self.baz_step, int(360 / self.baz_step))
+        # get amount of windows
+        n_windows = int((n_data - win_samples) / step) + 1
 
-        # Prepare data array
-        corrbaz = ones([backazimuths.size, n_windows])*nan
+        # Prepare final backazimuths for fine search
+        final_backazimuths = linspace(0, 360 - self.baz_step, int(360 / self.baz_step))
+        
+        # Prepare data array for final results
+        corrbaz = ones([final_backazimuths.size, n_windows])*nan
+        
+        if verbose:
+            print(f"  Final backazimuths: {len(final_backazimuths)} points")
+            print(f"  Correlation array shape: {corrbaz.shape}")
+            print(f"  Number of windows: {n_windows}")
 
         degrees = []
         windows = []
-
+        t_center = []
         bazs = ones(n_windows)*nan
-
-        # Extract the core computation logic for parallelization
-        def _compute_single_baz_window(i_deg, i_win, backazimuth_val):
-            """Core computation for a single (degree, window) combination"""
-            try:
-                # infer indices
-                idx1 = int(self.sampling_rate * baz_win_sec * i_win)
-                idx2 = int(self.sampling_rate * baz_win_sec * (i_win + 1))
-
-                # add overlap
-                if i_win > 0 and i_win < n_windows:
-                    idx1 = int(idx1 - overlap * baz_win_sec * self.sampling_rate)
-                    idx2 = int(idx2 + overlap * baz_win_sec * self.sampling_rate)
-
-                # prepare traces according to selected wave type
-                if wave_type.lower() == "love":
-                    if verbose and i_deg == 0 and i_win == 0:
-                        print(f"> using {wave_type} waves for backazimuth estimation ...")
-
-                    # rotate NE to RT
-                    R, T = rotate_ne_rt(ACC.select(channel='*N')[0].data,
-                                        ACC.select(channel='*E')[0].data,
-                                        backazimuth_val)
-
-                    # compute correlation for backazimuth
-                    ccorr = correlate(ROT.select(channel="*Z")[0][idx1:idx2],
-                                    T[idx1:idx2],
-                                    0, demean=True, normalize='naive', method='fft')
-
-                    # get maximum correlation
-                    xshift, cc_max = xcorr_max(ccorr)
-
-                    if xshift != 0 and verbose:
-                        print(f" -> maximal cc not a shift=0: shift={xshift} | cc={cc_max}")
-
-                elif wave_type.lower() == "rayleigh":
-                    if verbose and i_deg == 0 and i_win == 0:
-                        print(f"> using {wave_type} waves for backazimuth estimation ...")
-
-                    # rotate NE to RT
-                    R, T = rotate_ne_rt(ROT.select(channel='*N')[0].data,
-                                        ROT.select(channel='*E')[0].data,
-                                        backazimuth_val)
-
-                    # compute correlation for backazimuth
-                    ccorr = correlate(ACC.select(channel="*Z")[0][idx1:idx2],
-                                    T[idx1:idx2],
-                                    0, demean=True, normalize='naive', method='fft')
-
-                    # get maximum correlation
-                    xshift, cc_max = xcorr_max(ccorr)
-
-                    if xshift != 0 and verbose:
-                        print(f" -> maximal cc not a shift=0: shift={xshift} | cc={cc_max}")
-
-                elif wave_type.lower() == "tangent":
-                    if verbose and i_deg == 0 and i_win == 0:
-                        print(f" > using {wave_type} for backazimuth estimation with {tangent_components} components...")
-
-                    # no grid search, no degrees loop required
-                    if i_deg > 0:
-                        return i_deg, i_win, nan, nan
-
-                    try:
-                        N = len(ROT[0].data[idx1:idx2])
-                    except:
-                        N = len(ACC[0].data[idx1:idx2])
-
-                    # prepare data based on component choice
-                    dat = zeros((N, 2))
-
-                    if tangent_components.lower() == "rotation":
-                        dat[:, 0] = ROT.select(channel='*E')[0].data[idx1:idx2]
-                        dat[:, 1] = ROT.select(channel='*N')[0].data[idx1:idx2]
-                    elif tangent_components.lower() == "acceleration":
-                        dat[:, 0] = ACC.select(channel='*E')[0].data[idx1:idx2]
-                        dat[:, 1] = ACC.select(channel='*N')[0].data[idx1:idx2]
-                    else:
-                        raise ValueError(f"Invalid tangent_components: {tangent_components}")
-
-                    # compute covariance
-                    covar = cov(dat, rowvar=False)
-
-                    # get dominant eigenvector
-                    Cprime, Q = eigh(covar, UPLO='U')
-
-                    # sorting and formatting
-                    loc = argsort(abs(Cprime))[::-1]
-                    Q = Q[:, loc]
-
-                    # get backazimuth using tangent of eigenvectors
-                    baz0 = -arctan((Q[1, 0]/Q[0, 0]))*180/pi
-
-                    # if negative due to tangent, then add 180 degrees
-                    if baz0 <= 0:
-                        baz0 += 180
-
-                    # remove 180° ambiguity
-                    if tangent_components.lower() == "rotation":
-                        R, T = rotate_ne_rt(ROT.select(channel='*N')[0].data,
-                                            ROT.select(channel='*E')[0].data,
-                                            baz0)
-                        
-                        ccorr = correlate(ACC.select(channel="*Z")[0][idx1:idx2],
-                                        T[idx1:idx2],
-                                        0, demean=True, normalize='naive', method='fft')
-                    else:
-                        if hasattr(self, 'event_info') and self.event_info and 'backazimuth' in self.event_info:
-                            rmse = np.sqrt(np.mean((baz0 - self.event_info['backazimuth'])**2))
-                            rmse_180 = np.sqrt(np.mean((baz0 + 180 - self.event_info['backazimuth'])**2))
-                            ccorr = [1e-6] if rmse_180 < rmse else [-1e-6]
-                        else:
-                            ccorr = [-1e-6]  # Default if no event info
-
-                    xshift, cc_max = xcorr_max(ccorr)
-                    if cc_max > 0:
-                        baz0 += 180
-                    cc_max = abs(cc_max)
-
-                    return i_deg, i_win, cc_max, baz0
-
-                else:
-                    print(f" -> unknown wave type: {wave_type}!")
-                    return i_deg, i_win, nan, nan
-
-                return i_deg, i_win, cc_max, nan
-
-            except Exception as e:
-                if verbose:
-                    print(f"Error in degree {i_deg}, window {i_win}: {e}")
-                return i_deg, i_win, nan, nan
-
-        # Create parameter combinations for parallelization
-        param_combinations = []
-        for i_deg in range(len(backazimuths)):
-            for i_win in range(n_windows):
-                if wave_type.lower() == "tangent" and i_deg > 0:
-                    continue
-                param_combinations.append((i_deg, i_win, backazimuths[i_deg]))
-
-        # Parallel computation
-        if n_jobs == 1 or len(param_combinations) < 10:
-            computation_results = []
-            for i_deg, i_win, baz_val in param_combinations:
-                computation_results.append(_compute_single_baz_window(i_deg, i_win, baz_val))
+        
+        # Initialize arrays based on cc_method
+        if cc_method in ['max', 'both']:
+            maxbaz = np.zeros(n_windows)
+            maxcorr = np.zeros(n_windows)
         else:
-            computation_results = Parallel(n_jobs=n_jobs, backend='threading', verbose=0)(
-                delayed(_compute_single_baz_window)(i_deg, i_win, baz_val) 
-                for i_deg, i_win, baz_val in param_combinations
-            )
+            maxbaz = np.full(n_windows, np.nan)
+            maxcorr = np.full(n_windows, np.nan)
+            
+        if cc_method in ['mid', 'both']:
+            midbaz = np.zeros(n_windows)
+            midcorr = np.zeros(n_windows)
+        else:
+            midbaz = np.full(n_windows, np.nan)
+            midcorr = np.full(n_windows, np.nan)
 
-        # Process results
-        for i_deg in range(len(backazimuths)):
-            degrees.append(i_deg)
-        for i_win in range(n_windows):
-            windows.append(i_win)
+        if verbose:
+            print(f"Fast backazimuth estimation: {wave_type} waves")
+            print(f"  Coarse search: 10° steps")
+            print(f"  Fine search: {baz_step}° steps")
+            print(f"  Windows: {n_windows}")
 
-        for i_deg, i_win, cc_max, baz0 in computation_results:
-            if not np.isnan(cc_max):
-                corrbaz[i_deg, i_win] = cc_max
-            if wave_type.lower() == "tangent" and not np.isnan(baz0):
-                bazs[i_win] = baz0
-
-        # Extract maxima and create output
+        # _______________________________
+        # Two-stage backazimuth estimation
+        # _______________________________
+        
         if wave_type.lower() == "tangent":
-            maxbaz = bazs
-            maxcorr = corrbaz[0, :]
+            # For tangent waves, use the original method (no grid search)
+            if verbose:
+                print(f" > using {wave_type} for backazimuth estimation with {tangent_components} components...")
+
+            # loop over time windows only
+            for i_win in range(0, n_windows):
+                windows.append(i_win)
+
+                # update indices
+                idx1 = i_win * step
+                idx2 = idx1 + win_samples
+
+                # get central time of window
+                t_center.append((idx1 + (idx2 - idx1)/2) /df)
+
+                try:
+                    N = len(ROT[0].data[idx1:idx2])
+                except:
+                    N = len(ACC[0].data[idx1:idx2])
+
+                # prepare data based on component choice
+                dat = zeros((N, 2))
+
+                if tangent_components.lower() == "rotation":
+                    # Use rotation components (original method)
+                    dat[:, 0] = ROT.select(channel='*E')[0].data[idx1:idx2]
+                    dat[:, 1] = ROT.select(channel='*N')[0].data[idx1:idx2]
+                elif tangent_components.lower() == "acceleration":
+                    # Use acceleration components (new option)
+                    dat[:, 0] = ACC.select(channel='*E')[0].data[idx1:idx2]
+                    dat[:, 1] = ACC.select(channel='*N')[0].data[idx1:idx2]
+                else:
+                    raise ValueError(f"Invalid tangent_components: {tangent_components}. Use 'rotation' or 'acceleration'")
+
+                # compute covariance
+                covar = cov(dat, rowvar=False)
+
+                # get dominant eigenvector
+                Cprime, Q = eigh(covar, UPLO='U')
+
+                # sorting
+                loc = argsort(abs(Cprime))[::-1]
+
+                # formatting
+                Q = Q[:, loc]
+
+                # get backazimuth using tangent of eigenvectors
+                baz0 = -arctan((Q[1, 0]/Q[0, 0]))*180/pi
+
+                # if negative due to tangent, then add 180 degrees
+                if baz0 <= 0:
+                    baz0 += 180
+
+                # remove 180° ambiguity using appropriate correlation
+                if tangent_components.lower() == "rotation":
+                    # Original method: rotate rotation components and correlate with acceleration Z
+                    JR, JT = rotate_ne_rt(
+                        ROT.select(channel='*N')[0].data,
+                        ROT.select(channel='*E')[0].data,
+                        baz0
+                    )
+                    
+                    HZ = ACC.select(channel="*Z")[0].data
+
+                    # correlate with acceleration
+                    ccorr = correlate(
+                        HZ[idx1:idx2],
+                        JT[idx1:idx2],
+                        0, demean=True, normalize='naive', method='auto'
+                    )
+
+                # remove 180° ambiguity using closest to theoretical backazimuth
+                else:
+                    if self.event_info and 'backazimuth' in self.event_info:
+                        # compute rmse of baz0 and self.event_info['backazimuth']
+                        rmse = np.sqrt(np.mean((baz0 - self.event_info['backazimuth'])**2))
+                        
+                        # compute rmse of baz0 + 180 and self.event_info['backazimuth']
+                        rmse_180 = np.sqrt(np.mean((baz0 + 180 - self.event_info['backazimuth'])**2))
+
+                        # choose the one with the least rmse and set cc_max to 0 (dummy value)
+                        if rmse_180 < rmse:
+                            ccorr = [1] #[1e-6]
+                        else:
+                            ccorr = [-1] #[1e-6]
+
+                # get maximum correlation
+                xshift, cc_max = xcorr_max(ccorr)
+
+                # if correlation positive add 180 degrees
+                if cc_max > 0:
+                    baz0 += 180
+
+                # take absolute value of correlation for better visualization
+                cc_max = abs(cc_max)
+
+                bazs[i_win] = baz0
+                corrbaz[0, i_win] = cc_max
+
+        # if wave_type is rayleigh or love
         else:
-            maxbaz = array([backazimuths[corrbaz[:, l1].argmax()] for l1 in range(n_windows)])
-            maxcorr = array([max(corrbaz[:, l1]) for l1 in range(n_windows)])
+            # For Love and Rayleigh waves, use two-stage grid search
+            if verbose:
+                print(f" > using {wave_type} waves for backazimuth estimation ...")
 
-        # Create mesh grid and time windows
+            # Stage 1: Coarse search with 10° steps
+            coarse_step = 10
+            coarse_backazimuths = linspace(0, 360 - coarse_step, int(360 / coarse_step))
+            
+            if verbose:
+                print(f"  Stage 1: Coarse search with {coarse_step}° steps ({len(coarse_backazimuths)} points)")
+
+            # loop over time windows
+            for i_win in range(0, n_windows):
+                windows.append(i_win)
+            
+                # Initialize output
+                maxbaz[i_win] = np.nan
+                maxcorr[i_win] = np.nan
+                midbaz[i_win] = np.nan
+                midcorr[i_win] = np.nan
+                
+                # update indices
+                idx1 = i_win * step
+                idx2 = idx1 + win_samples
+
+                # get central time of window
+                t_center.append((idx1 + (idx2 - idx1)/2) /df)
+                
+                if verbose and i_win < 3:  # Show first few windows
+                    print(f"  Processing window {i_win}: indices {idx1}-{idx2}")
+
+                # Coarse search
+                coarse_correlations = []
+                for coarse_baz in coarse_backazimuths:
+                    cc_max = _compute_correlation_for_baz(coarse_baz, idx1, idx2, wave_type, ACC, ROT)
+                    coarse_correlations.append(cc_max)
+
+                # Find best coarse backazimuth
+                best_coarse_idx = np.argmax(coarse_correlations)
+                best_coarse_baz = coarse_backazimuths[best_coarse_idx]
+                best_coarse_cc = coarse_correlations[best_coarse_idx]
+
+                if verbose and i_win < 3:
+                    print(f"    Window {i_win}: Best coarse baz = {best_coarse_baz:.1f}° (cc = {best_coarse_cc:.3f})")
+
+                # Stage 2: Fine search around the best coarse result
+                if cc_method in ['max', 'both']:
+                    try:
+                        search_range = 25  # degrees around the coarse maximum
+                        fine_start = best_coarse_baz - search_range
+                        fine_end = best_coarse_baz + search_range
+                        
+                        # Ensure we stay within 0-360 range
+                        if fine_start < 0:
+                            fine_start += 360
+                        if fine_end > 360:
+                            fine_end -= 360
+
+                        # Create fine search backazimuths using helper function
+                        fine_backazimuths = _get_fine_grid(best_coarse_baz, search_range, baz_step)
+
+                        # Fine search
+                        fine_correlations = []
+                        for fine_baz in fine_backazimuths:
+                            cc_max = _compute_correlation_for_baz(fine_baz, idx1, idx2, wave_type, ACC, ROT)
+                            fine_correlations.append(cc_max)
+
+                        # Find best fine backazimuth
+                        best_fine_idx = np.argmax(fine_correlations)
+                        best_fine_baz = fine_backazimuths[best_fine_idx]
+                        best_fine_cc = fine_correlations[best_fine_idx]
+
+                        # Store max result
+                        final_idx = np.argmin(np.abs(final_backazimuths - best_fine_baz))
+                        if final_idx < len(final_backazimuths) and i_win < corrbaz.shape[1]:
+                            corrbaz[final_idx, i_win] = best_fine_cc
+                        
+                        # Store max values
+                        maxbaz[i_win] = best_fine_baz
+                        maxcorr[i_win] = best_fine_cc
+                
+                    except Exception as e:
+                        print(f"Error in max calculation: {e}")
+
+                # Stage 3: Calculate mid backazimuth if mid method is requested
+                if cc_method in ['mid', 'both']:
+                    try:
+                        # Use zero crossing approach
+                        baz_pad, cc_pad = _padding(coarse_backazimuths, np.array(coarse_correlations), coarse_step, Ndegree=60)
+                        null1, null2 = _get_zero_crossings(cc_pad)
+                        
+                        # Calculate mid backazimuth as center between zero crossings
+                        baz_lower = baz_pad[null1]
+                        baz_upper = baz_pad[null2]
+                        # baz_mid = (baz_upper - baz_lower) / 2 + baz_lower
+                        
+                        # Create fine search backazimuths around zero crossings using helper function
+                        search_range = 25  # degrees around the zero crossings
+                        fine_baz_lower = _get_fine_grid(baz_lower, search_range, baz_step)
+                        fine_baz_upper = _get_fine_grid(baz_upper, search_range, baz_step)
+
+                        # Calculate correlations for fine grid
+                        fine_cc_lower = []
+                        for fine_baz in fine_baz_lower:
+                            cc_max = _compute_correlation_for_baz(fine_baz, idx1, idx2, wave_type, ACC, ROT)
+                            fine_cc_lower.append(cc_max)
+                        fine_cc_upper = []
+                        for fine_baz in fine_baz_upper:
+                            cc_max = _compute_correlation_for_baz(fine_baz, idx1, idx2, wave_type, ACC, ROT)
+                            fine_cc_upper.append(cc_max)
+
+                        # Find zero crossings in fine grid
+                        fine_null_lower_idx = np.argmin(np.abs(fine_cc_lower))
+                        fine_null_upper_idx = np.argmin(np.abs(fine_cc_upper))
+
+                        # Calculate final mid backazimuth as center between fine zero crossings
+                        fine_baz_lower = fine_baz_lower[fine_null_lower_idx]
+                        fine_baz_upper = fine_baz_upper[fine_null_upper_idx]
+
+                        # handle wrap-around
+                        if fine_baz_lower > fine_baz_upper:
+                            fine_baz_upper += 360
+
+                        # Get mid backazimuth
+                        baz_mid = (fine_baz_upper - fine_baz_lower) / 2 + fine_baz_lower
+
+                        # handle wrap-around
+                        baz_mid = baz_mid % 360
+
+                        # Get correlation at mid point
+                        cc_mid = _compute_correlation_for_baz(baz_mid, idx1, idx2, wave_type, ACC, ROT)
+
+                        # Normalize to 0-360
+                        if baz_mid < 0:
+                            baz_mid += 360
+                        if baz_mid > 360:
+                            baz_mid -= 360
+                                                
+                        # Store mid result
+                        midbaz[i_win] = baz_mid
+                        midcorr[i_win] = cc_mid
+                        
+                    except Exception as e:
+                        print(f"Error in mid calculation: {e}")
+
+        # Handle tangent waves
+        if wave_type.lower() == "tangent":
+            if cc_method in ['max', 'both']:
+                maxbaz = bazs
+                maxcorr = corrbaz[0, :]
+            if cc_method in ['mid', 'both']:
+                midbaz = bazs.copy()
+                midcorr = corrbaz[0, :].copy()
+
+        # For Love/Rayleigh waves, max and mid values are already calculated in the main loop
+        # No additional extraction needed since we store them directly during computation
+
+        # create mesh grid
         t_win = arange(0, baz_win_sec*n_windows+baz_win_sec, baz_win_sec)
-        t_win_center = t_win[:-1]+baz_win_sec/2
-        grid = meshgrid(t_win, backazimuths)
+        t_win = t_win[:-1]+baz_win_sec/2
+        grid = meshgrid(t_win, final_backazimuths)
 
-        # Add one element for axes
-        windows.append(windows[-1]+1)
-        degrees.append(degrees[-1]+self.baz_step)
+        # add one element for axes
+        if len(windows) > 0:
+            windows.append(windows[-1]+1)
+        if len(degrees) > 0:
+            degrees.append(degrees[-1]+self.baz_step)
+        else:
+            degrees.append(self.baz_step)
 
-        # Store results based on wave type
-        result_type = wave_type.lower()
-        if result_type in ["love", "rayleigh"]:
-            setattr(self, f'baz_grid_{result_type}', corrbaz)
-            setattr(self, f'baz_degrees_{result_type}', degrees)
-            setattr(self, f'baz_windows_{result_type}', windows)
-            setattr(self, f'baz_corr_{result_type}', maxcorr)
-            setattr(self, f'baz_max_{result_type}', maxbaz)
-            setattr(self, f'baz_times_{result_type}', t_win_center)
-        elif result_type == "tangent":
-            comp_suffix = f"_{tangent_components.lower()}"
-            for attr in ['grid', 'degrees', 'windows', 'corr', 'max', 'times']:
-                setattr(self, f'baz_{attr}_tangent{comp_suffix}', locals()[f'{"corrbaz" if attr=="grid" else "max"+attr if attr in ["corr","baz"] else attr}'])
-                setattr(self, f'baz_{attr}_tangent', locals()[f'{"corrbaz" if attr=="grid" else "max"+attr if attr in ["corr","baz"] else attr}'])
+        # prepare results
+        output = {}
+        output['baz_mesh'] = grid
+        output['baz_corr'] = corrbaz
+        output['baz_time'] = t_win
+        output['acc'] = ACC
+        output['rot'] = ROT
+        output['twin_center'] = np.array(t_center)
+        
+        output['cc_max_y'] = maxbaz
+        output['baz_max'] = maxbaz
+        output['cc_max'] = maxcorr
 
+        output['baz_mid'] = midbaz
+        output['cc_mid'] = midcorr
+       
+        output['component_type'] = tangent_components if wave_type.lower() == "tangent" else None
+        output['parameters'] = {
+            'baz_win_sec': baz_win_sec,
+            'baz_win_overlap': baz_win_overlap,
+            'baz_step': baz_step,
+            'wave_type': wave_type,
+            'cc_method': cc_method,
+        }
+
+        # add results to object
+        self.baz_results[wave_type] = output
+
+        # return output if out required
         if out:
-            return {
-                'baz_mesh': grid,
-                'baz_corr': corrbaz,
-                'acc': ACC,
-                'rot': ROT,
-                'twin_center': t_win_center,
-                'cc_max_y': maxbaz,
-                'cc_max': maxcorr,
-                'component_type': tangent_components if wave_type.lower() == "tangent" else None,
-                'parameters': {
-                    'baz_win_sec': baz_win_sec,
-                    'baz_win_soverlap': baz_win_overlap,
-                    'baz_step': baz_step,
-                    'wave_type': wave_type,
-                }
-            }
+            return output
 
+    # OLD
     def compute_odr(self, x_array: ndarray, y_array: ndarray, xerr: Union[float, ndarray]=None, 
                    yerr: Union[float, ndarray]=None, zero_intercept: bool=False) -> Dict:
         """
@@ -2828,7 +3078,8 @@ class sixdegrees():
         """
         from scipy import odr
         import numpy as np
-        
+        from scipy.stats import pearsonr
+
         # Set default errors if not provided
         if xerr is None:
             xerr = np.std(x_array)
@@ -2873,11 +3124,11 @@ class sixdegrees():
             y_fit = output.beta[0] * x_array + output.beta[1]
             intercept = output.beta[1]
             intercept_err = output.sd_beta[1]
-            
-        ss_res = np.sum((y_array - y_fit) ** 2)
-        ss_tot = np.sum((y_array - np.mean(y_array)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot)
         
+        # Calculate R-squared
+        r, _ = pearsonr(x_array, y_array)
+        r_squared = r**2
+
         # Prepare results
         results = {
             'slope': output.beta[0],
@@ -2896,6 +3147,7 @@ class sixdegrees():
         
         return results
 
+    # OLD
     def compute_regression(self, x_array: ndarray, y_array: ndarray, 
                           method: str='ransac', zero_intercept: bool=False,
                           trials: int=1000, min_samples: int=2,
@@ -3098,17 +3350,32 @@ class sixdegrees():
             if abs(cc) > cc_threshold:
                 if wave_type.lower() == 'love':
                     # get velocity from amplitude ratio via regression
-                    if method.lower() == 'odr':
-                        velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
-                    elif method.lower() == 'ransac':
-                        velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], method='ransac', zero_intercept=True)['slope']
-
+                    # if method.lower() == 'odr':
+                    #     velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
+                    # elif method.lower() == 'ransac':
+                    #     velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], method='ransac', zero_intercept=True)['slope']
+                    reg_result = self.regression(
+                        rot_z[i1:i2],
+                        0.5*acc_t[i1:i2],
+                        method=method.lower(),
+                        zero_intercept=True,
+                        verbose=False
+                    )
+                    velocities[i] = reg_result['slope']
                 elif wave_type.lower() == 'rayleigh':
                     # get velocity from amplitude ratio via regression
-                    if method.lower() == 'odr':
-                        velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
-                    elif method.lower() == 'ransac':
-                        velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], method='ransac', zero_intercept=True)['slope']
+                    # if method.lower() == 'odr':
+                    #     velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
+                    # elif method.lower() == 'ransac':
+                    #     velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], method='ransac', zero_intercept=True)['slope']
+                    reg_result = self.regression(
+                        rot_t[i1:i2],
+                        acc_z[i1:i2],
+                        method=method.lower(),
+                        zero_intercept=True,
+                        verbose=False
+                    )
+                    velocities[i] = reg_result['slope']
                 else:
                     raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
             
@@ -3141,179 +3408,10 @@ class sixdegrees():
         
         return results
 
-    # OLD
-    def compute_velocities_in_windows(self, wave_type: str="love", overlap: float=0.5, win_time_s: float=None,
-                                      cc_threshold: float=0.2, adjusted_baz: bool=False, baz: float=None,
-                                      method: str='odr', fmin: float=None, fmax: float=None) -> Dict:
-        """
-        Compute phase velocities in time intervals for Love or Rayleigh waves
-        
-        Parameters:
-        -----------
-        wave_type : str
-            Type of wave to analyze ('love' or 'rayleigh')
-        win_time_s : float or None
-            Window length in seconds. If None, uses 1/fmin
-        overlap : float
-            Window overlap in percent (0-1)
-        cc_threshold : float
-            Minimum cross-correlation coefficient threshold
-        baz : float or None
-            Backazimuth in degrees. If None, uses theoretical or estimated BAZ
-            
-        Returns:
-        --------
-        Dict
-            Dictionary containing:
-            - time: array of time points
-            - velocity: array of phase velocities
-            - ccoef: array of cross-correlation coefficients
-            - terr: array of time window lengths
-        """
-        import numpy as np
-        from obspy.signal.rotate import rotate_ne_rt
-        from obspy.signal.cross_correlation import correlate, xcorr_max
-        
-        # Get and process streams
-        if fmin is not None and fmax is not None:
-            rot = self.get_stream("rotation", raw=True).copy()
-            acc = self.get_stream("translation", raw=True).copy()
-            rot = rot.detrend('linear').filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
-            acc = acc.detrend('linear').filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
-        else:
-            rot = self.get_stream("rotation").copy()
-            acc = self.get_stream("translation").copy()
-            
-        if not adjusted_baz and baz is None:
-            raise ValueError("Backazimuth must be provided if adjusted_baz is False")
-        
-        # Get sampling rate
-        df = self.sampling_rate
-        
-        # Set window length if not provided
-        if win_time_s is None:
-            win_time_s = 1/self.fmin
-
-        # select mode of operation
-        if not adjusted_baz:
-            # Rotate components to radial-transverse
-            rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
-                                    rot.select(channel='*E')[0].data,
-                                    baz)
-            acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
-                                    acc.select(channel='*E')[0].data,
-                                    baz)
-        else:
-            # compute backazimuth for windows
-            baz_results = self.compute_backazimuth(
-                wave_type=wave_type,
-                baz_step=1,
-                baz_win_sec=win_time_s,
-                baz_win_overlap=overlap,
-                out=True
-            )
-
-        # Get vertical components
-        rot_z = rot.select(channel="*Z")[0].data
-        acc_z = acc.select(channel="*Z")[0].data
-        
-        # Calculate window parameters
-        win_samples = int(win_time_s * df)
-        overlap_samples = int(win_samples * overlap)
-        step = win_samples - overlap_samples
-
-        # number of windows
-        n_windows = len(rot_z) // win_samples
-
-        # Initialize arrays
-        times = np.zeros(n_windows)
-        velocities = np.zeros(n_windows)
-        cc_coeffs = np.zeros(n_windows)
-        
-        # Loop through windows
-        for i in range(n_windows):
-            i1 = i * step
-            i2 = i1 + win_samples
-            
-            if adjusted_baz:
-                # Rotate components to radial-transverse
-                rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
-                                        rot.select(channel='*E')[0].data,
-                                        baz_results['cc_max_y'][i])
-                acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
-                                        acc.select(channel='*E')[0].data,
-                                        baz_results['cc_max_y'][i])
-            
-            # compute cross-correlation coefficient
-            if wave_type.lower() == 'love':
-                # For Love waves: use transverse acceleration and vertical rotation
-                cc = xcorr_max(correlate(rot_z[i1:i2], acc_t[i1:i2], 0))[1]
-
-            elif wave_type.lower() == 'rayleigh':
-                # For Rayleigh waves: use vertical acceleration and transverse rotation
-                cc = xcorr_max(correlate(rot_t[i1:i2], acc_z[i1:i2], 0))[1]
-            else:
-                raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
-
-            # Compute velocity using amplitude ratio
-            if abs(cc) > cc_threshold:
-                if wave_type.lower() == 'love':
-                    # get velocity from amplitude ratio via regression
-                    if method.lower() == 'odr':
-                        velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
-                    elif method.lower() == 'ransac':
-                        velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], method='ransac', zero_intercept=True)['slope']
-
-                elif wave_type.lower() == 'rayleigh':
-                    # get velocity from amplitude ratio via regression
-                    if method.lower() == 'odr':
-                        velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
-                    elif method.lower() == 'ransac':
-                        velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], method='ransac', zero_intercept=True)['slope']
-                else:
-                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
-            
-                # add central time of window
-                times[i] = (i1 + win_samples/2) / df
-                
-                # add cross-correlation coefficient 
-                cc_coeffs[i] = abs(cc)
-            else:
-                times[i] = (i1 + win_samples/2) / df
-                velocities[i] = np.nan
-                cc_coeffs[i] = abs(cc)
-        
-        # center time of window
-        times_center = np.ones_like(times) * win_time_s/2
-
-        # Create output dictionary
-        results = {
-            'time': times,
-            'velocity': velocities,
-            'ccoef': cc_coeffs,
-            'terr': times_center,
-            'parameters': {
-                'wave_type': wave_type,
-                'win_time_s': win_time_s,
-                'overlap': overlap,
-                'cc_threshold': cc_threshold,
-                'baz': baz,
-                'fmin': self.fmin,
-                'fmax': self.fmax
-            }
-        }
-        
-        # add backazimuth if adjusted mode
-        if adjusted_baz:
-            results['backazimuth'] = baz_results['cc_max_y']
-        else:
-            results['backazimuth'] = baz*np.ones_like(times)
-
-        return results
-
     def compute_velocities_optimized(self, rotation_data: Stream=None, translation_data: Stream=None,
                                      wave_type: str='love', baz_results: Dict=None, baz_mode: str='mid',
-                                     method: str='odr', cc_threshold: float=0.0) -> Dict:
+                                     method: str='odr', cc_threshold: float=0.0, r_squared_threshold: float=0.0, 
+                                     zero_intercept: bool=True) -> Dict:
         """
         Compute phase velocities in time intervals for Love or Rayleigh waves
         
@@ -3333,6 +3431,10 @@ class sixdegrees():
             Method to use for velocity computation ('odr' or 'ransac')
         cc_threshold : float, optional
             Minimum cross-correlation coefficient to consider, by default 0.0
+        r_squared_threshold : float, optional
+            Minimum R-squared value for regression quality, by default 0.0
+        zero_intercept : bool
+            Force intercept to be zero if True
         Returns:
         --------
         Dict
@@ -3355,8 +3457,8 @@ class sixdegrees():
             raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
         if baz_mode.lower() not in ['max', 'mid']:
             raise ValueError(f"Invalid baz mode: {baz_mode}. Use 'max' or 'mid'")
-        if method.lower() not in ['odr', 'ransac']:
-            raise ValueError(f"Invalid method: {method}. Use 'odr' or 'ransac'")
+        if method.lower() not in ['odr', 'ransac', 'theilsen']:
+            raise ValueError(f"Invalid method: {method}. Use 'odr' or 'ransac' or 'theilsen'")
 
         # Make copies to avoid modifying original data
         rot = rotation_data.copy()
@@ -3412,7 +3514,7 @@ class sixdegrees():
         # Loop through windows
         velocities = np.ones_like(baz) * np.nan
 
-        for i, (_baz, _ttt, _ccc) in tqdm(enumerate(zip(baz, ttt, ccc))):
+        for i, (_baz, _ttt, _ccc) in enumerate(zip(baz, ttt, ccc)):
             i1 = i * step
             i2 = i1 + win_samples
             
@@ -3438,37 +3540,65 @@ class sixdegrees():
             # Compute velocity using amplitude ratio
             if wave_type.lower() == 'love':
                 # get velocity from amplitude ratio via regression
-                if method.lower() == 'odr':
-                    velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
-                elif method.lower() == 'ransac':
-                    velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], 
-                                                            method='ransac', zero_intercept=True)['slope']
+                # if method.lower() == 'odr':
+                #     velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
+                # elif method.lower() == 'ransac':
+                #     velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], 
+                #                                             method='ransac', zero_intercept=zero_intercept)['slope']
+                reg_result = self.regression(
+                    rot_z[i1:i2],
+                    0.5*acc_t[i1:i2],
+                    method=method.lower(),
+                    zero_intercept=True,
+                    verbose=False
+                )
+                # Apply R² threshold filter
+                if reg_result['r_squared'] < r_squared_threshold:
+                    velocities[i] = np.nan
+                else:
+                    velocities[i] = reg_result['slope']
+
 
             elif wave_type.lower() == 'rayleigh':
                 # get velocity from amplitude ratio via regression
-                if method.lower() == 'odr':
-                    velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
-                elif method.lower() == 'ransac':
-                    velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], 
-                                                            method='ransac', zero_intercept=True)['slope']
+                # if method.lower() == 'odr':
+                #     velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
+                # elif method.lower() == 'ransac':
+                #     velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], 
+                #                                             method='ransac', zero_intercept=zero_intercept)['slope']
+                reg_results = self.regression(
+                    rot_t[i1:i2],
+                    acc_z[i1:i2],
+                    method=method.lower(),
+                    zero_intercept=True,
+                    verbose=False
+                )
+                # Apply R² threshold filter
+                if reg_results['r_squared'] < r_squared_threshold:
+                    velocities[i] = np.nan
+                else:
+                    velocities[i] = reg_results['slope']
             
             else:
                 raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
 
         return {
-            'times': ttt,
+            'time': ttt,
             'velocity': velocities,
-            'cc_value': ccc,
+            'ccoef': ccc,
+            'terr': np.full(len(ttt), win_time_s/2),
             'backazimuth': baz,
             'parameters': {
                 'wave_type': wave_type,
                 'win_time_s': win_time_s,
                 'overlap': overlap,
                 'method': method,
-                'baz_mode': baz_mode
+                'baz_mode': baz_mode,
+                'r_squared_threshold': r_squared_threshold
             }
         }
 
+    # OLD
     def _process_frequency_band(self, freq_params, wave_type, t_win_factor, overlap, baz_mode, method, cc_threshold, rot_data, tra_data):
         """
         Process a single frequency band for parallel computation.
@@ -3610,6 +3740,7 @@ class sixdegrees():
 
         return results
 
+    # OLD
     def compute_frequency_dependent_parameters_parallel(self, wave_type: str='love', fbands: Dict=None, 
                                                 t_win_factor: float=2, overlap: float=0.5, baz_mode: str='mid', 
                                                 method: str='odr', cc_threshold: float=0.0, n_jobs: int=-1) -> Dict:
@@ -4384,56 +4515,6 @@ class sixdegrees():
         phase = angle(spectrum, deg=False)
 
         return frequencies[0:n//2], magnitude[0:n//2], phase[0:n//2]
-
-    @staticmethod
-    def fit_gaussian_to_kde(angles: array, kde_values: array) -> Dict:
-        """
-        Fit a Gaussian to KDE values with mean fixed at KDE maximum.
-        
-        Parameters
-        ----------
-        angles : array
-            Array of angle values (x-axis)
-        kde_values : array
-            Array of KDE probability density values (y-axis)
-            
-        Returns
-        -------
-        Dict
-            Dictionary containing the fit parameters:
-            - mean: center of the Gaussian (fixed at KDE maximum)
-            - std: standard deviation
-            - amplitude: peak height
-            - r_squared: R-squared value of the fit
-        """
-        from scipy.optimize import curve_fit
-        import numpy as np
-        
-        # Fix mean at KDE maximum
-        mean = angles[np.argmax(kde_values)]
-        
-        def gaussian(x, amplitude, std):
-            return amplitude * np.exp(-((x - mean) ** 2) / (2 * std ** 2))
-        
-        # Initial parameter guesses
-        p0 = [np.max(kde_values),  # amplitude
-              30.0]  # initial std guess
-              
-        # Fit the Gaussian
-        popt, _ = curve_fit(gaussian, angles, kde_values, p0=p0)
-        
-        # Calculate R-squared
-        residuals = kde_values - gaussian(angles, *popt)
-        ss_res = np.sum(residuals ** 2)
-        ss_tot = np.sum((kde_values - np.mean(kde_values)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot)
-        
-        return {
-            'mean': mean,
-            'std': abs(popt[1]),  # ensure positive std
-            'amplitude': popt[0],
-            'r_squared': r_squared
-        }
 
     def compute_spectra(self, method='welch', nperseg=None, noverlap=None, nfft=None, 
                         window='hann', detrend='constant', scaling='density', raw=False,

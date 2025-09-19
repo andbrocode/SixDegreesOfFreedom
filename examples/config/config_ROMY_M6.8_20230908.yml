@@ -1,0 +1,27 @@
+baz_step: 1
+cc_threshold: 0.75
+data_source: mseed_file
+fmax: 0.2
+fmin: 0.02
+magnitude: 6.8
+origin_time: '2023-09-08 22:11:00'
+path_to_data_out: ./output/
+path_to_mseed_file: ./data/romy_eventM6.8.mseed
+project: ROMY_Analysis
+rot_seed:
+- XX.ROMY..BJZ
+- XX.ROMY..BJN
+- XX.ROMY..BJE
+seed: XX.ROMY..
+station_lat: 48.162941
+station_lon: 11.275476
+tbeg: '2023-09-08 22:13:00'
+tend: '2023-09-08 23:00:00'
+tra_seed:
+- XX.ROMY..BHZ
+- XX.ROMY..BHN
+- XX.ROMY..BHE
+twin_overlap: 0.5
+twin_sec: 30
+verbose: true
+workdir: ./
