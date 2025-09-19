@@ -50,7 +50,7 @@ def process_hour(hour, sd, config, day_beg, day_end):
             tra_stream = sd_hour.get_stream("translation", raw=True)
             if not rot_stream or len(rot_stream) == 0 or not tra_stream or len(tra_stream) == 0:
                 return None
-        except:
+        except Exception as e:
             return None
         
         # Get frequency bands
@@ -101,11 +101,12 @@ def process_hour(hour, sd, config, day_beg, day_end):
                     translation_data=sd_filtered.get_stream("translation", raw=True),
                     wave_type=config.get('wave_type', 'love'),
                     baz_results=baz_results,
-                    baz_mode=config.get('baz_mode', 'mid'),
-                    method=config.get('method', 'theilsen'),
+                    baz_mode=config.get('baz_mode', 'max'),
+                    method=config.get('method', 'odr'),
                     cc_threshold=config.get('cc_threshold', 0.0),
-                    r_squared_threshold=config.get('r_squared_threshold', 0.0),
-                    zero_intercept=True
+                    r_squared_threshold=0,
+                    zero_intercept=config.get('zero_intercept', True),
+                    plot=False
                 )
                 
                 if vel_results is None:
@@ -121,7 +122,7 @@ def process_hour(hour, sd, config, day_beg, day_end):
                 
                 # Apply KDE analysis
                 try:
-                    out = get_kde_stats_velocity(velocities, cc_values)
+                    out = get_kde_stats_velocity(velocities, cc_values, plot=True)
                     vel_max = out['max']
                     vel_dev = out['dev']
                 except:

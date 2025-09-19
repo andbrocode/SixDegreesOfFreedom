@@ -72,11 +72,21 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
                                    rot.select(channel="*E")[0].data,
                                    velocity_results['parameters']['baz'])
 
+    # Check if we have any data to plot
+    if len(velocity_results['time']) == 0:
+        print("Warning: No velocity data to plot after filtering")
+        return fig
+
     # prepare mask
     if cc_threshold is not None:
         mask = velocity_results['ccoef'] > cc_threshold
     else:
         mask = velocity_results['ccoef'] >= 0
+
+    # Check if mask has any True values
+    if not np.any(mask):
+        print(f"Warning: No data points meet the cc_threshold criteria (threshold: {cc_threshold})")
+        return fig
 
     # Plot waveforms based on wave type
     if  wave_type == 'love':

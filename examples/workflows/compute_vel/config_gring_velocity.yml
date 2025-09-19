@@ -41,15 +41,16 @@ wave_type: "love"    # 'love' or 'rayleigh'
 # BACKAZIMUTH COMPUTATION PARAMETERS
 # =============================================================================
 baz_mode: "max"      # 'max' or 'mid' for backazimuth computation
-t_win_factor: 4.0    # Window length factor (window = t_win_factor / center_frequency)
-overlap: 0.5         # Overlap fraction between windows (0-1)
-cc_threshold: 0.75    # Minimum cross-correlation coefficient threshold for backazimuth computation
+t_win_factor: 8.0    # Window length factor (window = t_win_factor / center_frequency)
+overlap: 0.25         # Overlap fraction between windows (0-1)
+cc_threshold: 0.5    # Minimum cross-correlation coefficient threshold for backazimuth computation
 
 # =============================================================================
 # VELOCITY COMPUTATION PARAMETERS
 # =============================================================================
-method: "theilsen"        # 'odr' or 'ransac' or 'theilsen' for velocity computation
-r_squared_threshold: 0.5  # Minimum R-squared value for regression quality (0.0 = no filtering)
+method: "odr"        # 'odr' or 'ransac' or 'theilsen' for velocity computation
+zero_intercept: true    # Force intercept to be zero if True
+r_squared_threshold: 0.0  # Minimum R-squared value for regression quality (0.0 = no filtering)
 
 # =============================================================================
 # PROCESSING CONFIGURATION

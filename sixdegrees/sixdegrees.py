@@ -1744,7 +1744,7 @@ class sixdegrees():
                 
                 # Calculate R-squared
                 r, _ = pearsonr(x_clean, y_clean)
-                r_squared = r**2
+                result['r_squared'] = r**2
 
                 if verbose:
                     print(f"ODR Results: slope={result['slope']:.6f}, R²={result['r_squared']:.4f}")
@@ -2457,32 +2457,33 @@ class sixdegrees():
         degrees.append(degrees[-1]+self.baz_step)
 
         # prepare results
-        output = {}
-        output['baz_mesh'] = grid
-        output['baz_corr'] = corrbaz
-        output['baz_time'] = t_win
-        output['acc'] = ACC
-        output['rot'] = ROT
-        output['twin_center'] = np.array(t_center)
-        output['cc_max_y'] = maxbaz
-        output['baz_max'] = maxbaz
-        output['cc_max'] = maxcorr
-        output['baz_mid'] = midbaz
-        output['cc_mid'] = midcorr
-        output['component_type'] = tangent_components if wave_type.lower() == "tangent" else None
-        output['parameters'] = {
-            'baz_win_sec': baz_win_sec,
-            'baz_win_overlap': baz_win_overlap,
-            'baz_step': baz_step,
-            'wave_type': wave_type,
+        results = {
+            'baz_mesh': grid,
+            'baz_corr': corrbaz,
+            'baz_time': t_win,
+            'acc': ACC,
+            'rot': ROT,
+            'twin_center': np.array(t_center),
+            'cc_max_y': maxbaz,
+            'baz_max': maxbaz,
+            'cc_max': maxcorr,
+            'baz_mid': midbaz,
+            'cc_mid': midcorr,
+            'component_type': tangent_components if wave_type.lower() == "tangent" else None,
+            'parameters': {
+                'baz_win_sec': baz_win_sec,
+                'baz_win_overlap': baz_win_overlap,
+                'baz_step': baz_step,
+                'wave_type': wave_type,
+            }
         }
 
         # add results to object
-        self.baz_results[wave_type] = output
+        self.baz_results[wave_type] = results
 
         # return output if out required
         if out:
-            return output
+            return results
 
     def compute_backazimuth(self, wave_type: str="love", baz_step: int=1, baz_win_sec: float=30.0, 
                         rotation_data: Stream=None, translation_data: Stream=None,
@@ -3021,36 +3022,34 @@ class sixdegrees():
             degrees.append(self.baz_step)
 
         # prepare results
-        output = {}
-        output['baz_mesh'] = grid
-        output['baz_corr'] = corrbaz
-        output['baz_time'] = t_win
-        output['acc'] = ACC
-        output['rot'] = ROT
-        output['twin_center'] = np.array(t_center)
-        
-        output['cc_max_y'] = maxbaz
-        output['baz_max'] = maxbaz
-        output['cc_max'] = maxcorr
-
-        output['baz_mid'] = midbaz
-        output['cc_mid'] = midcorr
-       
-        output['component_type'] = tangent_components if wave_type.lower() == "tangent" else None
-        output['parameters'] = {
-            'baz_win_sec': baz_win_sec,
-            'baz_win_overlap': baz_win_overlap,
-            'baz_step': baz_step,
-            'wave_type': wave_type,
-            'cc_method': cc_method,
+        results = {
+            'baz_mesh': grid,
+            'baz_corr': corrbaz,
+            'baz_time': t_win,
+            'acc': ACC,
+            'rot': ROT,
+            'twin_center': np.array(t_center),
+            'cc_max_y': maxbaz,
+            'baz_max': maxbaz,
+            'cc_max': maxcorr,
+            'baz_mid': midbaz,
+            'cc_mid': midcorr,
+            'component_type': tangent_components if wave_type.lower() == "tangent" else None,
+            'parameters': {
+                'baz_win_sec': baz_win_sec,
+                'baz_win_overlap': baz_win_overlap,
+                'baz_step': baz_step,
+                'wave_type': wave_type,
+                'cc_method': cc_method,
+            }
         }
 
         # add results to object
-        self.baz_results[wave_type] = output
+        self.baz_results[wave_type] = results
 
         # return output if out required
         if out:
-            return output
+            return results
 
     # OLD
     def compute_odr(self, x_array: ndarray, y_array: ndarray, xerr: Union[float, ndarray]=None, 
@@ -3411,7 +3410,7 @@ class sixdegrees():
     def compute_velocities_optimized(self, rotation_data: Stream=None, translation_data: Stream=None,
                                      wave_type: str='love', baz_results: Dict=None, baz_mode: str='mid',
                                      method: str='odr', cc_threshold: float=0.0, r_squared_threshold: float=0.0, 
-                                     zero_intercept: bool=True) -> Dict:
+                                     zero_intercept: bool=True, verbose: bool=False, plot: bool=False) -> Dict:
         """
         Compute phase velocities in time intervals for Love or Rayleigh waves
         
@@ -3435,6 +3434,10 @@ class sixdegrees():
             Minimum R-squared value for regression quality, by default 0.0
         zero_intercept : bool
             Force intercept to be zero if True
+        verbose : bool
+            Print regression results if True
+        plot : bool
+            Plot regression results if True
         Returns:
         --------
         Dict
@@ -3443,6 +3446,8 @@ class sixdegrees():
             - velocity: array of phase velocities
             - cc_method: array of cross-correlation coefficients
             - backazimuth: array of backazimuths
+            - r_squared: array of R-squared values
+            - parameters: dictionary of parameters
         """
         import numpy as np
         from tqdm import tqdm
@@ -3510,17 +3515,19 @@ class sixdegrees():
         times = np.zeros(n_windows)
         velocities = np.zeros(n_windows)
         cc_coeffs = np.zeros(n_windows)
-        
+        r_squared = np.zeros(n_windows)
+
         # Loop through windows
         velocities = np.ones_like(baz) * np.nan
 
         for i, (_baz, _ttt, _ccc) in enumerate(zip(baz, ttt, ccc)):
             i1 = i * step
             i2 = i1 + win_samples
-            
+
             # apply cc threshold
             if _ccc <= cc_threshold:
                 velocities[i] = np.nan
+                r_squared[i] = np.nan
                 continue
 
             # Rotate components to radial-transverse
@@ -3540,47 +3547,49 @@ class sixdegrees():
             # Compute velocity using amplitude ratio
             if wave_type.lower() == 'love':
                 # get velocity from amplitude ratio via regression
-                # if method.lower() == 'odr':
-                #     velocities[i] = self.compute_odr(rot_z[i1:i2], 0.5*acc_t[i1:i2])['slope']
-                # elif method.lower() == 'ransac':
-                #     velocities[i] = self.compute_regression(rot_z[i1:i2], 0.5*acc_t[i1:i2], 
-                #                                             method='ransac', zero_intercept=zero_intercept)['slope']
-                reg_result = self.regression(
+                reg_results = self.regression(
                     rot_z[i1:i2],
                     0.5*acc_t[i1:i2],
                     method=method.lower(),
-                    zero_intercept=True,
-                    verbose=False
+                    zero_intercept=zero_intercept,
+                    verbose=verbose
                 )
-                # Apply R² threshold filter
-                if reg_result['r_squared'] < r_squared_threshold:
-                    velocities[i] = np.nan
-                else:
-                    velocities[i] = reg_result['slope']
-
-
+                if plot:
+                    plt.figure()
+                    plt.scatter(rot_z[i1:i2], 0.5*acc_t[i1:i2], color='black')
+                    plt.plot(rot_z[i1:i2], reg_results['slope']*rot_z[i1:i2] + reg_results['intercept'], color='red')
+                    plt.title(f"Love Wave Regression: baz={_baz:.2f}°, slope={reg_results['slope']:.2f}, R²={reg_results['r_squared']:.4f}")
+                    plt.xlabel("Vertical Rotation")
+                    plt.ylabel("Transverse Acceleration")
+                    plt.show()
+  
+            
             elif wave_type.lower() == 'rayleigh':
                 # get velocity from amplitude ratio via regression
-                # if method.lower() == 'odr':
-                #     velocities[i] = self.compute_odr(rot_t[i1:i2], acc_z[i1:i2])['slope']
-                # elif method.lower() == 'ransac':
-                #     velocities[i] = self.compute_regression(rot_t[i1:i2], acc_z[i1:i2], 
-                #                                             method='ransac', zero_intercept=zero_intercept)['slope']
                 reg_results = self.regression(
                     rot_t[i1:i2],
                     acc_z[i1:i2],
                     method=method.lower(),
-                    zero_intercept=True,
-                    verbose=False
+                    zero_intercept=zero_intercept,
+                    verbose=verbose
                 )
-                # Apply R² threshold filter
-                if reg_results['r_squared'] < r_squared_threshold:
-                    velocities[i] = np.nan
-                else:
-                    velocities[i] = reg_results['slope']
+                if plot:
+                    plt.figure()
+                    plt.scatter(rot_t[i1:i2], acc_z[i1:i2], color='black')
+                    plt.plot(rot_t[i1:i2], reg_results['slope']*rot_t[i1:i2] + reg_results['intercept'], color='red')
+                    plt.title(f"Rayleigh Wave Regression: slope={reg_results['slope']:.6f}, R²={reg_results['r_squared']:.4f}")
+                    plt.xlabel("Transverse Rotation")
+                    plt.ylabel("Vertical Acceleration")
+                    plt.show()
             
+            # add r_squared
+            r_squared[i] = reg_results['r_squared']
+
+            # Apply R² threshold filter
+            if reg_results['r_squared'] < r_squared_threshold:
+                velocities[i] = np.nan
             else:
-                raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+                velocities[i] = reg_results['slope']
 
         return {
             'time': ttt,
@@ -3588,6 +3597,7 @@ class sixdegrees():
             'ccoef': ccc,
             'terr': np.full(len(ttt), win_time_s/2),
             'backazimuth': baz,
+            'r_squared': r_squared,
             'parameters': {
                 'wave_type': wave_type,
                 'win_time_s': win_time_s,

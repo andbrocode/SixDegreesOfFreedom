@@ -11,7 +11,8 @@ from numpy import arange, histogram, average, cov
 
 def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love', 
                             baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
-                            cc_threshold: float=None, minors: bool=True, cc_method: str='mid') -> plt.Figure:
+                            cc_threshold: float=None, minors: bool=True, cc_method: str='mid',
+                            terr: bool=True) -> plt.Figure:
     """
     Plot backazimuth estimation results
     
@@ -35,6 +36,9 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         Type of cc to choose ('mid' or 'max')
     unitscale : str
         Unit scale for rotation rate ('nano' or 'micro')
+    terr : bool, optional
+        Add error bars to backazimuth estimates if True
+
     Returns:
     --------
     matplotlib.figure.Figure
@@ -151,6 +155,9 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         vmax=1,
         zorder=2
     )
+    
+    if terr:
+        ax_baz.errorbar(time, baz, xerr=baz_results['parameters']['baz_win_sec']/2, fmt='.', color='gray', alpha=0.6, zorder=0)
     
     # Configure backazimuth axis
     ax_baz.set_ylim(-5, 365)
