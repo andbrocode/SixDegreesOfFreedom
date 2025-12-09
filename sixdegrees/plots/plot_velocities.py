@@ -38,6 +38,7 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     # Create subplots
     ax_wave = fig.add_subplot(gs[0:2, :7])  # Waveform panel
     ax_vel = fig.add_subplot(gs[2:4, :7])   # Velocity panel
+    # Column 7 is reserved for colorbar (doesn't shrink subplot)
     
     # Plot settings
     font = 12
@@ -151,15 +152,15 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
         ax_vel.minorticks_on()
         ax_wave2.minorticks_on()
     
-    # Add colorbar
-    # cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
-    # cb = plt.colorbar(scatter, cax=cbar_ax)
-    # cb.set_label('cross-correlation coefficient', fontsize=font)
-
-    # Add colorbar
-    cbar_ax = ax_vel.inset_axes([1.02, 0., 0.02, 1])
+    # Add colorbar positioned next to velocity subplot (narrow width)
+    # Get position of velocity subplot to align colorbar
+    pos = ax_vel.get_position()
+    # Position colorbar to the right with narrow width (1.5% of figure width)
+    cbar_width = 0.015
+    cbar_pad = 0.01
+    cbar_ax = fig.add_axes([pos.x1 + cbar_pad, pos.y0, cbar_width, pos.height])
     cb = plt.colorbar(scatter, cax=cbar_ax)
-    cb.set_label("CC coefficient", fontsize=font)
+    cb.set_label("cross-correlation coefficient", fontsize=font)
     cb.set_ticks([0, 0.5, 1])
     cb.set_ticklabels([0, 0.5, 1])
 

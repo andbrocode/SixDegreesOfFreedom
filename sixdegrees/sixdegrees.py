@@ -820,6 +820,7 @@ class sixdegrees():
                 print(f"-> resampling stream to {resample_rate} Hz")
             for tr in st0:
                 tr = tr.detrend("demean")
+                tr = tr.detrend("linear")
                 tr = tr.detrend("simple")
                 # tr = tr.taper(max_percentage=0.05, type='cosine')
                 # tr = tr.filter("highpass", freq=0.001, corners=2, zerophase=True)
@@ -1329,6 +1330,133 @@ class sixdegrees():
                         for tr in self.st0:
                             if k in tr.stats.channel:
                                 tr.data *= pol_dict[k]
+
+    def replace_values_in_window(self, tbeg: Union[str, UTCDateTime], 
+                                  tend: Union[str, UTCDateTime], 
+                                  value: float=0.0, 
+                                  channel_list: Optional[List[str]]=None,
+                                  raw: bool=False) -> None:
+        """
+        Replace values in a time window for specified channels with a given value.
+        
+        This method replaces all data values within the specified time window
+        for traces matching the given channel patterns with the specified value.
+        Useful for masking out bad data, removing glitches, or zeroing specific
+        time periods.
+        
+        Args:
+            tbeg (Union[str, UTCDateTime]): Start time of the window to replace.
+                                                 Can be a string or UTCDateTime object.
+            tend (Union[str, UTCDateTime]): End time of the window to replace.
+                                               Can be a string or UTCDateTime object.
+            value (float): Value to replace the data with. Defaults to 0.0.
+            channel_list (List[str]): List of channel patterns to match (e.g., ['BJZ', 'BJN']).
+                                     Patterns can be full channel names or wildcards (e.g., ['*JZ']).
+                                     If None, applies to all traces in the stream. Defaults to None.
+            raw (bool): If True, also applies the replacement to the raw stream (self.st0).
+                       If False, only modifies the processed stream (self.st). Defaults to False.
+        
+        Returns:
+            None: Modifies the stream in place.
+        
+        Examples:
+            >>> # Replace values for BJZ channel between two times with 0
+            >>> sd.replace_values_in_window(tbeg='2025-12-08 14:20:00', tend='2025-12-08 14:25:00', 
+            ...                             value=0.0, channel_list=['BJZ'])
+            
+            >>> # Replace values for multiple channels with NaN
+            >>> sd.replace_values_in_window(tbeg='2025-12-08 14:20:00', tend='2025-12-08 14:25:00',
+            ...                             value=np.nan, channel_list=['BJZ', 'BJN', 'BJE'])
+            
+            >>> # Replace values for all rotation channels using wildcard
+            >>> sd.replace_values_in_window(tbeg='2025-12-08 14:20:00', tend='2025-12-08 14:25:00',
+            ...                             value=0.0, channel_list=['*J*'])
+        """
+        from fnmatch import fnmatch
+        
+        # Convert times to UTCDateTime if needed
+        tbeg = UTCDateTime(tbeg)
+        tend = UTCDateTime(tend)
+        
+        # Validate time window
+        if tbeg >= tend:
+            raise ValueError(f"tbeg ({tbeg}) must be before tend ({tend})")
+        
+        # Determine which stream to modify
+        stream = self.st0 if raw else self.st
+        
+        if stream is None or len(stream) == 0:
+            raise ValueError("Stream is empty. Please load data first.")
+        
+        # Track which traces were modified
+        modified_traces = []
+        
+        # Helper function to check if a channel matches a pattern
+        def channel_matches(channel: str, pattern: str) -> bool:
+            """
+            Check if a channel matches a pattern.
+            - Single characters match channels ending with that character (e.g., 'Z' matches 'BJZ', 'BHZ')
+            - Patterns with wildcards use fnmatch (e.g., '*Z', '*J*')
+            - Other patterns match if contained in channel or exact match
+            """
+            # If pattern is a single character, match channels ending with it
+            # This handles cases like 'Z' matching 'BJZ', 'BHZ', etc.
+            if len(pattern) == 1:
+                return channel.endswith(pattern) or pattern in channel
+            # If pattern contains wildcards, use fnmatch
+            elif '*' in pattern or '?' in pattern:
+                return fnmatch(channel, pattern)
+            # Otherwise, check if pattern is contained in channel or exact match
+            else:
+                return pattern in channel or channel == pattern
+        
+        # Iterate through traces in the stream
+        for tr in stream:
+            # Check if this trace matches any channel pattern
+            if channel_list is None:
+                # Apply to all traces if no channel list specified
+                match = True
+            else:
+                # Check if trace channel matches any pattern in channel_list
+                match = any(channel_matches(tr.stats.channel, pattern) for pattern in channel_list)
+            
+            if match:
+                # Check if time window overlaps with trace time range
+                trace_start = tr.stats.starttime
+                trace_end = tr.stats.endtime
+                
+                # Skip if time window doesn't overlap with trace
+                if tend < trace_start or tbeg > trace_end:
+                    if self.verbose:
+                        print(f"  -> Skipping {tr.id}: time window doesn't overlap with trace")
+                    continue
+                
+                # Calculate indices for the time window
+                # Clamp window to trace boundaries
+                window_start = max(tbeg, trace_start) # get the maximum of the start time of the window and the start time of the trace
+                window_end = min(tend, trace_end)
+                
+                # Get sample indices
+                start_idx = int((window_start - trace_start) / tr.stats.delta)
+                end_idx = int((window_end - trace_start) / tr.stats.delta) + 1
+                
+                # Ensure indices are within bounds
+                start_idx = max(0, min(start_idx, len(tr.data)))
+                end_idx = max(0, min(end_idx, len(tr.data)))
+                
+                if start_idx < end_idx:
+                    # Replace values in the window
+                    tr.data[start_idx:end_idx] = value
+                    modified_traces.append(tr.id)
+                    
+                    if self.verbose:
+                        print(f"  -> Replaced {end_idx - start_idx} samples in {tr.id} "
+                              f"from {window_start} to {window_end} with value {value}")
+
+        if self.verbose and len(modified_traces) == 0:
+            print(f"  -> No traces matched the channel patterns: {channel_list}")
+        elif self.verbose:
+            print(f"  -> Modified {len(modified_traces)} trace(s): {modified_traces}")
 
     @staticmethod
     def load_from_yaml(name: str):
@@ -3296,9 +3424,9 @@ class sixdegrees():
             if hasattr(self, 'theoretical_baz'):
                 print(f"Using theoretical BAZ {self.theoretical_baz}")
                 baz = self.theoretical_baz
-            elif hasattr(self, 'baz_estimated'):
-                print(f"Using estimated BAZ {self.baz_estimated[wave_type.lower()]}")
-                baz = self.baz_estimated[wave_type.lower()]
+            elif hasattr(self, 'event_info') and 'backazimuth' in self.event_info:
+                print(f"Using event BAZ {self.event_info['backazimuth']}")
+                baz = self.event_info['backazimuth']
             else:
                 raise ValueError("No backazimuth provided or available")
         
@@ -3402,6 +3530,173 @@ class sixdegrees():
                 'baz': baz,
                 'fmin': self.fmin,
                 'fmax': self.fmax
+            }
+        }
+        
+        return results
+
+    def compute_velocities_envelope(self, wave_type: str="love", win_time_s: float=None, overlap: float=0.5, 
+                                   cc_threshold: float=0.2, baz: float=None, method: str='odr') -> Dict:
+        """
+        Compute phase velocities in time intervals using waveform envelopes instead of raw waveforms.
+        This is useful for analyzing amplitude-modulated signals or when phase information is less reliable.
+        
+        Parameters:
+        -----------
+        wave_type : str
+            Type of wave to analyze ('love' or 'rayleigh')
+        win_time_s : float or None
+            Window length in seconds. If None, uses 1/fmin
+        overlap : float
+            Window overlap in percent (0-1)
+        cc_threshold : float
+            Minimum cross-correlation coefficient threshold
+        baz : float or None
+            Backazimuth in degrees. If None, uses theoretical or estimated BAZ
+        method : str
+            Regression method ('odr' or 'ransac')
+            
+        Returns:
+        --------
+        Dict
+            Dictionary containing:
+            - time: array of time points
+            - velocity: array of phase velocities
+            - ccoef: array of cross-correlation coefficients
+            - terr: array of time window lengths
+            - parameters: dictionary of parameters including envelope flag
+        """
+        import numpy as np
+        from obspy.signal.rotate import rotate_ne_rt
+        from obspy.signal.cross_correlation import correlate, xcorr_max
+        from scipy.signal import hilbert
+        
+        # Get and process streams
+        rot = self.get_stream("rotation").copy()
+        acc = self.get_stream("translation").copy()
+        
+        # Get sampling rate
+        df = self.sampling_rate
+        
+        # Set window length if not provided
+        if win_time_s is None:
+            win_time_s = 1/self.fmin
+            
+        # Get backazimuth if not provided
+        if baz is None:
+            if hasattr(self, 'theoretical_baz'):
+                if self.verbose:
+                    print(f"Using theoretical BAZ {self.theoretical_baz}")
+                baz = self.theoretical_baz
+            elif hasattr(self, 'baz_estimated'):
+                if self.verbose:
+                    print(f"Using estimated BAZ {self.baz_estimated[wave_type.lower()]}")
+                baz = self.baz_estimated[wave_type.lower()]
+            else:
+                raise ValueError("No backazimuth provided or available")
+        
+        # Get Z component and rotate components to radial-transverse
+        if wave_type == 'rayleigh':
+            acc_z = acc.select(channel="*Z")[0].data
+            rot_r, rot_t = rotate_ne_rt(rot.select(channel='*N')[0].data,
+                                    rot.select(channel='*E')[0].data,
+                                    baz)
+            n_samples = len(acc_z)
+            
+            # Compute envelopes using Hilbert transform
+            acc_z_env = np.abs(hilbert(acc_z))
+            rot_t_env = np.abs(hilbert(rot_t))
+
+        elif wave_type == 'love':
+            rot_z = rot.select(channel="*Z")[0].data
+            acc_r, acc_t = rotate_ne_rt(acc.select(channel='*N')[0].data,
+                                    acc.select(channel='*E')[0].data,
+                                    baz)
+            n_samples = len(rot_z)
+            
+            # Compute envelopes using Hilbert transform
+            rot_z_env = np.abs(hilbert(rot_z))
+            acc_t_env = np.abs(hilbert(acc_t))
+
+        # Calculate window parameters
+        win_samples = int(win_time_s * df)
+        overlap_samples = int(win_samples * overlap)
+        step = win_samples - overlap_samples
+
+        n_windows = int((n_samples - win_samples) / step) + 1
+        
+        # Initialize arrays
+        times = np.zeros(n_windows)
+        velocities = np.zeros(n_windows)
+        cc_coeffs = np.zeros(n_windows)
+        
+        # Loop through windows
+        for i in range(n_windows):
+            i1 = i * step
+            i2 = i1 + win_samples
+            
+            # compute cross-correlation coefficient using envelopes
+            if wave_type.lower() == 'love':
+                # For Love waves: use transverse acceleration envelope and vertical rotation envelope
+                cc = xcorr_max(correlate(rot_z_env[i1:i2], acc_t_env[i1:i2], 0))[1]
+
+            elif wave_type.lower() == 'rayleigh':
+                # For Rayleigh waves: use vertical acceleration envelope and transverse rotation envelope
+                cc = xcorr_max(correlate(rot_t_env[i1:i2], acc_z_env[i1:i2], 0))[1]
+            else:
+                raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+
+            # Compute velocity using amplitude ratio of envelopes
+            if abs(cc) > cc_threshold:
+                if wave_type.lower() == 'love':
+                    # get velocity from envelope amplitude ratio via regression
+                    reg_result = self.regression(
+                        rot_z_env[i1:i2],
+                        0.5*acc_t_env[i1:i2],
+                        method=method.lower(),
+                        zero_intercept=True,
+                        verbose=False
+                    )
+                    velocities[i] = reg_result['slope']
+                elif wave_type.lower() == 'rayleigh':
+                    # get velocity from envelope amplitude ratio via regression
+                    reg_result = self.regression(
+                        rot_t_env[i1:i2],
+                        acc_z_env[i1:i2],
+                        method=method.lower(),
+                        zero_intercept=True,
+                        verbose=False
+                    )
+                    velocities[i] = reg_result['slope']
+                else:
+                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+            
+                # add central time of window
+                times[i] = (i1 + win_samples/2) / df
+                
+                # add cross-correlation coefficient 
+                cc_coeffs[i] = abs(cc)
+            else:
+                times[i] = (i1 + win_samples/2) / df
+                velocities[i] = np.nan
+                cc_coeffs[i] = abs(cc)
+        
+        # Create output dictionary
+        results = {
+            'time': times,
+            'velocity': velocities,
+            'ccoef': cc_coeffs,
+            'terr': np.ones_like(times) * win_time_s/2,
+            'parameters': {
+                'wave_type': wave_type,
+                'win_time_s': win_time_s,
+                'overlap': overlap,
+                'cc_threshold': cc_threshold,
+                'baz': baz,
+                'fmin': self.fmin,
+                'fmax': self.fmax,
+                'use_envelope': True,
+                'method': method
             }
         }
         
@@ -5345,7 +5640,9 @@ class sixdegrees():
     @staticmethod
     def compute_cwt(times: array, data: array, dt: float, datalabel: str="data", log: bool=False, 
                     period: bool=False, tscale: str='sec', scale_value: float=2, 
-                    ymax: Union[float, None]=None, normalize: bool=True, plot: bool=False) -> Dict:
+                    ymax: Union[float, None]=None, normalize: bool=True, plot: bool=False,
+                    dj: float=1/48, J: Union[int, None]=None, fmin: Union[float, None]=None,
+                    fmax: Union[float, None]=None) -> Dict:
         """
         Compute continuous wavelet transform for time series data
         
@@ -5368,11 +5665,21 @@ class sixdegrees():
         scale_value : float
             Starting scale for wavelet transform
         ymax : float or None
-            Maximum y-axis limit
+            Maximum y-axis limit (deprecated, use fmax instead)
         normalize : bool
             Normalize wavelet power if True
         plot : bool
             Generate diagnostic plot if True
+        dj : float
+            Scale resolution (fractional octave step). Default: 1/48 (finer resolution).
+            Smaller values = more scales = wider frequency range but slower computation.
+        J : int or None
+            Number of scales. If None, calculated automatically based on fmin/fmax or default J=168.
+            Larger J = lower frequencies covered.
+        fmin : float or None
+            Desired minimum frequency (Hz). If provided, J will be calculated to cover this frequency.
+        fmax : float or None
+            Desired maximum frequency (Hz). If provided, scale_value may be adjusted.
             
         Returns:
         --------
@@ -5380,6 +5687,7 @@ class sixdegrees():
         """
         from pycwt import cwt, Morlet
         from numpy import std, nanmean, nan, nansum, nanmax, polyfit, polyval, array, reshape, nanpercentile, ones
+        import numpy as np
         
         def _mask_cone(arr2d: array, ff: array, thresholds: array, fill: float=nan) -> array:
             """Create cone of influence mask"""
@@ -5402,14 +5710,37 @@ class sixdegrees():
         # Set up wavelet transform parameters
         mother = Morlet(6)
         s0 = scale_value * dt
-        dj = 1/12
-        J = int(7/dj)
+        # dj = 1/12 #OLD
+        # J = int(7/dj) #OLD
+
+        # Calculate J if not provided or if fmin is specified
+        if J is None:
+            if fmin is not None:
+                # Calculate J to cover down to fmin
+                # For Morlet(6), frequency ≈ 1 / (scale * dt)
+                # Maximum scale needed: scale_max = 1 / (fmin * dt)
+                # J = log2(scale_max / s0) / dj
+                scale_max = 1.0 / (fmin * dt)
+                J = int(np.ceil(np.log2(scale_max / s0) / dj))
+            else:
+                # Default: use original calculation
+                J = int(7/dj)
+        
+        # Adjust scale_value if fmax is specified to ensure we cover up to fmax
+        if fmax is not None:
+            # For Morlet(6), frequency ≈ 1 / (scale * dt)
+            # Minimum scale needed: scale_min = 1 / (fmax * dt)
+            # Adjust s0 if needed
+            scale_min_needed = 1.0 / (fmax * dt)
+            if s0 > scale_min_needed:
+                # Need smaller starting scale to reach higher frequencies
+                s0 = scale_min_needed * 0.9  # Slightly smaller to ensure coverage
         
         # Compute wavelet transform
         wave, scales, freqs, coi, fft, fftfreqs = cwt(
             data_norm, dt=dt, dj=dj, s0=s0, J=J, wavelet=mother
         )
-        
+
         # Convert time scales if needed
         scale_factors = {'sec': 1, 'min': 60, 'hour': 3600}
         sf = scale_factors.get(tscale, 1)
@@ -6696,9 +7027,12 @@ class sixdegrees():
             
             # Plot station
             if use_cartopy:
-                ax.plot(station_lon_norm, station_lat, marker='^', color='red', markersize=15,
-                        label='Station', markeredgecolor='black', markeredgewidth=2,
-                        transform=transform, zorder=5)
+                ax.scatter(station_lon_norm, station_lat, marker='^', c='red', s=225,
+                           edgecolors='black', linewidths=2,
+                           transform=transform, zorder=5, label='Station')
+                # ax.plot(station_lon_norm, station_lat, marker='^', color='red', markersize=15,
+                #         label='Station', markeredgecolor='black', markeredgewidth=2,
+                #         transform=transform, zorder=5)
                 if debug:
                     print(f"✓ Station plotted at ({station_lon_norm}, {station_lat})")
             else:
@@ -6856,8 +7190,12 @@ class sixdegrees():
             lons_deg = np.degrees(lons_rad)
             
             # Normalize longitude to [-180, 180]
-            lons_deg = ((lons_deg + 180) % 360) - 180
-            
+            # lons_deg = ((lons_deg + 180) % 360) - 180
+
+            # Unwrap longitudes to keep paths continuous when crossing dateline
+            # This allows great circles to extend beyond ±180 for proper plotting
+            lons_deg = np.degrees(np.unwrap(np.radians(lons_deg)))
+
             # CRITICAL VERIFICATION: First point must exactly match input
             if debug:
                 lat_error = abs(lats_deg[0] - lat0)

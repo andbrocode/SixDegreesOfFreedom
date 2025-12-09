@@ -41,7 +41,7 @@ def get_kde_stats_velocity(velocities, cc_values, plot=False):
     cc_values = cc_values[valid_mask]
     
     if len(velocities) < 5:
-        return np.nan, np.nan
+        return out  # Return empty dict instead of tuple
     
     # Ensure positive weights
     cc_values = np.maximum(cc_values, 1e-6)

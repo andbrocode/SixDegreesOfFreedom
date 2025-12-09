@@ -18,6 +18,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from sixdegrees.sixdegrees import sixdegrees
 from sixdegrees.utils.get_kde_stats_velocity import get_kde_stats_velocity
 
+# Verify import
+if not callable(get_kde_stats_velocity):
+    raise ImportError(f"get_kde_stats_velocity is not callable. Type: {type(get_kde_stats_velocity)}")
+
 
 def print_status(message, status="INFO"):
     """Simple status printing."""
@@ -32,6 +36,9 @@ def load_config(config_file):
 
 def process_hour(hour, sd, config, day_beg, day_end):
     """Process single hour efficiently."""
+    # Import inside function for multiprocessing compatibility
+    from sixdegrees.utils.get_kde_stats_velocity import get_kde_stats_velocity
+    
     try:
         hour_beg = day_beg + hour * 3600
         hour_end = hour_beg + 3600
@@ -122,10 +129,20 @@ def process_hour(hour, sd, config, day_beg, day_end):
                 
                 # Apply KDE analysis
                 try:
-                    out = get_kde_stats_velocity(velocities, cc_values, plot=True)
-                    vel_max = out['max']
-                    vel_dev = out['dev']
-                except:
+                    # Don't plot in multiprocessing context
+                    out = get_kde_stats_velocity(velocities, cc_values, plot=False)
+                    if isinstance(out, dict):
+                        vel_max = out['max']
+                        vel_dev = out['dev']
+                    else:
+                        # Fallback if wrong return type
+                        vel_max = np.median(velocities)
+                        vel_dev = np.std(velocities)
+                except Exception as e:
+                    # Log error for debugging
+                    import traceback
+                    print(f"Error in KDE analysis: {e}")
+                    print(traceback.format_exc())
                     vel_max = np.median(velocities)
                     vel_dev = np.std(velocities)
                 

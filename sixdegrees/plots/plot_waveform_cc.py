@@ -193,14 +193,20 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
     # rot2, acc2, rot2_lbl, acc2_lbl = pol['JZ']*rot_z, pol['HR']*acc_r, f"{pol['JZ']}x ROT-Z", f"{pol['HR']}x ACC-R"
     # tt2, cc2 = _cross_correlation_windows(rot2, acc2, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
 
-    cmap = plt.get_cmap("coolwarm", 12)
+    # Create colormap with boundaries at 0.2 steps from -1 to 1
+    cmap = plt.get_cmap("coolwarm", 16)
+    boundaries = np.arange(-1.0, 1.2, 0.2)  # Creates: [-1.0, -0.8, -0.6, ..., 0.8, 1.0]
+    from matplotlib.colors import BoundaryNorm
+    norm = BoundaryNorm(boundaries, cmap.N)
+    # Only label specific values on colorbar
+    cbar_ticks = [-1, -0.6, 0, 0.6, 1]
 
     if wave_type == "love":
         ax[0].plot(rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
         ax00 = ax[0].twinx()
         ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
         ax01 = ax[0].twinx()
-        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, label="")
+        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, label="")
 
         ax[0].set_ylim(-rot_z_max, rot_z_max)
         ax00.set_ylim(-acc_t_max, acc_t_max)
@@ -215,7 +221,7 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
         ax11 = ax[0].twinx()
         ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
         ax12 = ax[0].twinx()
-        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, label="")
+        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, label="")
 
         ax[0].set_ylim(-rot_t_max, rot_t_max)
         ax11.set_ylim(-acc_z_max, acc_z_max)
@@ -231,7 +237,7 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
         ax00 = ax[0].twinx()
         ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
         ax01 = ax[0].twinx()
-        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, label="")
+        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, label="")
 
         ax[0].set_ylim(-rot_z_max, rot_z_max)
         ax00.set_ylim(-acc_t_max, acc_t_max)
@@ -243,7 +249,7 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
         ax11 = ax[1].twinx()
         ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
         ax12 = ax[1].twinx()
-        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, label="")
+        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, label="")
 
         ax[1].set_ylim(-rot_t_max, rot_t_max)
         ax11.set_ylim(-acc_z_max, acc_z_max)
@@ -286,12 +292,12 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
 
     # Add colorbar
     cax = ax[Nrow-1].inset_axes([0.8, -0.25, 0.2, 0.1], transform=ax[Nrow-1].transAxes)
-
-    # Create a ScalarMappable for the colorbar
-    norm = plt.Normalize(-1, 1)
+    
+    # Create a ScalarMappable for the colorbar (norm already defined above)
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal")
+    cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal", 
+                        boundaries=boundaries, ticks=cbar_ticks)
 
     cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-55, color="k")
 

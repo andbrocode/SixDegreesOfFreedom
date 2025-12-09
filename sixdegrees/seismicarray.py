@@ -8,6 +8,8 @@ by providing station codes and a reference station through YAML configuration.
 import os
 import yaml
 import numpy as np
+import matplotlib.pyplot as plt
+
 from pathlib import Path
 from obspy import UTCDateTime, Stream, read_inventory
 from obspy.clients.fdsn import Client
@@ -15,8 +17,8 @@ from obspy.signal.util import util_geo_km
 from obspy.geodetics.base import gps2dist_azimuth
 from obspy.signal import array_analysis as AA
 from typing import List, Dict, Optional, Tuple, Union
-import matplotlib.pyplot as plt
 from .utils.print_dict_tree import print_dict_tree
+from .utils.decimator import Decimator
 from .plots.plot_azimuth_distance_range import plot_azimuth_distance_range
 from .plots.plot_frequency_patterns import plot_frequency_patterns, plot_frequency_patterns_simple
 from .plots.plot_frequency_limits import plot_frequency_limits
@@ -327,16 +329,10 @@ class seismicarray:
         # drop stations
         for station in stations_to_remove:
             full_station = next(s for s in self.stations if s.split('.')[1] == station)
-            self._remove_station(full_station, f"Dropped station: {full_station}", verbose)
+            self._drop_station(full_station, f"Missing components or no data", verbose)
 
-        # Remove traces from invalid stations
-        if stations_to_remove:
-            for sta in stations_to_remove:
-                selection = self.stream.select(station=sta)
-                if selection:
-                    for tr in selection:
-                        self.stream.remove(tr)
-                
+        # Note: Traces are automatically removed by _drop_station
+ 
         # Check reference station
         if ref_station not in valid_stations:
             raise ValueError(f"Reference station {ref_station} not found in data or missing components")
@@ -379,9 +375,7 @@ class seismicarray:
             print("\nTrimming traces to same length:")
             print(f" -> shortest trace has {min_npts} samples")
             print(f" -> longest trace has {max_npts} samples")
-            print(" -> samples per trace before trimming:")
-            # for tr in stream:
-            #     print(f"    {tr.id}: {tr.stats.npts}")
+
         
         # Trim all traces to shortest length
         for tr in stream:
@@ -394,9 +388,49 @@ class seismicarray:
             
         return stream
 
-    def _remove_station(self, station: str, reason: str, verbose: bool = False) -> None:
+    def decimation(self, target_freq: float = 1.0, verbose: bool = False) -> Stream:
         """
-        Remove a station from all class attributes.
+        Internal function to apply decimation to a stream.
+        
+        Args:
+            target_freq (float): Target sampling frequency in Hz
+            verbose (bool): Whether to print verbose output
+            
+        Returns:
+            Stream: Decimated stream
+        """
+
+        stream = self.stream
+
+        if len(stream) == 0:
+            return stream
+            
+        if verbose:
+            print(f"\nApplying decimation to stream with {len(stream)} traces")
+            print(f"Original sampling rate: {stream[0].stats.sampling_rate:.2f} Hz")
+            print(f"Target sampling rate: {target_freq:.2f} Hz")
+        
+        try:
+            # Create decimator instance
+            decimator = Decimator(target_freq=target_freq)
+            
+            # Apply decimation
+            decimated_stream = decimator.apply_decimation_stream(stream)
+            
+            if verbose and len(decimated_stream) > 0:
+                print(f"Decimated sampling rate: {decimated_stream[0].stats.sampling_rate:.2f} Hz")
+                
+            self.stream = decimated_stream
+            
+        except Exception as e:
+            if verbose:
+                print(f"Warning: Decimation failed: {str(e)}")
+
+
+    def _drop_station(self, station: str, reason: str, verbose: bool = False) -> None:
+        """
+        Drop a station from all class attributes and data structures.
+        This is the comprehensive function to remove a station completely.
         
         Args:
             station (str): Station code to remove
@@ -404,17 +438,72 @@ class seismicarray:
             verbose (bool): Whether to print verbose output
         """
         if verbose:
-            print(f" -> removing station {station}: {reason}")
+            print(f" -> dropping station {station}: {reason}")
             
-        # Remove from all class attributes
+        # Remove from stations list
         if station in self.stations:
             self.stations.remove(station)
+            
+        # Remove from inventories
         if station in self.inventories:
             del self.inventories[station]
+            
+        # Remove from station coordinates
         if station in self.station_coordinates:
             del self.station_coordinates[station]
+            
+        # Remove from station distances
         if station in self.station_distances:
             del self.station_distances[station]
+            
+        # Remove from client mapping
+        if station in self.client_mapping:
+            del self.client_mapping[station]
+            
+        # Add to failed stations list
+        if station not in self.failed_stations:
+            self.failed_stations.append(station)
+            
+        # Remove traces from stream if it exists
+        if len(self.stream) > 0:
+            sta_code = station.split('.')[1]  # Get station code without network
+            selection = self.stream.select(station=sta_code)
+            if selection:
+                for tr in selection:
+                    self.stream.remove(tr)
+                if verbose:
+                    print(f"    -> removed {len(selection)} traces from stream")
+                    
+        # Remove traces from rotation stream if it exists
+        if len(self.rot_stream) > 0:
+            sta_code = station.split('.')[1]  # Get station code without network
+            selection = self.rot_stream.select(station=sta_code)
+            if selection:
+                for tr in selection:
+                    self.rot_stream.remove(tr)
+                if verbose:
+                    print(f"    -> removed {len(selection)} traces from rotation stream")
+                    
+        # Remove traces from combined stream if it exists
+        if isinstance(self.combined_stream, Stream) and len(self.combined_stream) > 0:
+            sta_code = station.split('.')[1]  # Get station code without network
+            selection = self.combined_stream.select(station=sta_code)
+            if selection:
+                for tr in selection:
+                    self.combined_stream.remove(tr)
+                if verbose:
+                    print(f"    -> removed {len(selection)} traces from combined stream")
+
+    def _remove_station(self, station: str, reason: str, verbose: bool = False) -> None:
+        """
+        Legacy function - now calls _drop_station for backward compatibility.
+        
+        Args:
+            station (str): Station code to remove
+            reason (str): Reason for removal
+            verbose (bool): Whether to print verbose output
+        """
+        self._drop_station(station, reason, verbose)
 
     def request_inventories(self, starttime: UTCDateTime, endtime: UTCDateTime, verbose: bool = False) -> None:
         """
@@ -464,11 +553,11 @@ class seismicarray:
                     if verbose:
                         print(f" -> successfully obtained inventory for {station} using {client_name}")
                 except Exception as e:
-                    self._remove_station(station, f"Invalid channel configuration: {str(e)}", verbose)
+                    self._drop_station(station, f"Invalid channel configuration: {str(e)}", verbose)
                     failed_stations.append(station)
                     
             except Exception as e:
-                self._remove_station(station, f"Failed to get inventory: {str(e)}", verbose)
+                self._drop_station(station, f"Failed to get inventory: {str(e)}", verbose)
                 failed_stations.append(station)
         
         # Check if we have the reference station
@@ -491,19 +580,20 @@ class seismicarray:
             for station in successful_stations:
                 print(f" - {station}")
 
-    def request_waveforms(self, starttime: UTCDateTime, endtime: UTCDateTime,
+    def request_waveforms(self, begtime: UTCDateTime, endtime: UTCDateTime,
                      remove_response: bool = True, 
                      detrend: bool = True,
                      taper: bool = True,
                      filter_params: Optional[Dict] = None,
                      trim_samples: bool = True,
                      output: bool = False,
-                     verbose: bool = False) -> Stream:
+                     verbose: bool = False,
+                     plot: bool = False) -> Stream:
         """
         Fetch and preprocess waveforms for all stations.
 
         Args:
-            starttime (UTCDateTime): Start time for data request
+            begtime (UTCDateTime): Start time for data request
             endtime (UTCDateTime): End time for data request
             remove_response (bool): Whether to remove instrument response
             detrend (bool): Whether to detrend the data
@@ -512,6 +602,7 @@ class seismicarray:
                                 (e.g., {'type': 'bandpass', 'freqmin': 0.1, 'freqmax': 1.0})
             output (bool): Whether to return the stream
             verbose (bool): Whether to print verbose output
+            plot (bool): Whether to plot the waveforms for each requested station
         Returns:    
             Stream: Processed ObsPy Stream object
             
@@ -543,9 +634,15 @@ class seismicarray:
                     station=sta,
                     location="*",
                     channel=f"{self.channel_prefix}H*",
-                    starttime=starttime,
-                    endtime=endtime
+                    starttime=begtime-300,
+                    endtime=endtime+300
                 )
+
+                # check if length requires merging
+                if len(st) > 3:
+                    if verbose:
+                        print(f" -> merging {station} waveforms")
+                    st = st.merge(fill_value='latest')
 
                 # remove response
                 if remove_response and station in self.inventories:
@@ -566,22 +663,26 @@ class seismicarray:
 
                 # taper waveforms
                 if taper:
-                    st.taper(0.02)
+                    st.taper(0.05, type='cosine')
 
                 # filter waveforms
                 if filter_params:
                     st.filter(**filter_params)
                     st.detrend('demean')
 
+                # plot waveforms (if requested)
+                if plot:
+                    st.plot(equal_scale=False)
+
                 self.stream += st
-                
+
                 if verbose:
                     print(f" -> successfully obtained waveforms for {station} using {client_name}")
 
             except Exception as e:
-                # add station to failed stations
-                self.failed_stations.append(station)
-                print(f"WARRNING: Failed to get waveforms for station {station}: {str(e)}")
+                # Drop the station completely
+                self._drop_station(station, f"Failed to get waveforms: {str(e)}", verbose)
+                print(f"WARNING: Failed to get waveforms for station {station}: {str(e)}")
 
         # Sort stream to ensure reference station is first
         if len(self.stream) > 0:
@@ -940,12 +1041,13 @@ class seismicarray:
             'client_mapping': self.client_mapping,
             'adr_parameters': self.adr_parameters,
             'station_coordinates': self.station_coordinates,
-            'station_distances': self.station_distances
+            'station_distances': self.station_distances,
+            'failed_stations': self.failed_stations,
         }
         print_dict_tree(info)
 
     def plot_array_geometry(self, show_distances: bool = True, show_dropped: bool = True, 
-                          save_path: Optional[str] = None) -> None:
+                          save_path: Optional[str] = None, unit: str = 'm') -> None:
         """
         Plot the array geometry showing station positions relative to the reference station.
         
@@ -953,15 +1055,14 @@ class seismicarray:
             show_distances (bool): Whether to show distances to reference station
             show_dropped (bool): Whether to show dropped/failed stations
             save_path (str, optional): Path to save the plot. If None, displays the plot
+            unit (str, optional): Unit of distance. Can be 'm' or 'km' (default: 'm')
         """
         if not self.station_coordinates:
             raise ValueError("No station coordinates available. Run get_station_inventories first.")
         
         # Call the plotting function
         plot_array_geometry(self.station_coordinates, self.reference_station, 
-                           self.failed_stations, show_distances, show_dropped, save_path)
-
-
+                           self.failed_stations, show_distances, show_dropped, save_path, unit)
 
     def compute_azimuth_distance_range(self, azimuth_step: float = 1.0, plot: bool = True, 
                                      save_path: Optional[str] = None, show_station_labels: bool = True) -> Dict:
@@ -1157,12 +1258,12 @@ class seismicarray:
         
         if len(fmin) > 0 and len(fmax) > 0:
             # Optimistic: maximum range for all azimuths (best case scenario)
-            fmin_optimistic = np.round(np.min(fmin), 2)  # Lowest minimum frequency across all azimuths
-            fmax_optimistic = np.round(np.max(fmax), 2)  # Highest maximum frequency across all azimuths
+            fmin_optimistic = np.round(np.min(fmin), 5)  # Lowest minimum frequency across all azimuths
+            fmax_optimistic = np.round(np.max(fmax), 5)  # Highest maximum frequency across all azimuths
             
             # Conservative: minimum range for all azimuths (worst case scenario)
-            fmin_conservative = np.round(np.max(fmin), 2)  # Highest minimum frequency across all azimuths
-            fmax_conservative = np.round(np.min(fmax), 2)  # Lowest maximum frequency across all azimuths
+            fmin_conservative = np.round(np.max(fmin), 5)  # Highest minimum frequency across all azimuths
+            fmax_conservative = np.round(np.min(fmax), 5)  # Lowest maximum frequency across all azimuths
         else:
             # If no finite values, set to NaN
             fmin_optimistic = np.nan
@@ -1255,5 +1356,85 @@ class seismicarray:
         # Call the plotting function
         plot_frequency_limits(freq_results, velocity_range, amplitude_uncertainty, 
                             log_scale, figsize, save_path)
-    
-    
+
+    def drop_stations_by_distance(self, min_distance: Optional[float] = None, 
+                                max_distance: Optional[float] = None, 
+                                verbose: bool = False):
+        """
+        Drop stations based on distance criteria from the reference station.
+        
+        Args:
+            min_distance (float, optional): Minimum distance in meters. Stations closer than this will be dropped.
+            max_distance (float, optional): Maximum distance in meters. Stations farther than this will be dropped.
+            verbose (bool): Whether to print verbose output about dropped stations
+            
+        Raises:
+            ValueError: If station distances are not available or no criteria provided
+        """
+        if not self.station_distances:
+            raise ValueError("Station distances not available. Run compute_station_distances first.")
+        
+        if min_distance is None and max_distance is None:
+            raise ValueError("At least one distance criterion (min_distance or max_distance) must be provided.")
+        
+        dropped_stations = []
+        stations_to_remove = []
+        
+        if verbose:
+            print(f"\nDropping stations based on distance criteria:")
+            if min_distance is not None:
+                print(f"  Minimum distance: {min_distance} m")
+            if max_distance is not None:
+                print(f"  Maximum distance: {max_distance} m")
+            print(f"  Reference station: {self.reference_station}")
+        
+        for station, distance in self.station_distances.items():
+            # Skip reference station - never drop it
+            if station == self.reference_station:
+                continue
+            
+            should_drop = False
+            reason = []
+            
+            # Check minimum distance criterion
+            if min_distance is not None and distance < min_distance:
+                should_drop = True
+                reason.append(f"too close ({distance:.1f} m < {min_distance} m)")
+            
+            # Check maximum distance criterion
+            if max_distance is not None and distance > max_distance:
+                should_drop = True
+                reason.append(f"too far ({distance:.1f} m > {max_distance} m)")
+            
+            if should_drop:
+                stations_to_remove.append(station)
+                dropped_stations.append(station)
+                if verbose:
+                    print(f"  -> dropping {station}: {', '.join(reason)}")
+
+        # Remove stations from all class attributes
+        for station in stations_to_remove:
+            self._drop_station(station, f"Distance criteria: {', '.join(reason)}", verbose)
+        
+        if verbose:
+            print(f"\nSummary:")
+            print(f"  -> Dropped: {len(dropped_stations)} stations")
+            print(f"  -> Remaining: {len(self.stations)} stations")
+            if dropped_stations:
+                print(f"  -> Dropped stations: {dropped_stations}")
+
+    def get_dropped_stations_info(self) -> Dict:
+        """
+        Get information about dropped/failed stations.
+        
+        Returns:
+            Dict: Dictionary containing information about dropped stations
+        """
+        return {
+            'total_dropped': len(self.failed_stations),
+            'dropped_stations': self.failed_stations.copy(),
+            'remaining_stations': len(self.stations),
+            'remaining_station_list': self.stations.copy()
+        }
+
+

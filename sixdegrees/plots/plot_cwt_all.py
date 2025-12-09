@@ -8,6 +8,7 @@ from matplotlib.gridspec import GridSpec
 from obspy import Stream
 
 def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False, 
+                fmin: Union[float, None]=None, fmax: Union[float, None]=None,
                 ylim: Union[float, None]=None) -> plt.Figure:
     """
     Plot continuous wavelet transform analysis for all components of rotation and translation
@@ -22,8 +23,13 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
         Dictionary containing CWT results for each component
     clog : bool
         Use logarithmic colorscale if True
-    ylim : float or None
-        Upper frequency limit for plotting
+    fmin : float or None
+        Minimum frequency limit for y-axis (Hz). If None, uses minimum frequency from data.
+    fmax : float or None
+        Maximum frequency limit for y-axis (Hz). If None, uses maximum frequency from data.
+    ylim : float or None, deprecated
+        Upper frequency limit for plotting (deprecated, use fmax instead).
+        If provided, will override fmax for backward compatibility.
         
     Returns:
     --------
@@ -91,7 +97,23 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
         wave_ax.grid(True, alpha=0.3)
         
         # Plot CWT
-        key = f"{comp}"
+        # Construct key matching the format used in CWT computation: "{component}_{data_type}"
+        # e.g., "Z_Rotation", "N_Translation", etc.
+        component_letter = comp[-1]  # Get last character (Z, N, E)
+        key = f"{component_letter}_{data_type}"
+        
+        # Check if key exists, if not try alternative formats
+        if key not in cwt_output:
+            # Try with full channel name
+            if comp in cwt_output:
+                key = comp
+            else:
+                # Try with just the component letter
+                if component_letter in cwt_output:
+                    key = component_letter
+                else:
+                    raise KeyError(f"CWT output key '{key}' not found. Available keys: {list(cwt_output.keys())}")
+        
         im = cwt_ax.pcolormesh(
             cwt_output[key]['times'] * tscale,
             cwt_output[key]['frequencies'],
@@ -100,7 +122,8 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
             vmin=vmin,
             vmax=vmax,
             norm=norm,
-            rasterized=True
+            rasterized=True,
+            # shading='nearest'
         )
         
         # Add cone of influence
@@ -116,15 +139,25 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
             cwt_output[key]['cone'],
             min(cwt_output[key]['frequencies']) * np.ones(len(cwt_output[key]['cone'])),
             color="white",
-            alpha=0.2
+            alpha=0.2,
+            rasterized=True
         )
         
         # Set frequency limits
-        if ylim is None:
-            cwt_ax.set_ylim(min(cwt_output[key]['frequencies']),
-                            max(cwt_output[key]['frequencies']))
+        freq_min = min(cwt_output[key]['frequencies'])
+        freq_max = max(cwt_output[key]['frequencies'])
+        
+        # Handle backward compatibility: ylim overrides fmax if provided
+        if ylim is not None:
+            fmax_effective = ylim
         else:
-            cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
+            fmax_effective = fmax
+        
+        # Set y-axis limits
+        ylim_min = fmin if fmin is not None else freq_min
+        ylim_max = fmax_effective if fmax_effective is not None else freq_max
+        
+        cwt_ax.set_ylim(ylim_min, ylim_max)
         
         cwt_ax.set_yscale('log')
         cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)

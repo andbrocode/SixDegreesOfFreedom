@@ -13,7 +13,8 @@ from typing import Optional
 
 def plot_array_geometry(station_coordinates: dict, reference_station: str, 
                        failed_stations: list = None, show_distances: bool = True, 
-                       show_dropped: bool = True, save_path: Optional[str] = None) -> None:
+                       show_dropped: bool = True, save_path: Optional[str] = None,
+                       unit: str = 'm') -> None:
     """
     Plot the array geometry showing station positions relative to the reference station.
     
@@ -24,6 +25,7 @@ def plot_array_geometry(station_coordinates: dict, reference_station: str,
         show_distances (bool): Whether to show distances to reference station
         show_dropped (bool): Whether to show dropped/failed stations
         save_path (str, optional): Path to save the plot. If None, displays the plot
+        unit (str, optional): Unit of distance. Can be 'm' or 'km' (default: 'm')
     """
     if failed_stations is None:
         failed_stations = []
@@ -106,8 +108,15 @@ def plot_array_geometry(station_coordinates: dict, reference_station: str,
             # Distance label if requested
             if show_distances:
                 distance = np.sqrt(station['x']**2 + station['y']**2)
+                if unit == 'm':
+                    distance_str = f'{distance:.1f}m'
+                elif unit == 'km':
+                    distance_str = f'{distance/1000:.1f}km'
+                else:
+                    raise ValueError(f"Invalid unit: {unit}")
+
                 plt.annotate(
-                    f'{distance:.1f}m',
+                    f'{distance_str}',
                     (station['x'], station['y']),
                     xytext=(5, -15),
                     textcoords='offset points',
