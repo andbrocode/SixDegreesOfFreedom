@@ -195,7 +195,7 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
                 JT.data = JTdata
                 JT.stats.channel = JT.stats.channel[:-1] + 'T'
 
-                HT = rot_st.select(component='E')[0].copy()
+                HT = trans_st.select(component='E')[0].copy()
                 HT.data = HTdata
                 HT.stats.channel = HT.stats.channel[:-1] + 'T'
 
@@ -512,7 +512,7 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
             if rotate_zrt:  # Only show particle motion in ZRT coordinates
                 # Get relevant components for Love waves (HT and RZ) - using original data
                 rz = rot_st.select(component='Z')[0].data[start_idx:current_idx+1]
-                ht = trans_st.select(component='Z')[0].data[start_idx:current_idx+1]
+                ht = trans_st.select(component='T')[0].data[start_idx:current_idx+1]
                 
                 # Get relevant components for Rayleigh waves (RT and HZ) - using original data
                 hz = trans_st.select(component='Z')[0].data[start_idx:current_idx+1]
