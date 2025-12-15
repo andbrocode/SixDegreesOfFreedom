@@ -512,6 +512,48 @@ class seismicarray:
             
         return stream
 
+    def _adjust_channel_prefix_by_sampling_rate(self, stream: Stream) -> Stream:
+        """
+        Adjust channel prefix according to SEED naming convention based on sampling rate.
+        
+        SEED channel naming convention:
+          E: Extremely short period (>= 1000 Hz)
+          S: Short period (1-10 Hz, less common)
+          H: High frequency (>= 80 Hz, typically 100-250 Hz)
+          B: Broadband (10-80 Hz, commonly 20-40 Hz)
+          M: Mid period (0.1-1 Hz)
+          L: Long period (< 1 Hz, commonly 0.1-1 Hz)
+        
+        This method uses a simplified version matching common practice:
+          H: >= 100 Hz (high frequency)
+          B: 10-100 Hz (broadband)
+          L: < 10 Hz (long period)
+        
+        Args:
+            stream (Stream): ObsPy Stream object with traces to adjust
+            
+        Returns:
+            Stream: The same stream object with adjusted channel prefixes (modified in-place)
+        """
+        for tr in stream:
+            sps = tr.stats.sampling_rate
+            
+            # Preserve the rest of the channel code (component and optional subcode)
+            channel_suffix = tr.stats.channel[1:] if len(tr.stats.channel) > 1 else ""
+            
+            # Determine prefix based on sampling rate (check from highest to lowest)
+            if sps >= 100:
+                # High frequency: >= 100 Hz
+                tr.stats.channel = "H" + channel_suffix
+            elif sps >= 10:
+                # Broadband: 10-100 Hz
+                tr.stats.channel = "B" + channel_suffix
+            else:
+                # Long period: < 10 Hz
+                tr.stats.channel = "L" + channel_suffix
+        
+        return stream
+
     def decimation(self, target_freq: float = 1.0, verbose: bool = False) -> Stream:
         """
         Internal function to apply decimation to a stream.
@@ -540,6 +582,9 @@ class seismicarray:
             
             # Apply decimation
             decimated_stream = decimator.apply_decimation_stream(stream)
+            
+            # Adjust channel prefixes based on new sampling rate after decimation
+            decimated_stream = self._adjust_channel_prefix_by_sampling_rate(decimated_stream)
             
             if verbose and len(decimated_stream) > 0:
                 print(f"Decimated sampling rate: {decimated_stream[0].stats.sampling_rate:.2f} Hz")
