@@ -2,6 +2,8 @@ Metadata-Version: 2.4
 Name: sixdegrees
 Version: 0.1.1
 Summary: A package for 6-DoF seismic data processing
+Home-page: https://github.com/andbrocode/SixDegreesOfFreedom
+Author: Andreas Brotzer
 Author-email: Andreas Brotzer <rotzleffel@tutanota.com>
 License:                     GNU GENERAL PUBLIC LICENSE
                                Version 3, 29 June 2007
@@ -715,7 +717,10 @@ Provides-Extra: test
 Requires-Dist: pytest>=6.0.0; extra == "test"
 Requires-Dist: pytest-cov>=4.0.0; extra == "test"
 Requires-Dist: pytest-xdist>=3.0.0; extra == "test"
+Dynamic: author
+Dynamic: home-page
 Dynamic: license-file
+Dynamic: requires-python
 
 # SixDegreesOfFreedom
 
@@ -739,10 +744,17 @@ conda env create -f docs/environment.yml
 conda activate sixdegrees
 ```
 
-3. Install the package in development mode:
+3. Upgrade pip and setuptools (required for editable installs):
+```bash
+pip install --upgrade pip setuptools wheel
+```
+
+4. Install the package in development mode:
 ```bash
 pip install -e .
 ```
+
+**Note**: If you encounter an error about missing 'build_editable' hook, ensure you have setuptools >= 64.0.0 installed. The `setup.py` file is provided as a fallback for older setuptools versions.
 
 ### Uninstallation
 

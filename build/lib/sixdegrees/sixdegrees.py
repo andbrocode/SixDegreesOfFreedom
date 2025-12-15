@@ -1214,33 +1214,7 @@ class sixdegrees():
         # detrend and filter
         self.st = self.st.detrend("linear")
         self.st = self.st.detrend("demean")
-        self.st = self.st.taper(0.05)
-
-        if fmin is not None and fmax is not None:
-            self.st = self.st.filter("bandpass", freqmin=fmin, freqmax=fmax, corners=4, zerophase=True) 
-        elif fmin is not None:
-            self.st = self.st.filter("lowpass", freq=fmin, corners=4, zerophase=True)
-        elif fmax is not None:
-            self.st = self.st.filter("highpass", freq=fmax, corners=4, zerophase=True)
-
-        # return stream if output is True
-        if output:
-            return self.st
-
-    def trim_stream(self, set_common: bool=True, set_interpolate: bool=False):
-        """
-        Trim and process the stream data with detrending, tapering, and optional filtering.
-
-        Args:
-            set_common (bool): Whether to set common time range for all traces. Defaults to True.
-            set_interpolate (bool): Whether to interpolate data to common sampling rate. Defaults to False.
-        """
-        self.fmax = fmax
-
-        # detrend and filter
-        self.st = self.st.detrend("linear")
-        self.st = self.st.detrend("demean")
-        self.st = self.st.taper(0.05)
+        self.st = self.st.taper(0.05, type='cosine')
 
         if fmin is not None and fmax is not None:
             self.st = self.st.filter("bandpass", freqmin=fmin, freqmax=fmax, corners=4, zerophase=True) 
@@ -1547,7 +1521,7 @@ class sixdegrees():
                 return stream
             stream_copy = stream.copy()
             stream_copy.detrend('linear')
-            stream_copy.taper(max_percentage=0.01)
+            stream_copy.taper(max_percentage=0.01, type='cosine')
             stream_copy.filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
             stream_copy.detrend('linear')
             return stream_copy
@@ -3941,7 +3915,7 @@ class sixdegrees():
                 st = st.copy()  # Don't modify original
                 st = st.detrend("linear")
                 st = st.detrend("demean")
-                st = st.taper(0.05)
+                st = st.taper(0.05, type='cosine')
 
                 if fmin is not None and fmax is not None:
                     st = st.filter("bandpass", freqmin=fmin, freqmax=fmax, corners=4, zerophase=True) 

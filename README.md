@@ -20,10 +20,17 @@ conda env create -f docs/environment.yml
 conda activate sixdegrees
 ```
 
-3. Install the package in development mode:
+3. Upgrade pip and setuptools (required for editable installs):
+```bash
+pip install --upgrade pip setuptools wheel
+```
+
+4. Install the package in development mode:
 ```bash
 pip install -e .
 ```
+
+**Note**: If you encounter an error about missing 'build_editable' hook, ensure you have setuptools >= 64.0.0 installed. The `setup.py` file is provided as a fallback for older setuptools versions.
 
 ### Uninstallation
 

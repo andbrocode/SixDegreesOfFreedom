@@ -1521,7 +1521,7 @@ class sixdegrees():
                 return stream
             stream_copy = stream.copy()
             stream_copy.detrend('linear')
-            stream_copy.taper(max_percentage=0.01)
+            stream_copy.taper(max_percentage=0.01, type='cosine')
             stream_copy.filter('bandpass', freqmin=fmin, freqmax=fmax, corners=4, zerophase=True)
             stream_copy.detrend('linear')
             return stream_copy
@@ -3915,7 +3915,7 @@ class sixdegrees():
                 st = st.copy()  # Don't modify original
                 st = st.detrend("linear")
                 st = st.detrend("demean")
-                st = st.taper(0.05)
+                st = st.taper(0.05, type='cosine')
 
                 if fmin is not None and fmax is not None:
                     st = st.filter("bandpass", freqmin=fmin, freqmax=fmax, corners=4, zerophase=True) 
