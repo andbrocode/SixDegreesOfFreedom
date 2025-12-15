@@ -1261,6 +1261,8 @@ class seismicarray:
             if verbose:
                 print(f" -> created rotation trace: {tr.id}")
 
+        rot_stream = self._adjust_channel_prefix_by_sampling_rate(rot_stream)
+
         self.rot_stream = rot_stream
 
         if output:
