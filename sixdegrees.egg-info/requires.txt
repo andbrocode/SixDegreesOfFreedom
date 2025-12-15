@@ -7,8 +7,12 @@ scikit-learn<2.0.0,>=0.24.0
 requests<3.0.0,>=2.25.0
 tqdm<5.0.0,>=4.65.0
 typing-extensions<5.0.0,>=4.5.0
-cartopy<1.0.0,>=0.21.0
 acoustics>=0.2.3
+pyyaml<7.0,>=6.0
+
+[cartopy]
+cartopy<0.21.0,>=0.20.0
+setuptools>=65.0.0
 
 [dev]
 ipykernel>=6.25.0
