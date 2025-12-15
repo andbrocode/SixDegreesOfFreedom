@@ -25,6 +25,29 @@ conda activate sixdegrees
 pip install -e .
 ```
 
+### Uninstallation
+
+To uninstall the package:
+
+1. **Uninstall the package** (if installed in development mode):
+```bash
+pip uninstall sixdegrees
+```
+
+2. **If you want to completely remove the conda environment**:
+```bash
+conda deactivate  # Exit the environment first
+conda env remove -n sixdegrees
+```
+
+3. **To remove the cloned repository** (optional):
+```bash
+cd ..  # Navigate out of the repository directory
+rm -rf SixDegreesOfFreedom/  # Remove the directory
+```
+
+**Note**: If you installed the package in development mode (`pip install -e .`), uninstalling will remove the package but keep your local repository files intact. You can reinstall later without re-cloning.
+
 ### Dependencies
 
 The package requires Python ≥3.9 and the following main dependencies:

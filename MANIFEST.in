@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include sixdegrees *.py
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .git*
+recursive-exclude * *.egg-info
+recursive-exclude build *
+recursive-exclude dist *
+recursive-exclude tests *
+recursive-exclude examples *
+recursive-exclude docs *
+recursive-exclude OLD *
+

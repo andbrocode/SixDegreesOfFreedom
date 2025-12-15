@@ -261,21 +261,58 @@ class seismicarray:
                     # Test if we can get coordinates - try each channel prefix
                     coords = None
                     working_prefix = None
-                    for prefix in self.channel_prefixes:
+                    
+                    # Build list of prefixes to try: config prefixes first, then common fallbacks
+                    prefixes_to_try = list(self.channel_prefixes)
+                    
+                    # Add common fallback prefixes if not already tried
+                    fallback_prefixes = ['B', 'H', 'E', 'S', 'L']  # Common channel prefixes
+                    for fallback in fallback_prefixes:
+                        if fallback not in prefixes_to_try:
+                            prefixes_to_try.append(fallback)
+                    
+                    # Try each prefix
+                    for prefix in prefixes_to_try:
                         try:
-                            coords = inventory.get_coordinates(f"{net}.{sta}..{prefix}HZ")
-                            working_prefix = prefix
+                            # Handle both single letter (H) and full code (HHZ) formats
+                            if len(prefix) == 1:
+                                channel_code = f"{prefix}HZ"
+                            elif len(prefix) == 3:
+                                channel_code = prefix
+                            else:
+                                continue  # Skip invalid formats
+                            
+                            coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                            working_prefix = prefix[0] if len(prefix) == 3 else prefix  # Store as single letter
                             break
                         except Exception:
                             continue
                     
-                    # If no prefix worked, try BHZ as fallback
+                    # If still no coordinates found, try to discover available channels from inventory
                     if coords is None:
                         try:
-                            coords = inventory.get_coordinates(f"{net}.{sta}..BHZ")
-                            working_prefix = 'B'  # Default fallback
+                            # Try to find any available Z channel in the inventory
+                            for network in inventory:
+                                for station_obj in network:
+                                    if station_obj.code == sta:
+                                        for channel in station_obj:
+                                            # Look for any vertical (Z) component channel
+                                            if len(channel.code) >= 3 and channel.code[2] == 'Z':
+                                                try:
+                                                    channel_code = channel.code
+                                                    coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                                                    working_prefix = channel_code[0]  # Store first letter as prefix
+                                                    break
+                                                except Exception:
+                                                    continue
+                                        if coords is not None:
+                                            break
+                                    if coords is not None:
+                                        break
+                                if coords is not None:
+                                    break
                         except Exception:
-                            pass
+                            pass  # If discovery fails, continue to next client
                     
                     if coords is not None:
                         # If we get here, this client works for this station
@@ -635,7 +672,6 @@ class seismicarray:
             
             # Try each client until one succeeds
             for client_name, client in clients_to_try:
-                print(station, client_name)
                 try:
                     if verbose and not station_success:
                         print(f" -> requesting inventory for station {station} using {client_name}")
@@ -647,37 +683,75 @@ class seismicarray:
                         endtime=endtime,
                         level="response"
                     )
-                    
+
                     # Verify we can get coordinates - try each channel prefix
                     coords = None
                     working_prefix = None
                     
+                    # Build list of prefixes to try: mapped prefix first, then config prefixes, then common fallbacks
+                    prefixes_to_try = []
+                    
                     # First try the mapped prefix if available
                     mapped_prefix = self.channel_prefix_mapping.get(station)
                     if mapped_prefix and mapped_prefix in self.channel_prefixes:
-                        try:
-                            coords = inventory.get_coordinates(f"{net}.{sta}..{mapped_prefix}HZ")
-                            working_prefix = mapped_prefix
-                        except Exception:
-                            pass
+                        prefixes_to_try.append(mapped_prefix)
                     
-                    # If mapped prefix didn't work, try all prefixes
-                    if coords is None:
-                        for prefix in self.channel_prefixes:
-                            try:
-                                coords = inventory.get_coordinates(f"{net}.{sta}..{prefix}HZ")
-                                working_prefix = prefix
-                                break
-                            except Exception:
-                                continue
+                    # Add all config prefixes (avoid duplicates)
+                    for prefix in self.channel_prefixes:
+                        if prefix not in prefixes_to_try:
+                            prefixes_to_try.append(prefix)
                     
-                    # If no prefix worked, try BHZ as fallback
+                    # Add common fallback prefixes if not already tried
+                    fallback_prefixes = ['B', 'H', 'E', 'L']
+                    for fallback in fallback_prefixes:
+                        if fallback not in prefixes_to_try:
+                            prefixes_to_try.append(fallback)
+                    
+                    # Try each prefix
+                    for prefix in prefixes_to_try:
+                        try:
+                            # Handle both single letter (H) and full code (HHZ) formats
+                            if len(prefix) == 1:
+                                channel_code = f"{prefix}HZ"
+                            elif len(prefix) == 3:
+                                channel_code = prefix
+                            else:
+                                continue  # Skip invalid formats
+                            
+                            coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                            working_prefix = prefix[0] if len(prefix) == 3 else prefix  # Store as single letter
+                            break
+                        except Exception:
+                            continue
+                    
+                    # If still no coordinates found, try to discover available channels from inventory
                     if coords is None:
                         try:
-                            coords = inventory.get_coordinates(f"{net}.{sta}..BHZ")
-                            working_prefix = 'B'  # Default fallback
-                        except Exception:
-                            pass
+                            # Try to find any available Z channel in the inventory
+                            for network in inventory:
+                                for station_obj in network:
+                                    if station_obj.code == sta:
+                                        for channel in station_obj:
+                                            # Look for any vertical (Z) component channel
+                                            if len(channel.code) >= 3 and channel.code[2] == 'Z':
+                                                try:
+                                                    channel_code = channel.code
+                                                    coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                                                    working_prefix = channel_code[0]  # Store first letter as prefix
+                                                    if verbose:
+                                                        print(f" -> found alternative channel {channel_code} for {station}")
+                                                    break
+                                                except Exception:
+                                                    continue
+                                        if coords is not None:
+                                            break
+                                    if coords is not None:
+                                        break
+                                if coords is not None:
+                                    break
+                        except Exception as e:
+                            if verbose:
+                                print(f" -> could not discover channels from inventory: {str(e)}")
                     
                     if coords is None:
                         raise ValueError(f"Could not get coordinates for {station} with any channel prefix")

@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from pathlib import Path
-from obspy import UTCDateTime, Stream, read_inventory
+from obspy import UTCDateTime, Stream, Inventory, read_inventory
 from obspy.clients.fdsn import Client
 from obspy.signal.util import util_geo_km
 from obspy.geodetics.base import gps2dist_azimuth
@@ -34,55 +34,107 @@ class seismicarray:
     array-specific computations.
     """
 
-    def __init__(self, config_file: str):
+    def __init__(self, config_file: str, fdsn_client: Optional[Union[str, List[str]]] = None):
         """
         Initialize SeismicArray with configuration from YAML file.
 
         Args:
             config_file (str): Path to YAML configuration file containing array setup
+            fdsn_client (str or List[str], optional): FDSN client name(s) to use.
+                                                      Can be a single client name (str) or a list of client names.
+                                                      If provided, overrides the 'fdsn_client' value in the config file.
+                                                      If None, uses the value from the config file (default: 'IRIS').
         """
         self.config = self._load_config(config_file)
         
         # Handle client configuration - can be string or list
-        fdsn_client = self.config.get('fdsn_client', 'IRIS')
+        # Use provided fdsn_client parameter if given, otherwise use config file value
+        if fdsn_client is not None:
+            fdsn_client_config = fdsn_client
+        else:
+            fdsn_client_config = self.config.get('fdsn_client', 'IRIS')
+        
         self.clients = {}
         self.client_mapping = {}
         
-        if isinstance(fdsn_client, str):
+        if isinstance(fdsn_client_config, str):
             # Single client
-            client = Client(fdsn_client)
-            self.clients[fdsn_client] = client
-            self.client = client  # Keep backward compatibility
-        elif isinstance(fdsn_client, list):
+            try:
+                client = Client(fdsn_client_config)
+                self.clients[fdsn_client_config] = client
+                self.client = client  # Keep backward compatibility
+            except Exception as e:
+                raise ValueError(f"Failed to initialize FDSN client '{fdsn_client_config}': {str(e)}")
+        elif isinstance(fdsn_client_config, list):
             # Multiple clients - initialize all available ones
+            if len(fdsn_client_config) == 0:
+                raise ValueError("fdsn_client list cannot be empty")
+            
             available_clients = []
-            for client_name in fdsn_client:
+            failed_clients = []
+            
+            for client_name in fdsn_client_config:
+                if not isinstance(client_name, str):
+                    raise ValueError(f"All FDSN client names must be strings. Got: {type(client_name).__name__}")
+                
                 try:
                     client = Client(client_name)
                     self.clients[client_name] = client
                     available_clients.append(client_name)
                 except Exception as e:
+                    failed_clients.append((client_name, str(e)))
                     print(f"Warning: Failed to initialize client '{client_name}': {str(e)}")
             
             if not available_clients:
-                raise ValueError(f"All FDSN clients failed to initialize: {fdsn_client}")
+                error_msg = f"All FDSN clients failed to initialize:\n"
+                for client_name, error in failed_clients:
+                    error_msg += f"  - {client_name}: {error}\n"
+                raise ValueError(error_msg.strip())
+            
+            if failed_clients and len(available_clients) < len(fdsn_client_config):
+                print(f"Note: {len(available_clients)} out of {len(fdsn_client_config)} clients initialized successfully.")
             
             self.client = self.clients[available_clients[0]]  # Use first available as default
         else:
-            raise ValueError("fdsn_client must be a string or list of strings")
+            raise ValueError(f"fdsn_client must be a string or list of strings. Got: {type(fdsn_client_config).__name__}")
         
         self.stations = self.config['stations']
         self.reference_station = self.config['reference_station']
         
         # Auto-map clients to stations if multiple clients available
         if len(self.clients) > 1:
-            self._auto_map_clients()
+            self._auto_map_clients(verbose=False)  # Silent during initialization
         
         # If auto-mapping failed or only one client, map all stations to default client
         if not self.client_mapping:
             for station in self.stations:
                 self.client_mapping[station] = list(self.clients.keys())[0]
-        self.channel_prefix = self.config.get('channel_prefix', 'B')  # Default to broadband
+        else:
+            # Ensure all stations are mapped (add failed ones to default client)
+            default_client = list(self.clients.keys())[0]
+            for station in self.stations:
+                if station not in self.client_mapping:
+                    self.client_mapping[station] = default_client
+        
+        # Handle channel_prefix configuration - can be string or list
+        channel_prefix_config = self.config.get('channel_prefix', 'B')
+        if isinstance(channel_prefix_config, str):
+            self.channel_prefixes = [channel_prefix_config]
+            self.channel_prefix = channel_prefix_config  # Keep backward compatibility
+        elif isinstance(channel_prefix_config, list):
+            if len(channel_prefix_config) == 0:
+                raise ValueError("channel_prefix list cannot be empty")
+            self.channel_prefixes = channel_prefix_config
+            self.channel_prefix = channel_prefix_config[0]  # Default to first for backward compatibility
+        else:
+            raise ValueError(f"channel_prefix must be a string or list of strings. Got: {type(channel_prefix_config).__name__}")
+        
+        # Track which channel prefix works for each station
+        self.channel_prefix_mapping = {}
+        
+        # Initialize channel prefix mapping for all stations (will be updated during auto-mapping or requests)
+        for station in self.stations:
+            self.channel_prefix_mapping[station] = self.channel_prefix  # Default to first prefix
         self.response_output = self.config.get('response_output', 'VEL')  # Default to velocity
         self.output_format = self.config.get('output_format', 'file')
         self.combined_stream = None
@@ -124,9 +176,10 @@ class seismicarray:
         # Copy all attributes that may have been modified during the object's lifecycle
         attributes_to_copy = [
             'config', 'clients', 'client_mapping', 'client', 'stations', 'reference_station',
-            'channel_prefix', 'response_output', 'output_format', 'combined_stream',
-            'inventories', 'stream', 'rot_stream', 'station_coordinates', 'station_distances',
-            'failed_stations', 'adr_parameters', 'azimuthal_distances'
+            'channel_prefix', 'channel_prefixes', 'channel_prefix_mapping', 'response_output', 
+            'output_format', 'combined_stream', 'inventories', 'stream', 'rot_stream', 
+            'station_coordinates', 'station_distances', 'failed_stations', 'adr_parameters', 
+            'azimuthal_distances'
         ]
         
         for attr in attributes_to_copy:
@@ -161,11 +214,22 @@ class seismicarray:
     def _auto_map_clients(self, test_duration_hours: float = 1.0, verbose: bool = True):
         """
         Automatically map clients to stations by doing trial runs.
+        Tests each station against all available clients to find which client works best.
         
         Args:
             test_duration_hours (float): Duration in hours for test data requests
             verbose (bool): Whether to print progress information
         """
+        if len(self.clients) == 0:
+            if verbose:
+                print("Warning: No FDSN clients available for auto-mapping")
+            return
+        
+        if len(self.clients) == 1:
+            # Only one client, no need to map
+            if verbose:
+                print("Only one FDSN client available, skipping auto-mapping")
+            return
 
         # Use a recent time window for testing
         from obspy import UTCDateTime
@@ -175,15 +239,16 @@ class seismicarray:
         successful_mappings = {}
         failed_stations = []
         
+        if verbose:
+            print(f"\nAuto-mapping clients to stations (testing {len(self.clients)} clients for {len(self.stations)} stations)...")
+        
         for station in self.stations:
             net, sta = station.split(".")
             station_success = False
             
-
             # Try each client for this station
             for client_name, client in self.clients.items():
                 try:
-
                     # Test inventory request
                     inventory = client.get_stations(
                         network=net,
@@ -193,40 +258,99 @@ class seismicarray:
                         level="response"
                     )
                     
-                    # Test if we can get coordinates
-                    try:
-                        coords = inventory.get_coordinates(f"{net}.{sta}..{self.channel_prefix}HZ")
-                    except Exception as e:
-                        coords = inventory.get_coordinates(f"{net}.{sta}..BHZ")
+                    # Test if we can get coordinates - try each channel prefix
+                    coords = None
+                    working_prefix = None
                     
-                    # If we get here, this client works for this station
-                    successful_mappings[station] = client_name
-                    station_success = True
-
-                    break
+                    # Build list of prefixes to try: config prefixes first, then common fallbacks
+                    prefixes_to_try = list(self.channel_prefixes)
                     
-                except Exception as e:
+                    # Add common fallback prefixes if not already tried
+                    fallback_prefixes = ['B', 'H', 'E', 'S', 'L']  # Common channel prefixes
+                    for fallback in fallback_prefixes:
+                        if fallback not in prefixes_to_try:
+                            prefixes_to_try.append(fallback)
+                    
+                    # Try each prefix
+                    for prefix in prefixes_to_try:
+                        try:
+                            # Handle both single letter (H) and full code (HHZ) formats
+                            if len(prefix) == 1:
+                                channel_code = f"{prefix}HZ"
+                            elif len(prefix) == 3:
+                                channel_code = prefix
+                            else:
+                                continue  # Skip invalid formats
+                            
+                            coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                            working_prefix = prefix[0] if len(prefix) == 3 else prefix  # Store as single letter
+                            break
+                        except Exception:
+                            continue
+                    
+                    # If still no coordinates found, try to discover available channels from inventory
+                    if coords is None:
+                        try:
+                            # Try to find any available Z channel in the inventory
+                            for network in inventory:
+                                for station_obj in network:
+                                    if station_obj.code == sta:
+                                        for channel in station_obj:
+                                            # Look for any vertical (Z) component channel
+                                            if len(channel.code) >= 3 and channel.code[2] == 'Z':
+                                                try:
+                                                    channel_code = channel.code
+                                                    coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                                                    working_prefix = channel_code[0]  # Store first letter as prefix
+                                                    break
+                                                except Exception:
+                                                    continue
+                                        if coords is not None:
+                                            break
+                                    if coords is not None:
+                                        break
+                                if coords is not None:
+                                    break
+                        except Exception:
+                            pass  # If discovery fails, continue to next client
+                    
+                    if coords is not None:
+                        # If we get here, this client works for this station
+                        successful_mappings[station] = client_name
+                        if working_prefix:
+                            self.channel_prefix_mapping[station] = working_prefix
+                        station_success = True
+                        if verbose:
+                            prefix_info = f" (prefix: {working_prefix})" if working_prefix else ""
+                            print(f"  {station} -> {client_name}{prefix_info}")
+                        break
+                    
+                except Exception:
                     continue
             
             if not station_success:
                 failed_stations.append(station)
+                if verbose:
+                    print(f"  {station} -> failed (will use default client)")
 
         # Store the successful mappings
         self.client_mapping = successful_mappings
         
-        # if verbose:
-        #     print(f"\nAuto-mapping completed:")
-        # #     print(f"  Successfully mapped: {len(successful_mappings)} stations")
-        # #     print(f"  Failed stations: {len(failed_stations)}")
-        # #     if failed_stations:
-        # #         print(f"  Failed stations: {failed_stations}")
+        if verbose:
+            print(f"\nAuto-mapping completed:")
+            print(f"  Successfully mapped: {len(successful_mappings)} stations")
+            if failed_stations:
+                print(f"  Failed to map: {len(failed_stations)} stations (will use default client)")
+                if len(failed_stations) <= 5:  # Only show if not too many
+                    print(f"  Failed stations: {failed_stations}")
             
-        #     print(f"\nClient usage summary:")
-        #     client_usage = {}
-        #     for station, client_name in successful_mappings.items():
-        #         client_usage[client_name] = client_usage.get(client_name, 0) + 1
-        #     for client_name, count in client_usage.items():
-        #         print(f"  {client_name}: {count} stations")
+            if successful_mappings:
+                print(f"\nClient usage summary:")
+                client_usage = {}
+                for station, client_name in successful_mappings.items():
+                    client_usage[client_name] = client_usage.get(client_name, 0) + 1
+                for client_name, count in sorted(client_usage.items()):
+                    print(f"  {client_name}: {count} stations")
 
     def get_client_for_station(self, station: str):
         """
@@ -426,7 +550,6 @@ class seismicarray:
             if verbose:
                 print(f"Warning: Decimation failed: {str(e)}")
 
-
     def _drop_station(self, station: str, reason: str, verbose: bool = False) -> None:
         """
         Drop a station from all class attributes and data structures.
@@ -459,6 +582,10 @@ class seismicarray:
         # Remove from client mapping
         if station in self.client_mapping:
             del self.client_mapping[station]
+            
+        # Remove from channel prefix mapping
+        if station in self.channel_prefix_mapping:
+            del self.channel_prefix_mapping[station]
             
         # Add to failed stations list
         if station not in self.failed_stations:
@@ -509,6 +636,7 @@ class seismicarray:
         """
         Fetch station inventories for all stations in the array.
         Stations without valid inventories are removed from the array.
+        When multiple FDSN clients are available, tries all clients as fallback if the mapped client fails.
 
         Args:
             starttime (UTCDateTime): Start time for inventory request
@@ -523,41 +651,150 @@ class seismicarray:
         
         for station in self.stations[:]:  # Create copy to allow modification during iteration
             net, sta = station.split(".")
-            try:
-                # Get appropriate client for this station
-                client = self.get_client_for_station(station)
-                client_name = self.client_mapping.get(station, "default")
-                
-                if verbose:
-                    print(f" -> requesting inventory for station {station} using {client_name}")
-                    
-                inventory = client.get_stations(
-                    network=net,
-                    station=sta,
-                    starttime=starttime,
-                    endtime=endtime,
-                    level="response"
-                )
-                
-                # Verify we can get coordinates with the specified channel
+            station_success = False
+            last_error = None
+            
+            # Get list of clients to try - start with mapped client, then try others if available
+            clients_to_try = []
+            mapped_client_name = self.client_mapping.get(station)
+            if mapped_client_name and mapped_client_name in self.clients:
+                clients_to_try.append((mapped_client_name, self.clients[mapped_client_name]))
+            
+            # Add other clients as fallback if we have multiple clients
+            if len(self.clients) > 1:
+                for client_name, client in self.clients.items():
+                    if client_name != mapped_client_name:
+                        clients_to_try.append((client_name, client))
+            
+            # If no mapping exists, try all clients
+            if not clients_to_try:
+                clients_to_try = [(name, client) for name, client in self.clients.items()]
+            
+            # Try each client until one succeeds
+            for client_name, client in clients_to_try:
                 try:
-                    coords = inventory.get_coordinates(f"{net}.{sta}..{self.channel_prefix}HZ")
+                    if verbose and not station_success:
+                        print(f" -> requesting inventory for station {station} using {client_name}")
+                    
+                    inventory = client.get_stations(
+                        network=net,
+                        station=sta,
+                        starttime=starttime,
+                        endtime=endtime,
+                        level="response"
+                    )
+
+                    # Verify we can get coordinates - try each channel prefix
+                    coords = None
+                    working_prefix = None
+                    
+                    # Build list of prefixes to try: mapped prefix first, then config prefixes, then common fallbacks
+                    prefixes_to_try = []
+                    
+                    # First try the mapped prefix if available
+                    mapped_prefix = self.channel_prefix_mapping.get(station)
+                    if mapped_prefix and mapped_prefix in self.channel_prefixes:
+                        prefixes_to_try.append(mapped_prefix)
+                    
+                    # Add all config prefixes (avoid duplicates)
+                    for prefix in self.channel_prefixes:
+                        if prefix not in prefixes_to_try:
+                            prefixes_to_try.append(prefix)
+                    
+                    # Add common fallback prefixes if not already tried
+                    fallback_prefixes = ['B', 'H', 'E', 'L']
+                    for fallback in fallback_prefixes:
+                        if fallback not in prefixes_to_try:
+                            prefixes_to_try.append(fallback)
+                    
+                    # Try each prefix
+                    for prefix in prefixes_to_try:
+                        try:
+                            # Handle both single letter (H) and full code (HHZ) formats
+                            if len(prefix) == 1:
+                                channel_code = f"{prefix}HZ"
+                            elif len(prefix) == 3:
+                                channel_code = prefix
+                            else:
+                                continue  # Skip invalid formats
+                            
+                            coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                            working_prefix = prefix[0] if len(prefix) == 3 else prefix  # Store as single letter
+                            break
+                        except Exception:
+                            continue
+                    
+                    # If still no coordinates found, try to discover available channels from inventory
+                    if coords is None:
+                        try:
+                            # Try to find any available Z channel in the inventory
+                            for network in inventory:
+                                for station_obj in network:
+                                    if station_obj.code == sta:
+                                        for channel in station_obj:
+                                            # Look for any vertical (Z) component channel
+                                            if len(channel.code) >= 3 and channel.code[2] == 'Z':
+                                                try:
+                                                    channel_code = channel.code
+                                                    coords = inventory.get_coordinates(f"{net}.{sta}..{channel_code}")
+                                                    working_prefix = channel_code[0]  # Store first letter as prefix
+                                                    if verbose:
+                                                        print(f" -> found alternative channel {channel_code} for {station}")
+                                                    break
+                                                except Exception:
+                                                    continue
+                                        if coords is not None:
+                                            break
+                                    if coords is not None:
+                                        break
+                                if coords is not None:
+                                    break
+                        except Exception as e:
+                            if verbose:
+                                print(f" -> could not discover channels from inventory: {str(e)}")
+                    
+                    if coords is None:
+                        raise ValueError(f"Could not get coordinates for {station} with any channel prefix")
+                    
+                    # Success - store inventory and coordinates
                     self.inventories[station] = inventory
                     self.station_coordinates[station] = {
                         'latitude': float(coords['latitude']),
                         'longitude': float(coords['longitude']),
                         'elevation': float(coords['elevation'])
                     }
+                    
+                    # Update client mapping if we used a different client
+                    if client_name != mapped_client_name:
+                        self.client_mapping[station] = client_name
+                        if verbose:
+                            print(f" -> updated client mapping for {station} to {client_name}")
+                    
+                    # Update channel prefix mapping if we used a different prefix
+                    if working_prefix and working_prefix != mapped_prefix:
+                        self.channel_prefix_mapping[station] = working_prefix
+                        if verbose:
+                            print(f" -> updated channel prefix for {station} to {working_prefix}")
+                    
                     successful_stations.append(station)
+                    station_success = True
                     
                     if verbose:
                         print(f" -> successfully obtained inventory for {station} using {client_name}")
-                except Exception as e:
-                    self._drop_station(station, f"Invalid channel configuration: {str(e)}", verbose)
-                    failed_stations.append(station)
+                    break  # Success, no need to try other clients
                     
-            except Exception as e:
-                self._drop_station(station, f"Failed to get inventory: {str(e)}", verbose)
+                except Exception as e:
+                    last_error = str(e)
+                    if verbose and client_name == mapped_client_name:
+                        print(f" -> failed with mapped client {client_name}: {str(e)}")
+                    continue  # Try next client
+            
+            # If all clients failed, drop the station
+            if not station_success:
+                error_msg = f"Failed to get inventory from all clients"
+                if last_error:
+                    error_msg += f": {last_error}"
+                self._drop_station(station, error_msg, verbose)
                 failed_stations.append(station)
         
         # Check if we have the reference station
@@ -591,6 +828,7 @@ class seismicarray:
                      plot: bool = False) -> Stream:
         """
         Fetch and preprocess waveforms for all stations.
+        When multiple FDSN clients are available, tries all clients as fallback if the mapped client fails.
 
         Args:
             begtime (UTCDateTime): Start time for data request
@@ -619,70 +857,148 @@ class seismicarray:
 
         for station in self.stations:
             net, sta = station.split(".")
+            station_success = False
+            last_error = None
             
-            # Get appropriate client for this station
-            client = self.get_client_for_station(station)
-            client_name = self.client_mapping.get(station, "default")
+            # Get list of clients to try - start with mapped client, then try others if available
+            clients_to_try = []
+            mapped_client_name = self.client_mapping.get(station)
+            if mapped_client_name and mapped_client_name in self.clients:
+                clients_to_try.append((mapped_client_name, self.clients[mapped_client_name]))
+            
+            # Add other clients as fallback if we have multiple clients
+            if len(self.clients) > 1:
+                for client_name, client in self.clients.items():
+                    if client_name != mapped_client_name:
+                        clients_to_try.append((client_name, client))
+            
+            # If no mapping exists, try all clients
+            if not clients_to_try:
+                clients_to_try = [(name, client) for name, client in self.clients.items()]
+            
+            # Try each client until one succeeds
+            for client_name, client in clients_to_try:
+                # Get list of prefixes to try - start with mapped prefix, then try others
+                prefixes_to_try = []
+                mapped_prefix = self.channel_prefix_mapping.get(station, self.channel_prefix)
+                if mapped_prefix in self.channel_prefixes:
+                    prefixes_to_try.append(mapped_prefix)
+                
+                # Add other prefixes as fallback if we have multiple prefixes
+                if len(self.channel_prefixes) > 1:
+                    for prefix in self.channel_prefixes:
+                        if prefix != mapped_prefix:
+                            prefixes_to_try.append(prefix)
+                
+                # If no mapping exists, try all prefixes
+                if not prefixes_to_try:
+                    prefixes_to_try = self.channel_prefixes.copy()
+                
+                # Try each prefix until one succeeds
+                st = None
+                working_prefix = None
+                for station_prefix in prefixes_to_try:
+                    try:
+                        if verbose and not station_success:
+                            print(20*"-")
+                            print(f"requesting waveforms for station {station} using {client_name} (prefix: {station_prefix})")
+                        
+                        # get waveforms
+                        st = client.get_waveforms(
+                            network=net,
+                            station=sta,
+                            location="*",
+                            channel=f"{station_prefix}H*",
+                            starttime=begtime-300,
+                            endtime=endtime+300
+                        )
+                        
+                        # If we get here, this prefix works
+                        working_prefix = station_prefix
+                        break
+                        
+                    except Exception as prefix_error:
+                        if verbose and station_prefix == mapped_prefix:
+                            print(f" -> failed with mapped prefix {station_prefix}: {str(prefix_error)}")
+                        # Try next prefix
+                        continue
+                
+                # If no prefix worked for this client, try next client
+                if st is None:
+                    continue
+                
+                # If we get here, we successfully got waveforms with this client and prefix
+                try:
 
-            if verbose:
-                print(20*"-")
-                print(f"requesting waveforms for station {station} using {client_name}")
-            try:
-                # get waveforms
-                st = client.get_waveforms(
-                    network=net,
-                    station=sta,
-                    location="*",
-                    channel=f"{self.channel_prefix}H*",
-                    starttime=begtime-300,
-                    endtime=endtime+300
-                )
+                    # check if length requires merging
+                    if len(st) > 3:
+                        if verbose:
+                            print(f" -> merging {station} waveforms")
+                        st = st.merge(fill_value='latest')
 
-                # check if length requires merging
-                if len(st) > 3:
+                    # remove response
+                    if remove_response and station in self.inventories:
+                        st.remove_response(
+                            inventory=self.inventories[station],
+                            output=self.response_output,
+                            water_level=60
+                        )
+
+                    # rotate to ZNE
+                    st.rotate(method="->ZNE", inventory=self.inventories[station])
+
+                    # detrend waveforms
+                    if detrend:
+                        st.detrend('demean')
+                        st.detrend('linear')
+                        st.detrend('simple')
+
+                    # taper waveforms
+                    if taper:
+                        st.taper(0.05, type='cosine')
+
+                    # filter waveforms
+                    if filter_params:
+                        st.filter(**filter_params)
+                        st.detrend('demean')
+
+                    # plot waveforms (if requested)
+                    if plot:
+                        print(st.select(station=station))
+                        st.plot(equal_scale=False)
+
+                    self.stream += st
+                    station_success = True
+
+                    # Update client mapping if we used a different client
+                    if client_name != mapped_client_name:
+                        self.client_mapping[station] = client_name
+                        if verbose:
+                            print(f" -> updated client mapping for {station} to {client_name}")
+                    
+                    # Update channel prefix mapping if we used a different prefix
+                    if working_prefix and working_prefix != mapped_prefix:
+                        self.channel_prefix_mapping[station] = working_prefix
+                        if verbose:
+                            print(f" -> updated channel prefix for {station} to {working_prefix}")
+
                     if verbose:
-                        print(f" -> merging {station} waveforms")
-                    st = st.merge(fill_value='latest')
+                        print(f" -> successfully obtained waveforms for {station} using {client_name} (prefix: {working_prefix})")
+                    break  # Success, no need to try other clients
 
-                # remove response
-                if remove_response and station in self.inventories:
-                    st.remove_response(
-                        inventory=self.inventories[station],
-                        output=self.response_output,
-                        water_level=60
-                    )
+                except Exception as e:
+                    last_error = str(e)
+                    if verbose:
+                        print(f" -> failed with mapped client {client_name}: {str(e)}")
+                    continue  # Try next client
 
-                # rotate to ZNE
-                st.rotate(method="->ZNE", inventory=self.inventories[station])
-
-                # detrend waveforms
-                if detrend:
-                    st.detrend('demean')
-                    st.detrend('linear')
-                    st.detrend('simple')
-
-                # taper waveforms
-                if taper:
-                    st.taper(0.05, type='cosine')
-
-                # filter waveforms
-                if filter_params:
-                    st.filter(**filter_params)
-                    st.detrend('demean')
-
-                # plot waveforms (if requested)
-                if plot:
-                    st.plot(equal_scale=False)
-
-                self.stream += st
-
-                if verbose:
-                    print(f" -> successfully obtained waveforms for {station} using {client_name}")
-
-            except Exception as e:
-                # Drop the station completely
-                self._drop_station(station, f"Failed to get waveforms: {str(e)}", verbose)
-                print(f"WARNING: Failed to get waveforms for station {station}: {str(e)}")
+            # If all clients failed, drop the station
+            if not station_success:
+                error_msg = f"Failed to get waveforms from all clients"
+                if last_error:
+                    error_msg += f": {last_error}"
+                self._drop_station(station, error_msg, verbose)
+                print(f"WARNING: Failed to get waveforms for station {station} from all clients: {last_error}")
 
         # Sort stream to ensure reference station is first
         if len(self.stream) > 0:
@@ -1036,6 +1352,8 @@ class seismicarray:
             'stations': self.stations,
             'reference_station': self.reference_station,
             'channel_prefix': self.channel_prefix,
+            'channel_prefixes': self.channel_prefixes,
+            'channel_prefix_mapping': self.channel_prefix_mapping,
             'response_output': self.response_output,
             'fdsn_clients': list(self.clients.keys()),
             'client_mapping': self.client_mapping,

@@ -1,4 +1,5 @@
 LICENSE
+MANIFEST.in
 README.md
 pyproject.toml
 sixdegrees/__init__.py
@@ -46,4 +47,3 @@ sixdegrees/utils/print_deviation_summary.py
 sixdegrees/utils/print_dict_tree.py
 sixdegrees/utils/read_pickle.py
 sixdegrees/utils/request_data.py
-tests/test_array_function.py
