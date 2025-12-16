@@ -584,7 +584,7 @@ class seismicarray:
             decimated_stream = decimator.apply_decimation_stream(stream)
             
             # Adjust channel prefixes based on new sampling rate after decimation
-            decimated_stream = self._adjust_channel_prefix_by_sampling_rate(decimated_stream)
+            # decimated_stream = self._adjust_channel_prefix_by_sampling_rate(decimated_stream)
             
             if verbose and len(decimated_stream) > 0:
                 print(f"Decimated sampling rate: {decimated_stream[0].stats.sampling_rate:.2f} Hz")
@@ -1295,6 +1295,9 @@ class seismicarray:
         combined = Stream()
         combined += ref_stream
         combined += rot_stream
+
+        # Adjust channel prefixes based on new sampling rate after decimation
+        combined = self._adjust_channel_prefix_by_sampling_rate(combined)
 
         # add as attribute
         self.combined_stream = combined
