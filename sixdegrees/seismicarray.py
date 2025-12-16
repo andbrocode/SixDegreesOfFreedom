@@ -512,7 +512,7 @@ class seismicarray:
             
         return stream
 
-    def _adjust_channel_prefix_by_sampling_rate(self, stream: Stream) -> Stream:
+    def _adjust_channel_prefix_by_sampling_rate(self, stream0: Stream) -> Stream:
         """
         Adjust channel prefix according to SEED naming convention based on sampling rate.
         
@@ -530,11 +530,13 @@ class seismicarray:
           L: < 10 Hz (long period)
         
         Args:
-            stream (Stream): ObsPy Stream object with traces to adjust
+            stream0 (Stream): ObsPy Stream object with traces to adjust
             
         Returns:
             Stream: The same stream object with adjusted channel prefixes (modified in-place)
         """
+        stream = stream0.copy()
+        
         for tr in stream:
             sps = tr.stats.sampling_rate
             
@@ -1260,8 +1262,6 @@ class seismicarray:
             
             if verbose:
                 print(f" -> created rotation trace: {tr.id}")
-
-        rot_stream = self._adjust_channel_prefix_by_sampling_rate(rot_stream)
 
         self.rot_stream = rot_stream
 
