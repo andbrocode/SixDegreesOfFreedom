@@ -642,8 +642,12 @@ class seismicarray:
             
             if verbose and len(decimated_stream) > 0:
                 print(f"Decimated sampling rate: {decimated_stream[0].stats.sampling_rate:.2f} Hz")
-                
+
             self.stream = decimated_stream
+
+            # Trim all traces to same number of samples if requested
+            if len(self.stream) > 0:
+                self.stream = self._trim_to_same_samples(self.stream, self.tbeg, self.tend, verbose)
             
         except Exception as e:
             if verbose:
@@ -1125,9 +1129,9 @@ class seismicarray:
         # Validate array status after getting all waveforms
         self._validate_array_status(verbose)
         
-        # Trim all traces to same number of samples if requested
-        if len(self.stream) > 0:
-            self.stream = self._trim_to_same_samples(self.stream, self.tbeg, self.tend, verbose)
+        # # Trim all traces to same number of samples if requested
+        # if len(self.stream) > 0:
+        #     self.stream = self._trim_to_same_samples(self.stream, self.tbeg, self.tend, verbose)
         
         if output:
             return self.stream
