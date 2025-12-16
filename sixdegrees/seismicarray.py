@@ -494,7 +494,7 @@ class seismicarray:
             return stream
         
         # Get common time window (overall start and end time)
-        duration = tend - tbeg
+        duration = self.tend - self.tbeg
 
         # Define threshold for "significantly less" (e.g., 10% less than expected)
         threshold_ratio = 0.9
@@ -534,7 +534,7 @@ class seismicarray:
 
         if verbose:
             print("\nTrimming traces to same length:")
-            print(f" -> common time window: {tbeg} to {tend} (duration: {duration:.2f} s)")
+            print(f" -> common time window: {self.tbeg} to {self.tend} (duration: {duration:.2f} s)")
             print(f" -> shortest trace has {min_npts} samples")
             print(f" -> longest trace has {max_npts} samples")
 
@@ -950,6 +950,10 @@ class seismicarray:
         self.stream = Stream()
         output = output or self.response_output
         self.failed_stations = []
+
+        # update time window
+        self.tbeg = begtime
+        self.tend = endtime
 
         # print info on processing
         if verbose:
