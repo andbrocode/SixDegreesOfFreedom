@@ -144,7 +144,6 @@ class seismicarray:
         self.station_coordinates = {}
         self.station_distances = {}
         self.failed_stations = []  # Track failed stations
-        self.expected_samples = None  # Expected number of samples based on time window and sampling rate
         self.adr_parameters = {
             'vp': float(self.config.get('vp', 6200.)),  # P-wave velocity in m/s
             'vs': float(self.config.get('vs', 3700.)),  # S-wave velocity in m/s
@@ -180,7 +179,7 @@ class seismicarray:
             'channel_prefix', 'channel_prefixes', 'channel_prefix_mapping', 'response_output', 
             'output_format', 'combined_stream', 'inventories', 'stream', 'rot_stream', 
             'station_coordinates', 'station_distances', 'failed_stations', 'adr_parameters', 
-            'azimuthal_distances', 'expected_samples'
+            'azimuthal_distances'
         ]
         
         for attr in attributes_to_copy:
@@ -480,8 +479,9 @@ class seismicarray:
     def _trim_to_same_samples(self, stream: Stream, verbose: bool = False) -> Stream:
         """
         Trim all traces in stream to have the same number of samples.
-        Uses expected_samples if available, otherwise uses the shortest valid trace.
-        Traces with significantly less data than expected are dropped instead of trimming.
+        Computes expected samples for each trace based on the common time window
+        and the trace's sampling rate. Traces with significantly less data than
+        expected are dropped instead of trimming.
         
         Args:
             stream (Stream): Stream to trim
@@ -493,41 +493,53 @@ class seismicarray:
         if not stream:
             return stream
         
+        # Get common time window (overall start and end time)
+        duration = self.tend - self.tbeg
+
         # Define threshold for "significantly less" (e.g., 10% less than expected)
         threshold_ratio = 0.9
         
         # Check for traces that are significantly shorter than expected
         traces_to_drop = []
         for tr in stream:
-            if tr.stats.npts < self.expected_samples * threshold_ratio:
+            # Compute expected samples for this trace based on its sampling rate
+            expected_samples = int(duration * tr.stats.sampling_rate) + 1  # +1 for inclusive end
+            
+            # Check if trace has significantly less data than expected
+            if tr.stats.npts < expected_samples * threshold_ratio:
                 # Trace is significantly shorter than expected - mark for dropping
                 station = f"{tr.stats.network}.{tr.stats.station}"
-                traces_to_drop.append((tr, station, tr.stats.npts))
+                traces_to_drop.append((tr, station, tr.stats.npts, expected_samples))
         
         # Drop significantly short traces
         if traces_to_drop:
             if verbose:
-                print(f" -> dropping {len(traces_to_drop)} traces with significantly less data than expected:")
-            for tr, station, npts in traces_to_drop:
+                print(f"\nDropping {len(traces_to_drop)} traces with significantly less data than expected:")
+            for tr, station, npts, expected in traces_to_drop:
                 if verbose:
-                    print(f"    -> {station}.{tr.stats.channel}: {npts} samples (expected: {self.expected_samples})")
-                self._drop_station(station, reason=f'trace too short ({npts} samples, expected: {self.expected_samples})', verbose=False)
+                    print(f"    -> {station}.{tr.stats.channel}: {npts} samples (expected: {expected} based on {tr.stats.sampling_rate:.2f} Hz)")
+                self._drop_station(station, reason=f'trace too short ({npts} samples, expected: {expected})', verbose=False)
                 stream.remove(tr)
+        
+        # If no traces remain after dropping, return empty stream
+        if len(stream) == 0:
+            if verbose:
+                print(" -> no traces remaining after dropping short traces")
+            return stream
 
-        # Find trace lengths
+        # Find trace lengths after dropping
         trace_lengths = [tr.stats.npts for tr in stream]
         min_npts = min(trace_lengths)
         max_npts = max(trace_lengths)
 
         if verbose:
             print("\nTrimming traces to same length:")
+            print(f" -> common time window: {self.tbeg} to {self.tend} (duration: {duration:.2f} s)")
             print(f" -> shortest trace has {min_npts} samples")
             print(f" -> longest trace has {max_npts} samples")
-            if self.expected_samples is not None:
-                print(f" -> expected samples: {self.expected_samples}")
 
-        # Use expected samples as target, but ensure we don't exceed available data
-        target_npts = min(self.expected_samples, min_npts)
+        # Use shortest trace as target (conservative approach)
+        target_npts = min_npts
 
         # Trim all traces to target length
         trimmed_count = 0
@@ -538,10 +550,7 @@ class seismicarray:
                 trimmed_count += 1
         
         if verbose:
-            if self.expected_samples is not None:
-                print(f" -> trimmed {trimmed_count} traces to {target_npts} samples (expected: {self.expected_samples})")
-            else:
-                print(f" -> trimmed {trimmed_count} traces to {target_npts} samples")
+            print(f" -> trimmed {trimmed_count} traces to {target_npts} samples")
             print(f" -> final stream has {len(stream)} traces, all with {target_npts} samples")
             
         return stream
@@ -635,24 +644,6 @@ class seismicarray:
                 print(f"Decimated sampling rate: {decimated_stream[0].stats.sampling_rate:.2f} Hz")
                 
             self.stream = decimated_stream
-            
-            # Update expected samples based on new sampling rate
-            if len(decimated_stream) > 0 and self.expected_samples is not None:
-                # Get common time window
-                start_times = [tr.stats.starttime for tr in decimated_stream]
-                end_times = [tr.stats.endtime for tr in decimated_stream]
-                common_start = max(start_times)
-                common_end = min(end_times)
-                
-                # Get new sampling rate
-                new_sampling_rate = decimated_stream[0].stats.sampling_rate
-                
-                # Recalculate expected samples with new sampling rate
-                duration = common_end - common_start
-                self.expected_samples = int(duration * new_sampling_rate) + 1  # +1 for inclusive end
-                
-                if verbose:
-                    print(f" -> Updated expected samples: {self.expected_samples} (sampling rate: {new_sampling_rate:.2f} Hz)")
             
         except Exception as e:
             if verbose:
@@ -1129,28 +1120,6 @@ class seismicarray:
 
         # Validate array status after getting all waveforms
         self._validate_array_status(verbose)
-        
-        # Calculate expected number of samples based on time window and sampling rate
-        if len(self.stream) > 0:
-            # Get common time window
-            start_times = [tr.stats.starttime for tr in self.stream]
-            end_times = [tr.stats.endtime for tr in self.stream]
-            common_start = max(start_times)
-            common_end = min(end_times)
-            
-            # Get sampling rate (should be consistent after processing)
-            sampling_rate = self.stream[0].stats.sampling_rate
-            
-            # Calculate expected samples
-            duration = common_end - common_start
-            self.expected_samples = int(duration * sampling_rate) + 1  # +1 for inclusive end
-            
-            if verbose:
-                print(f"\nExpected samples calculation:")
-                print(f" -> Time window: {common_start} to {common_end}")
-                print(f" -> Duration: {duration:.2f} seconds")
-                print(f" -> Sampling rate: {sampling_rate:.2f} Hz")
-                print(f" -> Expected samples: {self.expected_samples}")
         
         # Trim all traces to same number of samples if requested
         if len(self.stream) > 0:
