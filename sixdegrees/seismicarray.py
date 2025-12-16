@@ -476,7 +476,7 @@ class seismicarray:
                 full_station = next(s for s in self.stations if s.split('.')[1] == station)
                 print(f" - {full_station}")
 
-    def _trim_to_same_samples(self, stream: Stream, verbose: bool = False) -> Stream:
+    def _trim_to_same_samples(self, stream: Stream, tbeg: UTCDateTime, tend: UTCDateTime, verbose: bool = False) -> Stream:
         """
         Trim all traces in stream to have the same number of samples.
         Computes expected samples for each trace based on the common time window
@@ -494,7 +494,7 @@ class seismicarray:
             return stream
         
         # Get common time window (overall start and end time)
-        duration = self.tend - self.tbeg
+        duration = tend - tbeg
 
         # Define threshold for "significantly less" (e.g., 10% less than expected)
         threshold_ratio = 0.9
@@ -534,7 +534,7 @@ class seismicarray:
 
         if verbose:
             print("\nTrimming traces to same length:")
-            print(f" -> common time window: {self.tbeg} to {self.tend} (duration: {duration:.2f} s)")
+            print(f" -> common time window: {tbeg} to {tend} (duration: {duration:.2f} s)")
             print(f" -> shortest trace has {min_npts} samples")
             print(f" -> longest trace has {max_npts} samples")
 
@@ -1123,7 +1123,7 @@ class seismicarray:
         
         # Trim all traces to same number of samples if requested
         if len(self.stream) > 0:
-            self.stream = self._trim_to_same_samples(self.stream, verbose)
+            self.stream = self._trim_to_same_samples(self.stream, self.tbeg, self.tend, verbose)
         
         if output:
             return self.stream
