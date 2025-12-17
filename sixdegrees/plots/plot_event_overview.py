@@ -28,7 +28,8 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
                        map_projection: str = 'orthographic',
                        zoom_t1: float = 2.0,
                        zoom_t2: float = 20.0,
-                       figsize: Optional[tuple] = None) -> plt.Figure:
+                       figsize: Optional[tuple] = None,
+                       rot_scale_factor: float = 3.0) -> plt.Figure:
     """
     Create a comprehensive event overview plot combining waveform comparison, 
     backazimuth estimates, velocity estimates, and a geographic map.
@@ -81,7 +82,9 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
         Time after P/S arrival to show in zoom window (default: 20.0 seconds)
     figsize : tuple, optional
         Figure size (width, height). If None, auto-determined.
-        
+    rot_scale_factor : float
+        Scaling factor for rotation data in plots (default: 3.0)
+
     Returns:
     --------
     matplotlib.figure.Figure
@@ -167,7 +170,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
     # ========== WAVEFORM COMPARISON ==========
     ax_wave = fig.add_subplot(gs[3:5, :9])
     p_arrival_time, s_arrival_time, max_time = _plot_waveform_comparison(ax_wave, sd, baz_theo, wave_type, unitscale, 
-                             fmin, fmax, twin_sec, twin_overlap, event_info)
+                             fmin, fmax, twin_sec, twin_overlap, event_info, rot_scale_factor)
     
     # ========== P AND S WAVE ZOOM WINDOWS ==========
     # Side by side below waveform comparison (with small gap in column 4)
@@ -187,7 +190,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
             t2 = p_arrival_time + zoom_t2
         _plot_zoom_window(ax_p_zoom, sd, baz_theo, wave_type, unitscale, fmin, fmax,
                             t1, t2, 'P', 12, arrival_time=p_arrival_time, 
-                            zoom_t1=zoom_t1, zoom_t2=zoom_t2)
+                            zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor)
     
     if s_arrival_time is not None:
         starttime = sd.get_stream("translation")[0].stats.starttime
@@ -202,7 +205,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
             t2 = s_arrival_time + zoom_t2
         _plot_zoom_window(ax_s_zoom, sd, baz_theo, wave_type, unitscale, fmin, fmax,
                         t1, t2, 'S', 12, arrival_time=s_arrival_time,
-                        zoom_t1=zoom_t1, zoom_t2=zoom_t2)
+                        zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor)
     
     # ========== BACKAZIMUTH ESTIMATES ==========
     ax_baz = fig.add_subplot(gs[6, :9])
@@ -284,7 +287,7 @@ def _plot_event_info_box(ax, event_info, baz_theo):
 
 
 def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax, 
-                             twin_sec, twin_overlap, event_info=None):
+                             twin_sec, twin_overlap, event_info=None, rot_scale_factor=3.0):
     """Plot waveform comparison similar to plot_waveform_cc with crosscorrelation dots"""
     from numpy import linspace, ones, array
     from obspy.signal.cross_correlation import correlate, xcorr_max
@@ -368,7 +371,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Plot
         times = rot.select(channel="*Z")[0].times()
-        ax.plot(times, rot_z*3, label=f"3x ROT-Z", color="tab:red", lw=lw, zorder=3)
+        ax.plot(times, rot_z*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-Z", color="tab:red", lw=lw, zorder=3)
         ax2 = ax.twinx()
         ax2.plot(times, acc_t, label=f"ACC-T", color="black", lw=lw)
         
@@ -435,7 +438,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Plot
         times = acc.select(channel="*Z")[0].times()
-        ax.plot(times, rot_t*3, label=f"3x ROT-T", color="tab:red", lw=lw, zorder=3)
+        ax.plot(times, rot_t*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-T", color="tab:red", lw=lw, zorder=3)
         ax2 = ax.twinx()
         ax2.plot(times, acc_z, label=f"ACC-Z", color="black", lw=lw)
         
@@ -543,7 +546,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
 
 
 def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax, 
-                     t_start, t_end, phase_label, font, arrival_time=None, zoom_t1=None, zoom_t2=None):
+                     t_start, t_end, phase_label, font, arrival_time=None, zoom_t1=None, zoom_t2=None, rot_scale_factor=3.0):
     """Plot zoom window for P or S wave arrival with time axis relative to arrival time"""
     from obspy.signal.rotate import rotate_ne_rt
 
@@ -598,7 +601,7 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
         # Convert to relative to arrival_time: times + t_start - arrival_time
         times_raw = rot_zoom.select(channel="*Z")[0].times()
         times = times_raw + t_start - arrival_time
-        ax_zoom.plot(times, rot_z*3, label=f"3x ROT-Z", color="tab:red", lw=lw, zorder=3)
+        ax_zoom.plot(times, rot_z*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-Z", color="tab:red", lw=lw, zorder=3)
         ax_zoom2 = ax_zoom.twinx()
         ax_zoom2.plot(times, acc_t, label=f"ACC-T", color="black", lw=lw)
         
@@ -616,7 +619,7 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
         # Convert to relative to arrival_time: times + t_start - arrival_time
         times_raw = acc_zoom.select(channel="*Z")[0].times()
         times = times_raw + t_start - arrival_time
-        ax_zoom.plot(times, rot_t*3, label=f"3x ROT-T", color="tab:red", lw=lw, zorder=3)
+        ax_zoom.plot(times, rot_t*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-T", color="tab:red", lw=lw, zorder=3)
         ax_zoom2 = ax_zoom.twinx()
         ax_zoom2.plot(times, acc_z, label=f"ACC-Z", color="black", lw=lw)
     
@@ -816,6 +819,17 @@ def _create_map_subplot(fig, gridspec, projection, station_coords=None, event_in
                 if not (np.isfinite(event_lat) and np.isfinite(event_lon)):
                     proj = ccrs.Orthographic(center_lon, center_lat)
                     ax = fig.add_subplot(gridspec, projection=proj)
+                    # Fix for cartopy/matplotlib compatibility
+                    if not hasattr(ax, '_autoscaleXon'):
+                        try:
+                            ax._autoscaleXon = ax.get_autoscalex_on()
+                        except:
+                            ax._autoscaleXon = True
+                    if not hasattr(ax, '_autoscaleYon'):
+                        try:
+                            ax._autoscaleYon = ax.get_autoscaley_on()
+                        except:
+                            ax._autoscaleYon = True
                     return ax
                 
                 # Normalize longitudes
@@ -850,9 +864,31 @@ def _create_map_subplot(fig, gridspec, projection, station_coords=None, event_in
                 proj = ccrs.Orthographic(center_lon, center_lat)
                 ax = fig.add_subplot(gridspec, projection=proj)
             
+            # Fix for cartopy/matplotlib compatibility
+            if not hasattr(ax, '_autoscaleXon'):
+                try:
+                    ax._autoscaleXon = ax.get_autoscalex_on()
+                except:
+                    ax._autoscaleXon = True
+            if not hasattr(ax, '_autoscaleYon'):
+                try:
+                    ax._autoscaleYon = ax.get_autoscaley_on()
+                except:
+                    ax._autoscaleYon = True
             return ax
         else:
             ax = fig.add_subplot(gridspec, projection=ccrs.PlateCarree())
+            # Fix for cartopy/matplotlib compatibility
+            if not hasattr(ax, '_autoscaleXon'):
+                try:
+                    ax._autoscaleXon = ax.get_autoscalex_on()
+                except:
+                    ax._autoscaleXon = True
+            if not hasattr(ax, '_autoscaleYon'):
+                try:
+                    ax._autoscaleYon = ax.get_autoscaley_on()
+                except:
+                    ax._autoscaleYon = True
             return ax
     except ImportError:
         return fig.add_subplot(gridspec)
@@ -867,6 +903,20 @@ def _plot_spherical_map_backazimuth(ax, event_info, baz_estimates, station_lat, 
         use_cartopy = True
     except ImportError:
         use_cartopy = False
+    
+    # Fix for cartopy/matplotlib compatibility issue with _autoscaleXon/_autoscaleYon
+    # These attributes were removed in newer matplotlib versions
+    if use_cartopy and hasattr(ax, 'get_autoscalex_on'):
+        if not hasattr(ax, '_autoscaleXon'):
+            try:
+                ax._autoscaleXon = ax.get_autoscalex_on()
+            except:
+                ax._autoscaleXon = True
+        if not hasattr(ax, '_autoscaleYon'):
+            try:
+                ax._autoscaleYon = ax.get_autoscaley_on()
+            except:
+                ax._autoscaleYon = True
     
     # Set up map features
     if use_cartopy:
@@ -983,8 +1033,9 @@ def _great_circle_path_2d(lat0, lon0, azimuth, max_distance_deg=120, num_points=
     lats_deg = np.degrees(lats_rad)
     lons_deg = np.degrees(lons_rad)
     
-    # Normalize longitude
-    lons_deg = ((lons_deg + 180) % 360) - 180
+    # Unwrap longitudes to keep paths continuous when crossing dateline
+    # This allows great circles to extend beyond ±180 for proper plotting
+    lons_deg = np.degrees(np.unwrap(np.radians(lons_deg)))
     
     # Force exact match for first point
     lats_deg[0] = lat0
