@@ -2093,7 +2093,8 @@ class sixdegrees():
                     results[wave_type] = {
                         'baz': baz,
                         'cc': cc,
-                        'time': time
+                        'time': time,
+                        'n_samples': 0  # Will be updated if KDE is computed
                     }
 
                 # remove NaN values
@@ -2106,9 +2107,14 @@ class sixdegrees():
                 if len(baz_valid) > 5:
                     kde_stats = self.get_kde_stats(baz_valid, cc_valid, _baz_steps=0.5, Ndegree=60, plot=False)
                     baz_estimates[wave_type] = kde_stats['baz_estimate']
-
+                    # Store n_samples in results
+                    if wave_type in results:
+                        results[wave_type]['n_samples'] = kde_stats.get('n_samples', 0)
                 else:
                     baz_estimates[wave_type] = baz[0]
+                    # Store n_samples as 0 if not enough data
+                    if wave_type in results:
+                        results[wave_type]['n_samples'] = 0
  
             elif wave_type.lower() == 'tangent':
 
@@ -2148,7 +2154,8 @@ class sixdegrees():
                     results[wave_type] = {
                         'baz': baz,
                         'cc': cc,
-                        'time': time
+                        'time': time,
+                        'n_samples': 0  # Will be updated if KDE is computed
                     }
 
                 # remove NaN values
@@ -2164,11 +2171,17 @@ class sixdegrees():
 
                         kde = kde_stats['kde_values']
                         baz_estimates[wave_type] = kde_stats['baz_estimate']
+                        
+                        # Store n_samples in results
+                        results[wave_type]['n_samples'] = kde_stats.get('n_samples', 0)
 
                         results[wave_type]['baz'] = baz_valid
                         results[wave_type]['cc'] = cc_valid
                     else:
                         print(f"No valid tangent data")
+                        # Store n_samples as 0 if not enough data
+                        if wave_type in results:
+                            results[wave_type]['n_samples'] = 0
                         continue
                 else:
                     print(f"No tangent data available")
@@ -4368,8 +4381,10 @@ class sixdegrees():
                 results_dict[wave_type]['kde_angles'] = kde_stats['kde_angles']
                 results_dict[wave_type]['baz_std'] = kde_stats['kde_dev']
                 results_dict[wave_type]['baz_estimate'] = kde_stats['baz_estimate']
+                results_dict[wave_type]['n_samples'] = kde_stats.get('n_samples', 0)
             else:
                 baz_estimated[wave_type] = nan
+                results_dict[wave_type]['n_samples'] = 0
             
             print(f"\nEstimated BAZ {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
     
@@ -4942,90 +4957,169 @@ class sixdegrees():
     def get_kde_stats(_baz, _ccc, _baz_steps=5, Ndegree=180, plot=False):
         """
         Get the statistics of the kde of the backazimuth and the cc values
+        
+        Parameters:
+        -----------
+        _baz : array-like
+            Backazimuth values
+        _ccc : array-like
+            Cross-correlation coefficient values (weights)
+        _baz_steps : int, optional
+            Step size for backazimuth (default: 5)
+        Ndegree : int, optional
+            Number of degrees (default: 180)
+        plot : bool, optional
+            Whether to plot the KDE (default: False)
+        
+        Returns:
+        --------
+        dict
+            Dictionary containing KDE statistics with keys:
+            - baz_estimate: Estimated backazimuth (NaN if insufficient samples)
+            - kde_max: Maximum KDE value position (NaN if insufficient samples)
+            - shift: Shift applied (NaN if insufficient samples)
+            - kde_values: KDE values array (empty if insufficient samples)
+            - kde_angles: KDE angles array (empty if insufficient samples)
+            - kde_dev: Standard deviation (NaN if insufficient samples)
+            - kde_mad: Median absolute deviation (NaN if insufficient samples)
+            - n_samples: Number of samples used for KDE estimation (0 if insufficient)
         """
         import numpy as np
         import scipy.stats as sts
         import matplotlib.pyplot as plt
 
+        # Convert to numpy arrays and filter out NaN/inf values
+        _baz = np.asarray(_baz)
+        _ccc = np.asarray(_ccc)
+        
+        # Filter out invalid values
+        valid_mask = np.isfinite(_baz) & np.isfinite(_ccc)
+        _baz_valid = _baz[valid_mask]
+        _ccc_valid = _ccc[valid_mask]
+        
+        # Count valid samples
+        n_samples = len(_baz_valid)
+        
+        # Check if we have enough samples for KDE (need at least 2)
+        if n_samples < 5:
+            # Return NaN values and zero sample count
+            kde_angles = np.arange(0, 361, 1)
+            return {
+                'baz_estimate': np.nan,
+                'kde_max': np.nan,
+                'shift': np.nan,
+                'kde_values': np.array([]),
+                'kde_angles': kde_angles,
+                'kde_dev': np.nan,
+                'kde_mad': np.nan,
+                'n_samples': 0,
+            }
+
         # define angles for kde and histogram
         kde_angles = np.arange(0, 361, 1)
         hist_angles = np.arange(0, 365, 5)
 
-        # get first kde estimate to determine the shift
-        kde = sts.gaussian_kde(_baz, weights=_ccc, bw_method='scott')
-        kde_max = np.argmax(kde.pdf(kde_angles))
+        try:
+            # get first kde estimate to determine the shift
+            kde = sts.gaussian_kde(_baz_valid, weights=_ccc_valid, bw_method='scott')
+            kde_max = np.argmax(kde.pdf(kde_angles))
 
-        # determine the shift with respect to 180°
-        shift = 180 - kde_max
+            # determine the shift with respect to 180°
+            shift = 180 - kde_max
 
-        # shift the backazimuth array to the center of the x-axis
-        _baz_shifted = (_baz + shift) % 360
+            # shift the backazimuth array to the center of the x-axis
+            _baz_shifted = (_baz_valid + shift) % 360
 
-        # get second kde estimate
-        kde_shifted = sts.gaussian_kde(_baz_shifted, weights=_ccc, bw_method='scott')
-        kde_max_shifted = np.argmax(kde_shifted.pdf(kde_angles))
+            # get second kde estimate
+            kde_shifted = sts.gaussian_kde(_baz_shifted, weights=_ccc_valid, bw_method='scott')
+            kde_max_shifted = np.argmax(kde_shifted.pdf(kde_angles))
 
-        # get the estimate of the backazimuth corrected for the shift
-        baz_estimate = kde_max_shifted - shift
+            # get the estimate of the backazimuth corrected for the shift
+            baz_estimate = kde_max_shifted - shift
 
-        # shift new kde
-        kde_angles_new = (kde_angles - shift) % 360
-        kde_values_new = (kde_shifted.pdf(kde_angles)) % 360
+            # shift new kde
+            kde_angles_new = (kde_angles - shift) % 360
+            kde_values_new = (kde_shifted.pdf(kde_angles)) % 360
 
-        # resort the new kde
-        idx = np.argsort(kde_angles_new)
-        kde_angles_new = kde_angles_new[idx]
-        kde_values_new = kde_values_new[idx]
+            # resort the new kde
+            idx = np.argsort(kde_angles_new)
+            kde_angles_new = kde_angles_new[idx]
+            kde_values_new = kde_values_new[idx]
 
-        # get standard deviation
-        dev = int(np.round(np.sqrt(np.cov(_baz_shifted, aweights=_ccc)), 0))
+            # get standard deviation (weighted)
+            try:
+                # Compute weighted mean
+                weighted_mean = np.average(_baz_shifted, weights=_ccc_valid)
+                # Compute weighted variance
+                weighted_variance = np.average((_baz_shifted - weighted_mean)**2, weights=_ccc_valid)
+                dev = int(np.round(np.sqrt(weighted_variance), 0))
+            except Exception:
+                # Fallback to unweighted standard deviation
+                dev = int(np.round(np.std(_baz_shifted), 0))
 
-        # get median absolute deviation
-        mad = int(np.round(np.median(np.abs(_baz_shifted - baz_estimate)), 0))
+            # get median absolute deviation
+            try:
+                mad = int(np.round(np.median(np.abs(_baz_shifted - baz_estimate)), 0))
+            except Exception:
+                mad = np.nan
 
-        if plot:
-            plt.figure(figsize=(10, 5))
+            if plot:
+                plt.figure(figsize=(10, 5))
 
-            plt.hist(_baz, bins=hist_angles, weights=_ccc, density=True, alpha=0.5)
-            plt.hist(_baz_shifted, bins=hist_angles, weights=_ccc, density=True, alpha=0.5)
+                plt.hist(_baz_valid, bins=hist_angles, weights=_ccc_valid, density=True, alpha=0.5)
+                plt.hist(_baz_shifted, bins=hist_angles, weights=_ccc_valid, density=True, alpha=0.5)
 
-            plt.plot(kde_angles, kde.pdf(kde_angles), color='tab:blue')
+                plt.plot(kde_angles, kde.pdf(kde_angles), color='tab:blue')
+                
+                plt.plot(kde_angles, kde_shifted.pdf(kde_angles), color='tab:orange')
+
+                plt.plot(kde_angles_new, kde_values_new, color='k')
+                
+                plt.scatter([kde_max], [max(kde.pdf(kde_angles))],
+                            color='w', edgecolor='tab:blue', label=f'Max: {kde_max:.0f}°')
+                plt.scatter([kde_max_shifted], [kde_shifted.pdf(kde_max_shifted)],
+                            color='w', edgecolor='tab:orange', label=f'Max: {kde_max_shifted:.0f}° (shifted)')
+                plt.scatter([baz_estimate], [max(kde_values_new)],
+                            color='w', edgecolor='k', label=f'Estimate: {baz_estimate:.0f}°')
+                
+                # plot line between max and estimate
+                plt.plot([kde_max, kde_max], [0, max(kde.pdf(kde_angles))], color='tab:blue', ls='--')
+                plt.plot([kde_max_shifted, kde_max_shifted], [0, max(kde_values_new)], color='tab:orange', ls='--')
+                plt.plot([baz_estimate, baz_estimate], [0, max(kde_values_new)], color='k', ls='--')
+
+                plt.xlabel('Backazimuth (°)')   
+                plt.ylabel('Density')
+                plt.title('KDE of Backazimuth weighted by the CC value')
+
+                plt.legend()
+
+            # output
+            out = {
+                'baz_estimate': baz_estimate,
+                'kde_max': kde_max_shifted,
+                'shift': shift,
+                'kde_values': kde_values_new,
+                'kde_angles': kde_angles_new,
+                'kde_dev': dev,
+                'kde_mad': mad,
+                'n_samples': n_samples,
+            }
+
+            return out
             
-            plt.plot(kde_angles, kde_shifted.pdf(kde_angles), color='tab:orange')
-
-
-            plt.plot(kde_angles_new, kde_values_new, color='k')
-            
-            plt.scatter([kde_max], [max(kde.pdf(kde_angles))],
-                        color='w', edgecolor='tab:blue', label=f'Max: {kde_max:.0f}°')
-            plt.scatter([kde_max_shifted], [kde_shifted.pdf(kde_max_shifted)],
-                        color='w', edgecolor='tab:orange', label=f'Max: {kde_max_shifted:.0f}° (shifted)')
-            plt.scatter([baz_estimate], [max(kde_values_new)],
-                        color='w', edgecolor='k', label=f'Estimate: {baz_estimate:.0f}°')
-            
-            # plot line between max and estimate
-            plt.plot([kde_max, kde_max], [0, max(kde.pdf(kde_angles))], color='tab:blue', ls='--')
-            plt.plot([kde_max_shifted, kde_max_shifted], [0, max(kde_values_new)], color='tab:orange', ls='--')
-            plt.plot([baz_estimate, baz_estimate], [0, max(kde_values_new)], color='k', ls='--')
-
-            plt.xlabel('Backazimuth (°)')   
-            plt.ylabel('Density')
-            plt.title('KDE of Backazimuth weighted by the CC value')
-
-            plt.legend()
-
-        # output
-        out = {
-            'baz_estimate': baz_estimate,
-            'kde_max': kde_max_shifted,
-            'shift': shift,
-            'kde_values': kde_values_new,
-            'kde_angles': kde_angles_new,
-            'kde_dev': dev,
-            'kde_mad': mad,
-        }
-
-        return out
+        except (ValueError, np.linalg.LinAlgError) as e:
+            # KDE failed (e.g., not enough samples, singular matrix)
+            # Return NaN values and actual sample count
+            return {
+                'baz_estimate': np.nan,
+                'kde_max': np.nan,
+                'shift': np.nan,
+                'kde_values': np.array([]),
+                'kde_angles': kde_angles,
+                'kde_dev': np.nan,
+                'kde_mad': np.nan,
+                'n_samples': n_samples,
+            }
 
     def plot_waveform_cc(self, runit: str=r"rad/s", tunit: str=r"m/s$^2$", wave_type: str="both",
                          twin_sec: int=5, twin_overlap: float=0.5, unitscale: str="nano", t1: UTCDateTime=None, t2: UTCDateTime=None) -> plt.Figure:

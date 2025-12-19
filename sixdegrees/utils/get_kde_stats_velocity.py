@@ -33,6 +33,7 @@ def get_kde_stats_velocity(velocities, cc_values, plot=False):
         'hmhw': np.nan,
         'dev': np.nan,
         'mad': np.nan,
+        'n_samples': 0,
     }
 
     # Filter out invalid values
@@ -40,7 +41,11 @@ def get_kde_stats_velocity(velocities, cc_values, plot=False):
     velocities = velocities[valid_mask]
     cc_values = cc_values[valid_mask]
     
-    if len(velocities) < 5:
+    # Count valid samples
+    n_samples = len(velocities)
+    
+    if n_samples < 5:
+        out['n_samples'] = n_samples
         return out  # Return empty dict instead of tuple
     
     # Ensure positive weights
@@ -83,6 +88,7 @@ def get_kde_stats_velocity(velocities, cc_values, plot=False):
             'hmhw': hmhw,
             'dev': dev,
             'mad': mad,
+            'n_samples': n_samples,
         }
     except Exception as e:
         print(f"Error computing KDE statistics for velocity: {e}")
