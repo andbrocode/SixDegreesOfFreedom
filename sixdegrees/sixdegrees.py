@@ -5844,826 +5844,826 @@ class sixdegrees():
             'global_sum_cwt': global_sum
         }
 
-    @staticmethod
-    def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False, 
-                     ylim: Union[float, None]=None) -> plt.Figure:
-        """
-        Plot continuous wavelet transform analysis for all components of rotation and translation
+    # @staticmethod
+    # def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False, 
+    #                  ylim: Union[float, None]=None) -> plt.Figure:
+    #     """
+    #     Plot continuous wavelet transform analysis for all components of rotation and translation
         
-        Parameters:
-        -----------
-        rot : Stream
-            Rotation rate stream
-        acc : Stream
-            Acceleration stream
-        cwt_output : Dict
-            Dictionary containing CWT results for each component
-        clog : bool
-            Use logarithmic colorscale if True
-        ylim : float or None
-            Upper frequency limit for plotting
+    #     Parameters:
+    #     -----------
+    #     rot : Stream
+    #         Rotation rate stream
+    #     acc : Stream
+    #         Acceleration stream
+    #     cwt_output : Dict
+    #         Dictionary containing CWT results for each component
+    #     clog : bool
+    #         Use logarithmic colorscale if True
+    #     ylim : float or None
+    #         Upper frequency limit for plotting
             
-        Returns:
-        --------
-        matplotlib.figure.Figure
-        """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        from matplotlib.gridspec import GridSpec
+    #     Returns:
+    #     --------
+    #     matplotlib.figure.Figure
+    #     """
+    #     import matplotlib.pyplot as plt
+    #     import numpy as np
+    #     from matplotlib.gridspec import GridSpec
         
-        # Plot settings
-        tscale = 1
-        font = 12
-        cmap = plt.get_cmap("viridis")
-        rot_scale = 1e6
-        acc_scale = 1e3
+    #     # Plot settings
+    #     tscale = 1
+    #     font = 12
+    #     cmap = plt.get_cmap("viridis")
+    #     rot_scale = 1e6
+    #     acc_scale = 1e3
 
-        # Count total components and calculate needed subplots
-        n_panels = len(cwt_output.keys())
-        n_components = len(rot) + len(acc)
+    #     # Count total components and calculate needed subplots
+    #     n_panels = len(cwt_output.keys())
+    #     n_components = len(rot) + len(acc)
         
-        # Create figure with GridSpec
-        # Each component needs 2 rows - one for waveform and one for CWT
-        fig = plt.figure(figsize=(15, 4*n_panels))
-        gs = GridSpec(2*n_panels, 1, figure=fig, height_ratios=[1, 3]*n_panels, hspace=0.3)
+    #     # Create figure with GridSpec
+    #     # Each component needs 2 rows - one for waveform and one for CWT
+    #     fig = plt.figure(figsize=(15, 4*n_panels))
+    #     gs = GridSpec(2*n_panels, 1, figure=fig, height_ratios=[1, 3]*n_panels, hspace=0.3)
 
-        # Component mapping
-        components = []
-        for tr in rot:
-            components.append((tr.stats.channel, 'Rotation'))
-        for tr in acc:
-            components.append((tr.stats.channel, 'Translation'))
+    #     # Component mapping
+    #     components = []
+    #     for tr in rot:
+    #         components.append((tr.stats.channel, 'Rotation'))
+    #     for tr in acc:
+    #         components.append((tr.stats.channel, 'Translation'))
         
-        # Set colormap limits
-        if clog:
-            vmin, vmax, norm = 0.01, 1, "log"
-        else:
-            vmin, vmax, norm = 0.0, 0.9, None
+    #     # Set colormap limits
+    #     if clog:
+    #         vmin, vmax, norm = 0.01, 1, "log"
+    #     else:
+    #         vmin, vmax, norm = 0.0, 0.9, None
             
-        # Plot each component
-        for i, (comp, data_type) in enumerate(components):
-            wave_ax = fig.add_subplot(gs[2*i])
-            cwt_ax = fig.add_subplot(gs[2*i+1])
+    #     # Plot each component
+    #     for i, (comp, data_type) in enumerate(components):
+    #         wave_ax = fig.add_subplot(gs[2*i])
+    #         cwt_ax = fig.add_subplot(gs[2*i+1])
             
-            # Get data and scale
-            if data_type == 'Rotation':
-                tr = rot.select(channel=f"*{comp}")[0]
-                data = tr.data * rot_scale
-                unit = r"$\mu$rad"
-                label = f"$\Omega_{comp[-1]}$"
-            else:
-                tr = acc.select(channel=f"*{comp}")[0]
-                data = tr.data * acc_scale
-                unit = r"mm/s$^2$"
-                label = f"$a_{comp[-1]}$"
+    #         # Get data and scale
+    #         if data_type == 'Rotation':
+    #             tr = rot.select(channel=f"*{comp}")[0]
+    #             data = tr.data * rot_scale
+    #             unit = r"$\mu$rad"
+    #             label = f"$\Omega_{comp[-1]}$"
+    #         else:
+    #             tr = acc.select(channel=f"*{comp}")[0]
+    #             data = tr.data * acc_scale
+    #             unit = r"mm/s$^2$"
+    #             label = f"$a_{comp[-1]}$"
             
-            # Get times from the current trace instead of rotation stream
-            times = tr.times() * tscale
+    #         # Get times from the current trace instead of rotation stream
+    #         times = tr.times() * tscale
             
-            # Plot waveform
-            wave_ax.plot(times, data, color="k", label=label, lw=1)
-            wave_ax.set_xlim(min(times), max(times))
-            wave_ax.legend(loc=1)
-            wave_ax.set_xticklabels([])
-            wave_ax.set_ylabel(f"{label}\n({unit})", fontsize=font)
-            wave_ax.grid(True, alpha=0.3)
+    #         # Plot waveform
+    #         wave_ax.plot(times, data, color="k", label=label, lw=1)
+    #         wave_ax.set_xlim(min(times), max(times))
+    #         wave_ax.legend(loc=1)
+    #         wave_ax.set_xticklabels([])
+    #         wave_ax.set_ylabel(f"{label}\n({unit})", fontsize=font)
+    #         wave_ax.grid(True, alpha=0.3)
             
-            # Plot CWT
-            key = f"{comp}"
-            im = cwt_ax.pcolormesh(
-                cwt_output[key]['times'] * tscale,
-                cwt_output[key]['frequencies'],
-                cwt_output[key]['cwt_power'],
-                cmap=cmap,
-                vmin=vmin,
-                vmax=vmax,
-                norm=norm,
-                rasterized=True
-            )
+    #         # Plot CWT
+    #         key = f"{comp}"
+    #         im = cwt_ax.pcolormesh(
+    #             cwt_output[key]['times'] * tscale,
+    #             cwt_output[key]['frequencies'],
+    #             cwt_output[key]['cwt_power'],
+    #             cmap=cmap,
+    #             vmin=vmin,
+    #             vmax=vmax,
+    #             norm=norm,
+    #             rasterized=True
+    #         )
             
-            # Add cone of influence
-            cwt_ax.plot(
-                cwt_output[key]['times'] * tscale,
-                cwt_output[key]['cone'],
-                color="white",
-                ls="--",
-                alpha=0.7
-            )
-            cwt_ax.fill_between(
-                cwt_output[key]['times'] * tscale,
-                cwt_output[key]['cone'],
-                min(cwt_output[key]['frequencies']) * np.ones(len(cwt_output[key]['cone'])),
-                color="white",
-                alpha=0.2
-            )
+    #         # Add cone of influence
+    #         cwt_ax.plot(
+    #             cwt_output[key]['times'] * tscale,
+    #             cwt_output[key]['cone'],
+    #             color="white",
+    #             ls="--",
+    #             alpha=0.7
+    #         )
+    #         cwt_ax.fill_between(
+    #             cwt_output[key]['times'] * tscale,
+    #             cwt_output[key]['cone'],
+    #             min(cwt_output[key]['frequencies']) * np.ones(len(cwt_output[key]['cone'])),
+    #             color="white",
+    #             alpha=0.2
+    #         )
             
-            # Set frequency limits
-            if ylim is None:
-                cwt_ax.set_ylim(min(cwt_output[key]['frequencies']),
-                                max(cwt_output[key]['frequencies']))
-            else:
-                cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
+    #         # Set frequency limits
+    #         if ylim is None:
+    #             cwt_ax.set_ylim(min(cwt_output[key]['frequencies']),
+    #                             max(cwt_output[key]['frequencies']))
+    #         else:
+    #             cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
             
-            cwt_ax.set_yscale('log')
-            cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)
-            cwt_ax.grid(True, alpha=0.3)
+    #         cwt_ax.set_yscale('log')
+    #         cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)
+    #         cwt_ax.grid(True, alpha=0.3)
             
-            # Only add xlabel to bottom subplot
-            if i == len(components) - 1:
-                cwt_ax.set_xlabel(f"Time (s) from {rot[0].stats.starttime.date} "
-                                f"{str(rot[0].stats.starttime.time).split('.')[0]} UTC",
-                                fontsize=font)
+    #         # Only add xlabel to bottom subplot
+    #         if i == len(components) - 1:
+    #             cwt_ax.set_xlabel(f"Time (s) from {rot[0].stats.starttime.date} "
+    #                             f"{str(rot[0].stats.starttime.time).split('.')[0]} UTC",
+    #                             fontsize=font)
             
-            # Add subplot labels
-            wave_ax.text(.005, .97, f"({chr(97+i*2)})", ha='left', va='top',
-                         transform=wave_ax.transAxes, fontsize=font+2)
-            cwt_ax.text(.005, .97, f"({chr(98+i*2)})", ha='left', va='top',
-                        transform=cwt_ax.transAxes, fontsize=font+2, color="w")
+    #         # Add subplot labels
+    #         wave_ax.text(.005, .97, f"({chr(97+i*2)})", ha='left', va='top',
+    #                      transform=wave_ax.transAxes, fontsize=font+2)
+    #         cwt_ax.text(.005, .97, f"({chr(98+i*2)})", ha='left', va='top',
+    #                     transform=cwt_ax.transAxes, fontsize=font+2, color="w")
         
-        # Add colorbar
-        cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.7])
-        cb = plt.colorbar(im, cax=cbar_ax)
-        cb.set_label("Normalized CWT Power", fontsize=font)
+    #     # Add colorbar
+    #     cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.7])
+    #     cb = plt.colorbar(im, cax=cbar_ax)
+    #     cb.set_label("Normalized CWT Power", fontsize=font)
         
-        plt.subplots_adjust(right=0.9)
-        return fig
+    #     plt.subplots_adjust(right=0.9)
+    #     return fig
 
-    @staticmethod
-    def plot_spectra_comparison_fill(rot: Stream, acc: Stream, fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
-                                   ylog: bool=False, xlog: bool=False, fill: bool=False) -> plt.Figure:
-        """
-        Plot power spectral density comparison between rotation and acceleration data with horizontal layout
+    # @staticmethod
+    # def plot_spectra_comparison_fill(rot: Stream, acc: Stream, fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
+    #                                ylog: bool=False, xlog: bool=False, fill: bool=False) -> plt.Figure:
+    #     """
+    #     Plot power spectral density comparison between rotation and acceleration data with horizontal layout
         
-        Parameters:
-        -----------
-        rot : Stream
-            Rotation rate stream
-        acc : Stream
-            Acceleration stream
-        fmin : float or None
-            Minimum frequency for bandpass filter
-        fmax : float or None
-            Maximum frequency for bandpass filter
-        ylog : bool
-            Use logarithmic y-axis scale if True
-        xlog : bool
-            Use logarithmic x-axis scale if True
-        fill : bool
-            Fill the area under curves if True
+    #     Parameters:
+    #     -----------
+    #     rot : Stream
+    #         Rotation rate stream
+    #     acc : Stream
+    #         Acceleration stream
+    #     fmin : float or None
+    #         Minimum frequency for bandpass filter
+    #     fmax : float or None
+    #         Maximum frequency for bandpass filter
+    #     ylog : bool
+    #         Use logarithmic y-axis scale if True
+    #     xlog : bool
+    #         Use logarithmic x-axis scale if True
+    #     fill : bool
+    #         Fill the area under curves if True
             
-        Returns:
-        --------
-        matplotlib.figure.Figure
-        """
-        import matplotlib.pyplot as plt
-        import multitaper as mt
-        from numpy import reshape, max, min
+    #     Returns:
+    #     --------
+    #     matplotlib.figure.Figure
+    #     """
+    #     import matplotlib.pyplot as plt
+    #     import multitaper as mt
+    #     from numpy import reshape, max, min
         
-        def _multitaper_psd(arr: array, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[array, array]:
-            """Calculate multitaper power spectral density"""
-            out_psd = mt.MTSpec(arr, nw=time_bandwidth, kspec=n_win, dt=dt, iadapt=2)
-            _f, _psd = out_psd.rspec()
-            return reshape(_f, _f.size), reshape(_psd, _psd.size)
+    #     def _multitaper_psd(arr: array, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[array, array]:
+    #         """Calculate multitaper power spectral density"""
+    #         out_psd = mt.MTSpec(arr, nw=time_bandwidth, kspec=n_win, dt=dt, iadapt=2)
+    #         _f, _psd = out_psd.rspec()
+    #         return reshape(_f, _f.size), reshape(_psd, _psd.size)
 
-        # Calculate PSDs for each component
-        Tsec = 5
-        components = [
-            ('Z', '*Z'), ('N', '*N'), ('E', '*E')
-        ]
-        psds = {}
-        for comp_name, comp_pattern in components:
-            f1, psd1 = _multitaper_psd(
-                rot.select(channel=comp_pattern)[0].data, 
-                rot[0].stats.delta,
-                n_win=Tsec
-            )
-            f2, psd2 = _multitaper_psd(
-                acc.select(channel=comp_pattern)[0].data, 
-                acc[0].stats.delta,
-                n_win=Tsec
-            )
-            psds[comp_name] = {'rot': (f1, psd1), 'acc': (f2, psd2)}
+    #     # Calculate PSDs for each component
+    #     Tsec = 5
+    #     components = [
+    #         ('Z', '*Z'), ('N', '*N'), ('E', '*E')
+    #     ]
+    #     psds = {}
+    #     for comp_name, comp_pattern in components:
+    #         f1, psd1 = _multitaper_psd(
+    #             rot.select(channel=comp_pattern)[0].data, 
+    #             rot[0].stats.delta,
+    #             n_win=Tsec
+    #         )
+    #         f2, psd2 = _multitaper_psd(
+    #             acc.select(channel=comp_pattern)[0].data, 
+    #             acc[0].stats.delta,
+    #             n_win=Tsec
+    #         )
+    #         psds[comp_name] = {'rot': (f1, psd1), 'acc': (f2, psd2)}
 
-        # Create figure
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        plt.subplots_adjust(wspace=0.3)
+    #     # Create figure
+    #     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    #     plt.subplots_adjust(wspace=0.3)
 
-        # Plot settings
-        font = 12
-        lw = 1
-        rot_color = "darkred"
-        acc_color = "black"
-        alpha = 0.5 if fill else 1.0
+    #     # Plot settings
+    #     font = 12
+    #     lw = 1
+    #     rot_color = "darkred"
+    #     acc_color = "black"
+    #     alpha = 0.5 if fill else 1.0
 
-        # Add title with time information
-        title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
-        if fmin is not None and fmax is not None:
-            title += f" | {fmin}-{fmax} Hz"
-        fig.suptitle(title, fontsize=font+2, y=1.02)
+    #     # Add title with time information
+    #     title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
+    #     if fmin is not None and fmax is not None:
+    #         title += f" | {fmin}-{fmax} Hz"
+    #     fig.suptitle(title, fontsize=font+2, y=1.02)
 
-        # Plot each component
-        for i, (comp_name, comp_data) in enumerate(psds.items()):
-            # Get component labels
-            rot_label = f"{rot[0].stats.station}.{rot.select(channel=f'*{comp_name}')[0].stats.channel}"
-            acc_label = f"{acc[0].stats.station}.{acc.select(channel=f'*{comp_name}')[0].stats.channel}"
+    #     # Plot each component
+    #     for i, (comp_name, comp_data) in enumerate(psds.items()):
+    #         # Get component labels
+    #         rot_label = f"{rot[0].stats.station}.{rot.select(channel=f'*{comp_name}')[0].stats.channel}"
+    #         acc_label = f"{acc[0].stats.station}.{acc.select(channel=f'*{comp_name}')[0].stats.channel}"
             
-            if fill:
-                # Plot with fill
-                axes[i].fill_between(
-                    comp_data['rot'][0],
-                    comp_data['rot'][1],
-                    lw=lw,
-                    label=rot_label,
-                    color=rot_color,
-                    alpha=alpha,
-                    zorder=3
-                )
-                ax2 = axes[i].twinx()
-                ax2.fill_between(
-                    comp_data['acc'][0],
-                    comp_data['acc'][1],
-                    lw=lw,
-                    label=acc_label,
-                    color=acc_color,
-                    alpha=alpha,
-                    zorder=2
-                )
-            else:
-                # Plot lines
-                axes[i].plot(
-                    comp_data['rot'][0],
-                    comp_data['rot'][1],
-                    lw=lw,
-                    label=rot_label,
-                    color=rot_color,
-                    ls="-",
-                    zorder=3
-                )
-                ax2 = axes[i].twinx()
-                ax2.plot(
-                    comp_data['acc'][0],
-                    comp_data['acc'][1],
-                    lw=lw,
-                    label=acc_label,
-                    color=acc_color,
-                    zorder=2
-                )
+    #         if fill:
+    #             # Plot with fill
+    #             axes[i].fill_between(
+    #                 comp_data['rot'][0],
+    #                 comp_data['rot'][1],
+    #                 lw=lw,
+    #                 label=rot_label,
+    #                 color=rot_color,
+    #                 alpha=alpha,
+    #                 zorder=3
+    #             )
+    #             ax2 = axes[i].twinx()
+    #             ax2.fill_between(
+    #                 comp_data['acc'][0],
+    #                 comp_data['acc'][1],
+    #                 lw=lw,
+    #                 label=acc_label,
+    #                 color=acc_color,
+    #                 alpha=alpha,
+    #                 zorder=2
+    #             )
+    #         else:
+    #             # Plot lines
+    #             axes[i].plot(
+    #                 comp_data['rot'][0],
+    #                 comp_data['rot'][1],
+    #                 lw=lw,
+    #                 label=rot_label,
+    #                 color=rot_color,
+    #                 ls="-",
+    #                 zorder=3
+    #             )
+    #             ax2 = axes[i].twinx()
+    #             ax2.plot(
+    #                 comp_data['acc'][0],
+    #                 comp_data['acc'][1],
+    #                 lw=lw,
+    #                 label=acc_label,
+    #                 color=acc_color,
+    #                 zorder=2
+    #             )
             
-            # Configure axes
-            axes[i].legend(loc=1, ncols=4)
-            if xlog:
-                axes[i].set_xscale("log")
-            if ylog:
-                axes[i].set_yscale("log")
-                ax2.set_yscale("log")
+    #         # Configure axes
+    #         axes[i].legend(loc=1, ncols=4)
+    #         if xlog:
+    #             axes[i].set_xscale("log")
+    #         if ylog:
+    #             axes[i].set_yscale("log")
+    #             ax2.set_yscale("log")
             
-            # axes[i].grid(which="both", alpha=0.5)
-            axes[i].tick_params(axis='y', colors=rot_color)
-            axes[i].set_ylim(bottom=0)
-            ax2.set_ylim(bottom=0)
+    #         # axes[i].grid(which="both", alpha=0.5)
+    #         axes[i].tick_params(axis='y', colors=rot_color)
+    #         axes[i].set_ylim(bottom=0)
+    #         ax2.set_ylim(bottom=0)
             
-            # Set frequency limits
-            xlim_right = fmax if fmax else rot[0].stats.sampling_rate * 0.5
-            axes[i].set_xlim(left=fmin, right=xlim_right)
-            ax2.set_xlim(left=fmin, right=xlim_right)
-            axes[i].set_xlabel("Frequency (Hz)", fontsize=font)
+    #         # Set frequency limits
+    #         xlim_right = fmax if fmax else rot[0].stats.sampling_rate * 0.5
+    #         axes[i].set_xlim(left=fmin, right=xlim_right)
+    #         ax2.set_xlim(left=fmin, right=xlim_right)
+    #         axes[i].set_xlabel("Frequency (Hz)", fontsize=font)
 
-            # Set legends
-            ax2.legend(loc=2)
+    #         # Set legends
+    #         ax2.legend(loc=2)
 
-            # For the last panel (E component), don't create new y-axis ticks on the right
-            if i == 2:
-                ax2.set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
-            if i == 0:
-                axes[i].set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
+    #         # For the last panel (E component), don't create new y-axis ticks on the right
+    #         if i == 2:
+    #             ax2.set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
+    #         if i == 0:
+    #             axes[i].set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
             
-            # Add component label
-            axes[i].set_title(f"Component {comp_name}", fontsize=font)
+    #         # Add component label
+    #         axes[i].set_title(f"Component {comp_name}", fontsize=font)
 
-        # Adjust layout to accommodate supertitle
-        plt.subplots_adjust(top=0.90)
+    #     # Adjust layout to accommodate supertitle
+    #     plt.subplots_adjust(top=0.90)
         
-        return fig
+    #     return fig
 
-    @staticmethod
-    def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False, 
-                ylim: Union[float, None]=None, scale: float=1e6) -> plt.Figure:
-        """
-        Plot continuous wavelet transform analysis for all components of rotation and translation
+    # @staticmethod
+    # def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False, 
+    #             ylim: Union[float, None]=None, scale: float=1e6) -> plt.Figure:
+    #     """
+    #     Plot continuous wavelet transform analysis for all components of rotation and translation
         
-        Parameters:
-        -----------
-        st : Stream
-            Stream of data to plot
-        cwt_output : Dict
-            Dictionary containing CWT results for each component
-        clog : bool
-            Use logarithmic colorscale if True
-        ylim : float or None
-            Upper frequency limit for plotting
-        scale : float
-            Scale factor for data
+    #     Parameters:
+    #     -----------
+    #     st : Stream
+    #         Stream of data to plot
+    #     cwt_output : Dict
+    #         Dictionary containing CWT results for each component
+    #     clog : bool
+    #         Use logarithmic colorscale if True
+    #     ylim : float or None
+    #         Upper frequency limit for plotting
+    #     scale : float
+    #         Scale factor for data
             
-        Returns:
-        --------
-        matplotlib.figure.Figure
-        """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        from matplotlib.gridspec import GridSpec
+    #     Returns:
+    #     --------
+    #     matplotlib.figure.Figure
+    #     """
+    #     import matplotlib.pyplot as plt
+    #     import numpy as np
+    #     from matplotlib.gridspec import GridSpec
         
-        # Plot settings
-        tscale = 1
-        font = 12
-        cmap = plt.get_cmap("viridis")
+    #     # Plot settings
+    #     tscale = 1
+    #     font = 12
+    #     cmap = plt.get_cmap("viridis")
 
-        # decide if rotation or translation data 
-        if "J" in st[0].stats.channel:
-            if scale == 1e9:
-                unit = r"nrad"
-            elif scale == 1e6:
-                unit = r"$\mu$rad"
-            elif scale == 1e3:
-                unit = r"mrad"
-            else:
-                unit = r"rad"
-                scale = 1
-                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
-        else:
-            if scale == 1e9:
-                unit = r"nm/s$^2$"
-            elif scale == 1e6:
-                unit = r"mm/s$^2$"
-            elif scale == 1e3:
-                unit = r"m/s$^2$"
-            else:
-                unit = r"m/s$^2$"
-                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
-                scale = 1
+    #     # decide if rotation or translation data 
+    #     if "J" in st[0].stats.channel:
+    #         if scale == 1e9:
+    #             unit = r"nrad"
+    #         elif scale == 1e6:
+    #             unit = r"$\mu$rad"
+    #         elif scale == 1e3:
+    #             unit = r"mrad"
+    #         else:
+    #             unit = r"rad"
+    #             scale = 1
+    #             print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+    #     else:
+    #         if scale == 1e9:
+    #             unit = r"nm/s$^2$"
+    #         elif scale == 1e6:
+    #             unit = r"mm/s$^2$"
+    #         elif scale == 1e3:
+    #             unit = r"m/s$^2$"
+    #         else:
+    #             unit = r"m/s$^2$"
+    #             print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+    #             scale = 1
 
 
-        # Create figure with GridSpec
-        # Each component needs 2 rows - one for waveform and one for CWT
-        fig = plt.figure(figsize=(15, 4))
-        gs = GridSpec(2, 1, figure=fig, height_ratios=[1, 3], hspace=0.3)
+    #     # Create figure with GridSpec
+    #     # Each component needs 2 rows - one for waveform and one for CWT
+    #     fig = plt.figure(figsize=(15, 4))
+    #     gs = GridSpec(2, 1, figure=fig, height_ratios=[1, 3], hspace=0.3)
 
-        # Set colormap limits
-        if clog:
-            vmin, vmax, norm = 0.01, 1, "log"
-        else:
-            vmin, vmax, norm = 0.0, 0.9, None
+    #     # Set colormap limits
+    #     if clog:
+    #         vmin, vmax, norm = 0.01, 1, "log"
+    #     else:
+    #         vmin, vmax, norm = 0.0, 0.9, None
             
-        # Plot each component
-        wave_ax = fig.add_subplot(gs[0])
-        cwt_ax = fig.add_subplot(gs[1])
+    #     # Plot each component
+    #     wave_ax = fig.add_subplot(gs[0])
+    #     cwt_ax = fig.add_subplot(gs[1])
             
-        # Get data and scale
-        tr = st.copy()[0]
-        data = tr.data * scale
-        label = f"$\Omega_{tr.stats.channel[-1]}$"
-        key = f"{tr.stats.channel}"
+    #     # Get data and scale
+    #     tr = st.copy()[0]
+    #     data = tr.data * scale
+    #     label = f"$\Omega_{tr.stats.channel[-1]}$"
+    #     key = f"{tr.stats.channel}"
         
-        # Get times from the current trace instead of rotation stream
-        times = tr.times() * tscale
+    #     # Get times from the current trace instead of rotation stream
+    #     times = tr.times() * tscale
         
-        # Plot waveform
-        wave_ax.plot(times, data, color="k", label=label, lw=1)
-        wave_ax.set_xlim(min(times), max(times))
-        wave_ax.legend(loc=1)
-        wave_ax.set_xticklabels([])
-        wave_ax.set_ylabel(f"{label}\n({unit})", fontsize=font)
-        wave_ax.grid(True, alpha=0.3)
+    #     # Plot waveform
+    #     wave_ax.plot(times, data, color="k", label=label, lw=1)
+    #     wave_ax.set_xlim(min(times), max(times))
+    #     wave_ax.legend(loc=1)
+    #     wave_ax.set_xticklabels([])
+    #     wave_ax.set_ylabel(f"{label}\n({unit})", fontsize=font)
+    #     wave_ax.grid(True, alpha=0.3)
         
-        # Plot CWT
-        im = cwt_ax.pcolormesh(
-            cwt_output[key]['times'] * tscale,
-            cwt_output[key]['frequencies'],
-            cwt_output[key]['cwt_power'],
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
-            norm=norm,
-            rasterized=True
-        )
+    #     # Plot CWT
+    #     im = cwt_ax.pcolormesh(
+    #         cwt_output[key]['times'] * tscale,
+    #         cwt_output[key]['frequencies'],
+    #         cwt_output[key]['cwt_power'],
+    #         cmap=cmap,
+    #         vmin=vmin,
+    #         vmax=vmax,
+    #         norm=norm,
+    #         rasterized=True
+    #     )
         
-        # Add cone of influence
-        cwt_ax.plot(
-            cwt_output[key]['times'] * tscale,
-            cwt_output[key]['cone'],
-            color="white",
-            ls="--",
-            alpha=0.7
-        )
-        cwt_ax.fill_between(
-            cwt_output[key]['times'] * tscale,
-            cwt_output[key]['cone'],
-            min(cwt_output[key]['frequencies']) * np.ones(len(cwt_output[key]['cone'])),
-            color="white",
-            alpha=0.2
-        )
+    #     # Add cone of influence
+    #     cwt_ax.plot(
+    #         cwt_output[key]['times'] * tscale,
+    #         cwt_output[key]['cone'],
+    #         color="white",
+    #         ls="--",
+    #         alpha=0.7
+    #     )
+    #     cwt_ax.fill_between(
+    #         cwt_output[key]['times'] * tscale,
+    #         cwt_output[key]['cone'],
+    #         min(cwt_output[key]['frequencies']) * np.ones(len(cwt_output[key]['cone'])),
+    #         color="white",
+    #         alpha=0.2
+    #     )
         
-        # Set frequency limits
-        if ylim is None:
-            cwt_ax.set_ylim(min(cwt_output[key]['frequencies']),
-                            max(cwt_output[key]['frequencies']))
-        else:
-            cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
+    #     # Set frequency limits
+    #     if ylim is None:
+    #         cwt_ax.set_ylim(min(cwt_output[key]['frequencies']),
+    #                         max(cwt_output[key]['frequencies']))
+    #     else:
+    #         cwt_ax.set_ylim(min(cwt_output[key]['frequencies']), ylim)
         
-        cwt_ax.set_yscale('log')
-        cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)
-        cwt_ax.grid(True, alpha=0.3)
+    #     cwt_ax.set_yscale('log')
+    #     cwt_ax.set_ylabel("Frequency (Hz)", fontsize=font)
+    #     cwt_ax.grid(True, alpha=0.3)
 
-        # Only add xlabel to bottom subplot
-        cwt_ax.set_xlabel(
-            f"Time (s) from {st[0].stats.starttime.date} "
-            f"{str(st[0].stats.starttime.time).split('.')[0]} UTC",
-            fontsize=font
-        )
+    #     # Only add xlabel to bottom subplot
+    #     cwt_ax.set_xlabel(
+    #         f"Time (s) from {st[0].stats.starttime.date} "
+    #         f"{str(st[0].stats.starttime.time).split('.')[0]} UTC",
+    #         fontsize=font
+    #     )
         
-        # Add colorbar
-        cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.7])
-        cb = plt.colorbar(im, cax=cbar_ax)
-        cb.set_label("Normalized CWT Power", fontsize=font)
+    #     # Add colorbar
+    #     cbar_ax = fig.add_axes([0.92, 0.1, 0.015, 0.7])
+    #     cb = plt.colorbar(im, cax=cbar_ax)
+    #     cb.set_label("Normalized CWT Power", fontsize=font)
         
-        plt.subplots_adjust(right=0.9)
-        return fig
+    #     plt.subplots_adjust(right=0.9)
+    #     return fig
 
-    def plot_backazimuth_results(self, baz_results: Dict, wave_type: str='love', 
-                                baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
-                                cc_threshold: float=None, minors: bool=True, cc_method: str='mid') -> plt.Figure:
-        """
-        Plot backazimuth estimation results
+    # def plot_backazimuth_results(self, baz_results: Dict, wave_type: str='love', 
+    #                             baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
+    #                             cc_threshold: float=None, minors: bool=True, cc_method: str='mid') -> plt.Figure:
+    #     """
+    #     Plot backazimuth estimation results
         
-        Parameters:
-        -----------
-        baz_results : Dict
-            Dictionary containing backazimuth results
-        wave_type : str
-            Type of wave ('love' or 'rayleigh')
-        baz_theo : float, optional
-            Theoretical backazimuth in degrees
-        baz_theo_margin : float, optional
-            Margin around theoretical backazimuth in degrees
-        cc_threshold : float, optional
-            Minimum cross-correlation coefficient threshold
-        minors : bool, optional
-            Add minor ticks to axes if True
-        cc_method : str
-            Type of cc to choose ('mid' or 'max')
-        unitscale : str
-            Unit scale for rotation rate ('nano' or 'micro')
-        Returns:
-        --------
-        matplotlib.figure.Figure
-            Figure object containing the plot
-        """
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from matplotlib.gridspec import GridSpec
-        from obspy.signal.rotate import rotate_ne_rt
-        import numpy as np
-        from numpy import arange, histogram, average, cov
-        import scipy.stats as sts
+    #     Parameters:
+    #     -----------
+    #     baz_results : Dict
+    #         Dictionary containing backazimuth results
+    #     wave_type : str
+    #         Type of wave ('love' or 'rayleigh')
+    #     baz_theo : float, optional
+    #         Theoretical backazimuth in degrees
+    #     baz_theo_margin : float, optional
+    #         Margin around theoretical backazimuth in degrees
+    #     cc_threshold : float, optional
+    #         Minimum cross-correlation coefficient threshold
+    #     minors : bool, optional
+    #         Add minor ticks to axes if True
+    #     cc_method : str
+    #         Type of cc to choose ('mid' or 'max')
+    #     unitscale : str
+    #         Unit scale for rotation rate ('nano' or 'micro')
+    #     Returns:
+    #     --------
+    #     matplotlib.figure.Figure
+    #         Figure object containing the plot
+    #     """
+    #     import numpy as np
+    #     import matplotlib.pyplot as plt
+    #     from matplotlib.gridspec import GridSpec
+    #     from obspy.signal.rotate import rotate_ne_rt
+    #     import numpy as np
+    #     from numpy import arange, histogram, average, cov
+    #     import scipy.stats as sts
 
-        # Create figure with GridSpec
-        fig = plt.figure(figsize=(15, 8))
-        gs = GridSpec(4, 8, figure=fig, hspace=0.2)
+    #     # Create figure with GridSpec
+    #     fig = plt.figure(figsize=(15, 8))
+    #     gs = GridSpec(4, 8, figure=fig, hspace=0.2)
         
-        # Create subplots
-        ax_wave = fig.add_subplot(gs[0:2, :])  # Waveform panel
-        ax_baz = fig.add_subplot(gs[2:3, :])  # Backazimuth panel
-        ax_hist = fig.add_subplot(gs[2:3, 7:])  # Histogram panel
-        ax_hist.set_axis_off()
+    #     # Create subplots
+    #     ax_wave = fig.add_subplot(gs[0:2, :])  # Waveform panel
+    #     ax_baz = fig.add_subplot(gs[2:3, :])  # Backazimuth panel
+    #     ax_hist = fig.add_subplot(gs[2:3, 7:])  # Histogram panel
+    #     ax_hist.set_axis_off()
         
-        # Plot settings
-        font = 12
-        lw = 1.0
-        if unitscale == 'nano':
-            rot_scale, rot_unit = 1e9, f"n{self.runit}"
-            trans_scale, trans_unit = 1e6, f"{self.mu}{self.tunit}"
-        elif unitscale == 'micro':
-            rot_scale, rot_unit = 1e6, f"{self.mu}{self.runit}"
-            trans_scale, trans_unit = 1e3, f"m{self.tunit}"
+    #     # Plot settings
+    #     font = 12
+    #     lw = 1.0
+    #     if unitscale == 'nano':
+    #         rot_scale, rot_unit = 1e9, f"n{self.runit}"
+    #         trans_scale, trans_unit = 1e6, f"{self.mu}{self.tunit}"
+    #     elif unitscale == 'micro':
+    #         rot_scale, rot_unit = 1e6, f"{self.mu}{self.runit}"
+    #         trans_scale, trans_unit = 1e3, f"m{self.tunit}"
 
         
-        # Get streams and apply filtering if needed
-        rot = self.get_stream("rotation").copy()
-        acc = self.get_stream("translation").copy()
+    #     # Get streams and apply filtering if needed
+    #     rot = self.get_stream("rotation").copy()
+    #     acc = self.get_stream("translation").copy()
 
-        # Get components
-        if wave_type == "love":
-            hn = acc.select(channel="*HN")[0].data
-            he = acc.select(channel="*HE")[0].data
-            jz = rot.select(channel="*JZ")[0].data
-        elif wave_type == "rayleigh":
-            hz = acc.select(channel="*HZ")[0].data
-            je = rot.select(channel="*JE")[0].data
-            jn = rot.select(channel="*JN")[0].data
-        else:
-            raise ValueError(f"Invalid wave_type: {wave_type}. Use 'love' or 'rayleigh'.")
+    #     # Get components
+    #     if wave_type == "love":
+    #         hn = acc.select(channel="*HN")[0].data
+    #         he = acc.select(channel="*HE")[0].data
+    #         jz = rot.select(channel="*JZ")[0].data
+    #     elif wave_type == "rayleigh":
+    #         hz = acc.select(channel="*HZ")[0].data
+    #         je = rot.select(channel="*JE")[0].data
+    #         jn = rot.select(channel="*JN")[0].data
+    #     else:
+    #         raise ValueError(f"Invalid wave_type: {wave_type}. Use 'love' or 'rayleigh'.")
         
-        # Rotate to radial-transverse
-        if baz_theo is not None:
-            if wave_type == "love":
-                hr, ht = rotate_ne_rt(hn, he, baz_theo)
-            elif wave_type == "rayleigh":
-                jr, jt = rotate_ne_rt(jn, je, baz_theo)
-        else:
-            print("No theoretical backazimuth provided")
-            return
+    #     # Rotate to radial-transverse
+    #     if baz_theo is not None:
+    #         if wave_type == "love":
+    #             hr, ht = rotate_ne_rt(hn, he, baz_theo)
+    #         elif wave_type == "rayleigh":
+    #             jr, jt = rotate_ne_rt(jn, je, baz_theo)
+    #     else:
+    #         print("No theoretical backazimuth provided")
+    #         return
 
-        # get times
-        time = baz_results['twin_center']
+    #     # get times
+    #     time = baz_results['twin_center']
 
-        # select maximal or mid approach results
-        if cc_method == 'mid':
-            ccc = baz_results['cc_mid']
-            baz = baz_results['baz_mid']
-        elif cc_method == 'max':
-            ccc = baz_results['cc_max']
-            baz = baz_results['baz_max']
+    #     # select maximal or mid approach results
+    #     if cc_method == 'mid':
+    #         ccc = baz_results['cc_mid']
+    #         baz = baz_results['baz_mid']
+    #     elif cc_method == 'max':
+    #         ccc = baz_results['cc_max']
+    #         baz = baz_results['baz_max']
         
-        # apply cc threshold if provided
-        if cc_threshold is not None:
-            mask = ccc > cc_threshold
-            time = time[mask]
-            baz = baz[mask]
-            cc = ccc[mask]
+    #     # apply cc threshold if provided
+    #     if cc_threshold is not None:
+    #         mask = ccc > cc_threshold
+    #         time = time[mask]
+    #         baz = baz[mask]
+    #         cc = ccc[mask]
 
-        # Plot transverse components
-        times = acc.select(channel="*HZ")[0].times()
+    #     # Plot transverse components
+    #     times = acc.select(channel="*HZ")[0].times()
 
-        if wave_type == "love":
+    #     if wave_type == "love":
 
-            # Plot translational data
-            ax_wave.plot(times, ht*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[-1][:-1]}T", lw=lw)
-            ax_wave.set_ylim(-max(abs(ht*trans_scale)), max(abs(ht*trans_scale)))
+    #         # Plot translational data
+    #         ax_wave.plot(times, ht*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[-1][:-1]}T", lw=lw)
+    #         ax_wave.set_ylim(-max(abs(ht*trans_scale)), max(abs(ht*trans_scale)))
 
-            # Add rotational data on twin axis
-            ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, jz*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.{self.rot_seed[0].split('.')[-1][:-1]}Z", lw=lw)
-            ax_wave2.set_ylim(-max(abs(jz*rot_scale)), max(abs(jz*rot_scale)))
+    #         # Add rotational data on twin axis
+    #         ax_wave2 = ax_wave.twinx()
+    #         ax_wave2.plot(times, jz*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.{self.rot_seed[0].split('.')[-1][:-1]}Z", lw=lw)
+    #         ax_wave2.set_ylim(-max(abs(jz*rot_scale)), max(abs(jz*rot_scale)))
     
-        elif wave_type == "rayleigh":
-            ax_wave.plot(times, hz*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[-1][:-1]}Z", lw=lw)
-            ax_wave.set_ylim(-max(abs(hz*trans_scale)), max(abs(hz*trans_scale)))
+    #     elif wave_type == "rayleigh":
+    #         ax_wave.plot(times, hz*trans_scale, 'black', label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[-1][:-1]}Z", lw=lw)
+    #         ax_wave.set_ylim(-max(abs(hz*trans_scale)), max(abs(hz*trans_scale)))
 
-            # Add rotational data on twin axis
-            ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, jt*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.{self.rot_seed[0].split('.')[-1][:-1]}T", lw=lw)
-            ax_wave2.set_ylim(-max(abs(jt*rot_scale)), max(abs(jt*rot_scale)))
+    #         # Add rotational data on twin axis
+    #         ax_wave2 = ax_wave.twinx()
+    #         ax_wave2.plot(times, jt*rot_scale, 'darkred', label=f"{self.rot_seed[0].split('.')[1]}.{self.rot_seed[0].split('.')[-1][:-1]}T", lw=lw)
+    #         ax_wave2.set_ylim(-max(abs(jt*rot_scale)), max(abs(jt*rot_scale)))
             
-        # Configure waveform axes
-        # ax_wave.grid(which="both", ls=":", alpha=0.7, color="grey", zorder=0)
-        ax_wave.legend(loc=1)
-        ax_wave.set_ylabel(f"Acceleration ({trans_unit})", fontsize=font)
-        ax_wave2.tick_params(axis='y', colors="darkred")
-        ax_wave2.set_ylabel(f"Rotation rate ({rot_unit})", color="darkred", fontsize=font)
-        ax_wave2.legend(loc=4)
+    #     # Configure waveform axes
+    #     # ax_wave.grid(which="both", ls=":", alpha=0.7, color="grey", zorder=0)
+    #     ax_wave.legend(loc=1)
+    #     ax_wave.set_ylabel(f"Acceleration ({trans_unit})", fontsize=font)
+    #     ax_wave2.tick_params(axis='y', colors="darkred")
+    #     ax_wave2.set_ylabel(f"Rotation rate ({rot_unit})", color="darkred", fontsize=font)
+    #     ax_wave2.legend(loc=4)
         
-        # Plot backazimuth estimates
-        cmap = plt.get_cmap("viridis", 10)
-        scatter = ax_baz.scatter(time, baz,
-                               c=cc, s=50, cmap=cmap,
-                               edgecolors="k", lw=1, vmin=0, vmax=1, zorder=2)
+    #     # Plot backazimuth estimates
+    #     cmap = plt.get_cmap("viridis", 10)
+    #     scatter = ax_baz.scatter(time, baz,
+    #                            c=cc, s=50, cmap=cmap,
+    #                            edgecolors="k", lw=1, vmin=0, vmax=1, zorder=2)
         
-        # Configure backazimuth axis
-        ax_baz.set_ylim(-5, 365)
-        ax_baz.set_yticks(range(0, 360+60, 60))
-        ax_baz.grid(which="both", ls=":", alpha=0.7, color="grey", zorder=0)
-        ax_baz.set_ylabel(f"{wave_type.capitalize()} BAz (°)", fontsize=font)
+    #     # Configure backazimuth axis
+    #     ax_baz.set_ylim(-5, 365)
+    #     ax_baz.set_yticks(range(0, 360+60, 60))
+    #     ax_baz.grid(which="both", ls=":", alpha=0.7, color="grey", zorder=0)
+    #     ax_baz.set_ylabel(f"{wave_type.capitalize()} BAz (°)", fontsize=font)
         
-        # Add theoretical backazimuth
-        ax_baz.plot([min(times), max(times)], [baz_theo, baz_theo],
-                    color='k', ls='--', label='Theoretical BAz', zorder=1)
-        ax_baz.fill_between([baz_theo-baz_theo_margin, baz_theo+baz_theo_margin],
-                           [min(times), min(times)],
-                           color='grey', alpha=0.5, zorder=1)
+    #     # Add theoretical backazimuth
+    #     ax_baz.plot([min(times), max(times)], [baz_theo, baz_theo],
+    #                 color='k', ls='--', label='Theoretical BAz', zorder=1)
+    #     ax_baz.fill_between([baz_theo-baz_theo_margin, baz_theo+baz_theo_margin],
+    #                        [min(times), min(times)],
+    #                        color='grey', alpha=0.5, zorder=1)
 
-        # Compute statistics
-        deltaa = 10
-        angles1 = arange(0, 365, deltaa)
+    #     # Compute statistics
+    #     deltaa = 10
+    #     angles1 = arange(0, 365, deltaa)
     
-        # Compute histogram
-        hist = histogram(baz,
-                         bins=len(angles1)-1,
-                         range=[min(angles1), max(angles1)], 
-                         weights=cc, 
-                         density=True)
+    #     # Compute histogram
+    #     hist = histogram(baz,
+    #                      bins=len(angles1)-1,
+    #                      range=[min(angles1), max(angles1)], 
+    #                      weights=cc, 
+    #                      density=True)
 
-        # get kde stats
-        try:
-            kde_stats = self.get_kde_stats(baz, cc, _baz_steps=0.5, Ndegree=60, plot=False)
-            # get max and std
-            baz_max = kde_stats['baz_estimate']
-            baz_std = kde_stats['kde_dev']
-            print(f"baz_max = {baz_max}, baz_std = {baz_std}")
-            got_kde = True
-        except:
-            got_kde = False
+    #     # get kde stats
+    #     try:
+    #         kde_stats = self.get_kde_stats(baz, cc, _baz_steps=0.5, Ndegree=60, plot=False)
+    #         # get max and std
+    #         baz_max = kde_stats['baz_estimate']
+    #         baz_std = kde_stats['kde_dev']
+    #         print(f"baz_max = {baz_max}, baz_std = {baz_std}")
+    #         got_kde = True
+    #     except:
+    #         got_kde = False
 
-        # Add histogram
-        # ax_hist2.plot(kernel_density(np.linspace(0, 360, 100)), np.linspace(0, 360, 100), 'k-', lw=2)
-        ax_hist.hist(baz, bins=len(angles1)-1, range=[min(angles1), max(angles1)],
-                     weights=cc, orientation="horizontal", density=True, color="grey")
-        if got_kde:
-            ax_hist.plot(kde_stats['kde_values'],
-                        kde_stats['kde_angles'],
-                        c="k",
-                        lw=2,
-                        label='KDE'
-                        )
-        ax_hist.set_ylim(-5, 365)
-        ax_hist.invert_xaxis()
-        ax_hist.set_axis_off()
+    #     # Add histogram
+    #     # ax_hist2.plot(kernel_density(np.linspace(0, 360, 100)), np.linspace(0, 360, 100), 'k-', lw=2)
+    #     ax_hist.hist(baz, bins=len(angles1)-1, range=[min(angles1), max(angles1)],
+    #                  weights=cc, orientation="horizontal", density=True, color="grey")
+    #     if got_kde:
+    #         ax_hist.plot(kde_stats['kde_values'],
+    #                     kde_stats['kde_angles'],
+    #                     c="k",
+    #                     lw=2,
+    #                     label='KDE'
+    #                     )
+    #     ax_hist.set_ylim(-5, 365)
+    #     ax_hist.invert_xaxis()
+    #     ax_hist.set_axis_off()
         
-        # Add colorbar
-        cbar_ax = ax_baz.inset_axes([1.02, 0., 0.02, 1])
-        cb = plt.colorbar(scatter, cax=cbar_ax)
-        cb.set_label("CC coefficient", fontsize=font)
-        cb.set_ticks([0, 0.5, 1])
-        cb.set_ticklabels([0, 0.5, 1])
+    #     # Add colorbar
+    #     cbar_ax = ax_baz.inset_axes([1.02, 0., 0.02, 1])
+    #     cb = plt.colorbar(scatter, cax=cbar_ax)
+    #     cb.set_label("CC coefficient", fontsize=font)
+    #     cb.set_ticks([0, 0.5, 1])
+    #     cb.set_ticklabels([0, 0.5, 1])
 
-        # Add title and labels
-        title = f"{self.tbeg.date} {str(self.tbeg.time).split('.')[0]} UTC"
-        title += f" | {wave_type.capitalize()} Waves"
-        if self.fmin is not None and self.fmax is not None:
-            title += f" | f = {self.fmin}-{self.fmax} Hz"
-        if cc_threshold is not None:
-            title += f" | CC > {cc_threshold}"
-        if baz_theo is not None:
-            title += f" | Theo. BAz = {round(baz_theo, 1)}°"
-        if baz_results['parameters']['baz_win_sec'] is not None:
-            title += f" | T = {baz_results['parameters']['baz_win_sec']} s ({baz_results['parameters']['baz_win_overlap']*100}%)"
-        fig.suptitle(title, fontsize=font+2, y=0.93)
+    #     # Add title and labels
+    #     title = f"{self.tbeg.date} {str(self.tbeg.time).split('.')[0]} UTC"
+    #     title += f" | {wave_type.capitalize()} Waves"
+    #     if self.fmin is not None and self.fmax is not None:
+    #         title += f" | f = {self.fmin}-{self.fmax} Hz"
+    #     if cc_threshold is not None:
+    #         title += f" | CC > {cc_threshold}"
+    #     if baz_theo is not None:
+    #         title += f" | Theo. BAz = {round(baz_theo, 1)}°"
+    #     if baz_results['parameters']['baz_win_sec'] is not None:
+    #         title += f" | T = {baz_results['parameters']['baz_win_sec']} s ({baz_results['parameters']['baz_win_overlap']*100}%)"
+    #     fig.suptitle(title, fontsize=font+2, y=0.93)
         
-        ax_baz.set_xlabel("Time (s)", fontsize=font)
+    #     ax_baz.set_xlabel("Time (s)", fontsize=font)
 
-        # Adjust x-axis limits
-        ax_wave.set_xlim(min(times), max(times)+0.15*max(times))
-        ax_wave2.set_xlim(min(times), max(times)+0.15*max(times))
-        ax_baz.set_xlim(min(times), max(times)+0.15*max(times))
+    #     # Adjust x-axis limits
+    #     ax_wave.set_xlim(min(times), max(times)+0.15*max(times))
+    #     ax_wave2.set_xlim(min(times), max(times)+0.15*max(times))
+    #     ax_baz.set_xlim(min(times), max(times)+0.15*max(times))
 
-        # Add minor ticks
-        if minors:
-            ax_wave.minorticks_on()
-            ax_baz.minorticks_on()
-            ax_wave2.minorticks_on()
+    #     # Add minor ticks
+    #     if minors:
+    #         ax_wave.minorticks_on()
+    #         ax_baz.minorticks_on()
+    #         ax_wave2.minorticks_on()
 
-        return fig
+    #     return fig
 
-    def plot_velocities(self, velocity_results: Dict, vmax: float=None, minors: bool=True, cc_threshold: float=None) -> plt.Figure:
-        """
-        Plot waveforms and velocity estimates
+    # def plot_velocities(self, velocity_results: Dict, vmax: float=None, minors: bool=True, cc_threshold: float=None) -> plt.Figure:
+    #     """
+    #     Plot waveforms and velocity estimates
         
-        Parameters:
-        -----------
-        velocity_results : Dict
-            Results dictionary from compute_velocities
-        vmax : float or None
-            Maximum velocity for plot scaling
-        minors : bool
-            Add minor ticks to axes if True
-        cc_threshold : float, optional
-            Minimum cross-correlation coefficient threshold
-        Returns:
-        --------
-        matplotlib.figure.Figure
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib.gridspec import GridSpec
-        import numpy as np
+    #     Parameters:
+    #     -----------
+    #     velocity_results : Dict
+    #         Results dictionary from compute_velocities
+    #     vmax : float or None
+    #         Maximum velocity for plot scaling
+    #     minors : bool
+    #         Add minor ticks to axes if True
+    #     cc_threshold : float, optional
+    #         Minimum cross-correlation coefficient threshold
+    #     Returns:
+    #     --------
+    #     matplotlib.figure.Figure
+    #     """
+    #     import matplotlib.pyplot as plt
+    #     from matplotlib.gridspec import GridSpec
+    #     import numpy as np
         
-        wave_type = velocity_results['parameters']['wave_type'].lower()
+    #     wave_type = velocity_results['parameters']['wave_type'].lower()
 
-        # Create figure
-        fig = plt.figure(figsize=(15, 8))
-        gs = GridSpec(4, 8, figure=fig, hspace=0.2)
+    #     # Create figure
+    #     fig = plt.figure(figsize=(15, 8))
+    #     gs = GridSpec(4, 8, figure=fig, hspace=0.2)
         
-        # Create subplots
-        ax_wave = fig.add_subplot(gs[0:2, :7])  # Waveform panel
-        ax_vel = fig.add_subplot(gs[2:4, :7])   # Velocity panel
+    #     # Create subplots
+    #     ax_wave = fig.add_subplot(gs[0:2, :7])  # Waveform panel
+    #     ax_vel = fig.add_subplot(gs[2:4, :7])   # Velocity panel
         
-        # Plot settings
-        font = 12
-        lw = 1.0
-        rot_scale, rot_unit = 1e9, f"n{self.runit}"
-        tra_scale, tra_unit = 1e6, f"{self.mu}{self.tunit}"
+    #     # Plot settings
+    #     font = 12
+    #     lw = 1.0
+    #     rot_scale, rot_unit = 1e9, f"n{self.runit}"
+    #     tra_scale, tra_unit = 1e6, f"{self.mu}{self.tunit}"
         
-        # Get time vector
-        times = np.arange(len(self.st[0])) / self.sampling_rate
+    #     # Get time vector
+    #     times = np.arange(len(self.st[0])) / self.sampling_rate
         
-        # get streams
-        acc = self.get_stream("translation").copy()
-        rot = self.get_stream("rotation").copy()
+    #     # get streams
+    #     acc = self.get_stream("translation").copy()
+    #     rot = self.get_stream("rotation").copy()
 
-        # scale waveforms
-        for tr in acc:
-            tr.data *= tra_scale
-        for tr in rot:
-            tr.data *= rot_scale
+    #     # scale waveforms
+    #     for tr in acc:
+    #         tr.data *= tra_scale
+    #     for tr in rot:
+    #         tr.data *= rot_scale
 
-        # rotate waveforms
-        if wave_type == "love":
-            rot_z = 2*rot.select(channel="*Z")[0].data # times two for velocity scaling (plotting only)
-            acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data,
-                                        acc.select(channel="*E")[0].data,
-                                        velocity_results['parameters']['baz'])
+    #     # rotate waveforms
+    #     if wave_type == "love":
+    #         rot_z = 2*rot.select(channel="*Z")[0].data # times two for velocity scaling (plotting only)
+    #         acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data,
+    #                                     acc.select(channel="*E")[0].data,
+    #                                     velocity_results['parameters']['baz'])
             
 
-        elif wave_type == "rayleigh":
-            acc_z = acc.select(channel="*Z")[0].data
-            rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data,
-                                        rot.select(channel="*E")[0].data,
-                                        velocity_results['parameters']['baz'])
+    #     elif wave_type == "rayleigh":
+    #         acc_z = acc.select(channel="*Z")[0].data
+    #         rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data,
+    #                                     rot.select(channel="*E")[0].data,
+    #                                     velocity_results['parameters']['baz'])
 
-        # prepare mask
-        if cc_threshold is not None:
-            mask = velocity_results['ccoef'] > cc_threshold
-        else:
-            mask = velocity_results['ccoef'] >= 0
+    #     # prepare mask
+    #     if cc_threshold is not None:
+    #         mask = velocity_results['ccoef'] > cc_threshold
+    #     else:
+    #         mask = velocity_results['ccoef'] >= 0
 
-        # Plot waveforms based on wave type
-        if  wave_type == 'love':
+    #     # Plot waveforms based on wave type
+    #     if  wave_type == 'love':
 
-            # Plot transverse acceleration
-            ax_wave.plot(times, acc_t, 'black', 
-                        label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}HT", lw=lw)
+    #         # Plot transverse acceleration
+    #         ax_wave.plot(times, acc_t, 'black', 
+    #                     label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}HT", lw=lw)
             
-            # Plot vertical rotation on twin axis
-            ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, rot_z, 'darkred',
-                         label=f"2x {self.rot_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}JZ", lw=lw)
+    #         # Plot vertical rotation on twin axis
+    #         ax_wave2 = ax_wave.twinx()
+    #         ax_wave2.plot(times, rot_z, 'darkred',
+    #                      label=f"2x {self.rot_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}JZ", lw=lw)
             
-        elif wave_type == 'rayleigh':
+    #     elif wave_type == 'rayleigh':
 
-            # Plot vertical acceleration
-            ax_wave.plot(times, acc_z, 'black',
-                        label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}HZ", lw=lw)
+    #         # Plot vertical acceleration
+    #         ax_wave.plot(times, acc_z, 'black',
+    #                     label=f"{self.tra_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}HZ", lw=lw)
             
-            # Plot transverse rotation on twin axis
-            ax_wave2 = ax_wave.twinx()
-            ax_wave2.plot(times, rot_t, 'darkred',
-                         label=f"{self.rot_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}JT", lw=lw)
+    #         # Plot transverse rotation on twin axis
+    #         ax_wave2 = ax_wave.twinx()
+    #         ax_wave2.plot(times, rot_t, 'darkred',
+    #                      label=f"{self.rot_seed[0].split('.')[1]}.{self.tra_seed[0].split('.')[3][0]}JT", lw=lw)
 
-        # Configure waveform axes
-        ax_wave.grid(True, which='both', ls='--', alpha=0.3)
-        ax_wave.legend(loc=1)
-        ax_wave.set_ylabel(f"acceleration ({tra_unit})", fontsize=font)
-        ax_wave2.tick_params(axis='y', colors="darkred")
-        ax_wave2.set_ylabel(f"rotation rate ({rot_unit})", color="darkred", fontsize=font)
-        ax_wave2.legend(loc=4)
+    #     # Configure waveform axes
+    #     ax_wave.grid(True, which='both', ls='--', alpha=0.3)
+    #     ax_wave.legend(loc=1)
+    #     ax_wave.set_ylabel(f"acceleration ({tra_unit})", fontsize=font)
+    #     ax_wave2.tick_params(axis='y', colors="darkred")
+    #     ax_wave2.set_ylabel(f"rotation rate ({rot_unit})", color="darkred", fontsize=font)
+    #     ax_wave2.legend(loc=4)
 
-        self.sync_twin_axes(ax_wave, ax_wave2)
+    #     self.sync_twin_axes(ax_wave, ax_wave2)
         
-        # Plot velocities
-        cmap = plt.get_cmap("viridis", 10)
-        scatter = ax_vel.scatter(velocity_results['time'][mask], 
-                               velocity_results['velocity'][mask],
-                               c=velocity_results['ccoef'][mask], 
-                               cmap=cmap, s=70, alpha=1.0,
-                               vmin=0, vmax=1, edgecolors="k", lw=1, zorder=2)
+    #     # Plot velocities
+    #     cmap = plt.get_cmap("viridis", 10)
+    #     scatter = ax_vel.scatter(velocity_results['time'][mask], 
+    #                            velocity_results['velocity'][mask],
+    #                            c=velocity_results['ccoef'][mask], 
+    #                            cmap=cmap, s=70, alpha=1.0,
+    #                            vmin=0, vmax=1, edgecolors="k", lw=1, zorder=2)
         
-        # Add error bars
-        ax_vel.errorbar(velocity_results['time'][mask], 
-                       velocity_results['velocity'][mask],
-                       xerr=velocity_results['terr'][mask],
-                       color='black', alpha=0.4, ls='none', zorder=1)
+    #     # Add error bars
+    #     ax_vel.errorbar(velocity_results['time'][mask], 
+    #                    velocity_results['velocity'][mask],
+    #                    xerr=velocity_results['terr'][mask],
+    #                    color='black', alpha=0.4, ls='none', zorder=1)
         
-        # Configure velocity axis
-        ax_vel.set_ylabel("phase velocity (m/s)", fontsize=font)
-        ax_vel.set_xlabel("time (s)", fontsize=font)
-        ax_vel.set_ylim(bottom=0)
-        if vmax is not None:
-            ax_vel.set_ylim(top=vmax)
-        ax_vel.grid(True, which='both', ls='--', alpha=0.3)
+    #     # Configure velocity axis
+    #     ax_vel.set_ylabel("phase velocity (m/s)", fontsize=font)
+    #     ax_vel.set_xlabel("time (s)", fontsize=font)
+    #     ax_vel.set_ylim(bottom=0)
+    #     if vmax is not None:
+    #         ax_vel.set_ylim(top=vmax)
+    #     ax_vel.grid(True, which='both', ls='--', alpha=0.3)
         
-        for a in [ax_vel, ax_wave]:
-            a.set_xlim(0, times.max())
+    #     for a in [ax_vel, ax_wave]:
+    #         a.set_xlim(0, times.max())
 
-        if minors:
-            ax_wave.minorticks_on()
-            ax_vel.minorticks_on()
-            ax_wave2.minorticks_on()
+    #     if minors:
+    #         ax_wave.minorticks_on()
+    #         ax_vel.minorticks_on()
+    #         ax_wave2.minorticks_on()
         
-        # Add colorbar
-        cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
-        cb = plt.colorbar(scatter, cax=cbar_ax)
-        cb.set_label('cross-correlation coefficient', fontsize=font)
+    #     # Add colorbar
+    #     cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
+    #     cb = plt.colorbar(scatter, cax=cbar_ax)
+    #     cb.set_label('cross-correlation coefficient', fontsize=font)
         
-        # Add title
-        title = f"{velocity_results['parameters']['wave_type'].capitalize()} Waves"
-        title += (f" | {self.tbeg.date} {str(self.tbeg.time).split('.')[0]} UTC"
-                 f" | {self.fmin}-{self.fmax} Hz"
-                 f" | T = {velocity_results['parameters']['win_time_s']:.1f} s"
-                 f" | {velocity_results['parameters']['overlap']*100:.0f}% overlap")
-        if cc_threshold is not None:
-            title += f" | cc > {cc_threshold}"
-        fig.suptitle(title, fontsize=font+2, y=0.95)
+    #     # Add title
+    #     title = f"{velocity_results['parameters']['wave_type'].capitalize()} Waves"
+    #     title += (f" | {self.tbeg.date} {str(self.tbeg.time).split('.')[0]} UTC"
+    #              f" | {self.fmin}-{self.fmax} Hz"
+    #              f" | T = {velocity_results['parameters']['win_time_s']:.1f} s"
+    #              f" | {velocity_results['parameters']['overlap']*100:.0f}% overlap")
+    #     if cc_threshold is not None:
+    #         title += f" | cc > {cc_threshold}"
+    #     fig.suptitle(title, fontsize=font+2, y=0.95)
         
-        # plt.tight_layout()
-        plt.show()
-        return fig
+    #     # plt.tight_layout()
+    #     plt.show()
+    #     return fig
 
     def plot_optimization_results(self, params: Dict, wave_type: str='love', vel_max_threshold: float=5000, cc_threshold: float=0.8, baz_theo: float=None) -> plt.Figure:
         """
@@ -7476,7 +7476,7 @@ class sixdegrees():
         plt.tight_layout()
         return fig
 
-    def plot_waveforms(self, equal_scale=False, figsize=(12, 10), time_scale="seconds", ymin=None, ymax=None, ybounds=None):
+    # def plot_waveforms(self, equal_scale=False, figsize=(12, 10), time_scale="seconds", ymin=None, ymax=None, ybounds=None):
         """
         Plot all waveforms in the stream in subplots above each other.
         

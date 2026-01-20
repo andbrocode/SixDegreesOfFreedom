@@ -11,31 +11,37 @@ from obspy.signal.cross_correlation import correlate, xcorr_max
 from obspy.signal.rotate import rotate_ne_rt
 from obspy.core.utcdatetime import UTCDateTime
 
-def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[float]=None, fmax: Optional[float]=None, wave_type: str="both",
-                    pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, runit: str=r"rad/s", tunit: str=r"m/s$^2$",
-                    twin_sec: int=5, twin_overlap: float=0.5, unitscale: str="nano", t1:UTCDateTime=None, t2:UTCDateTime=None) -> plt.Figure:
+
+def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, sd: Optional['sixdegrees']=None, 
+                    baz: Optional[float]=None, fmin: Optional[float]=None, fmax: Optional[float]=None, 
+                    wave_type: str="both", pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
+                    runit: str=r"rad/s", tunit: str=r"m/s$^2$", twin_sec: int=5, twin_overlap: float=0.5, 
+                    unitscale: str="nano", t1:UTCDateTime=None, t2:UTCDateTime=None) -> plt.Figure:
 
     """
     Plot waveform cross-correlation.
 
     Parameters:
     -----------
-    rot0 : Stream
-        Rotation rate stream
-    acc0 : Stream
-        Acceleration stream
-    baz : float
-        Backazimuth
-    fmin : float or None
-        Minimum frequency for bandpass filter
-    fmax : float or None
-        Maximum frequency for bandpass filter
+    rot0 : Stream, optional
+        Rotation rate stream. Required if sd is not provided.
+    acc0 : Stream, optional
+        Acceleration stream. Required if sd is not provided.
+    sd : sixdegrees, optional
+        sixdegrees object. If provided, will extract rot0 and acc0 from sd.get_stream(),
+        and extract baz, distance, fmin, fmax from the object if not explicitly provided.
+    baz : float, optional
+        Backazimuth. If not provided and sd is given, will try to extract from sd.
+    fmin : float or None, optional
+        Minimum frequency for bandpass filter. If not provided and sd is given, will use sd.fmin.
+    fmax : float or None, optional
+        Maximum frequency for bandpass filter. If not provided and sd is given, will use sd.fmax.
     wave_type : str
         Wave type: "love", "rayleigh", or "both"
     pol_dict : dict or None
         Polarity dictionary
-    distance : float or None
-        Distance
+    distance : float or None, optional
+        Distance. If not provided and sd is given, will try to extract from sd.event_info.
     runit : str
         Unit for rotation rate
     tunit : str
@@ -63,6 +69,60 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
     from numpy import linspace, ones, array
     from matplotlib.ticker import AutoMinorLocator
     from obspy.core.utcdatetime import UTCDateTime
+
+    # Extract streams and parameters from sd if provided
+    if sd is not None:
+        # Extract streams if not provided
+        if rot0 is None:
+            rot0 = sd.get_stream("rotation")
+        if acc0 is None:
+            acc0 = sd.get_stream("translation")
+        
+        # Extract parameters if not explicitly provided (provided parameters have higher priority)
+        if fmin is None and hasattr(sd, 'fmin') and sd.fmin is not None:
+            fmin = sd.fmin
+        if fmax is None and hasattr(sd, 'fmax') and sd.fmax is not None:
+            fmax = sd.fmax
+        
+        # Extract baz if not provided
+        if baz is None:
+            # Try theoretical baz first
+            if hasattr(sd, 'baz_theo') and sd.baz_theo is not None:
+                baz = sd.baz_theo
+            # Try theoretical_baz attribute
+            elif hasattr(sd, 'theoretical_baz') and sd.theoretical_baz is not None:
+                baz = sd.theoretical_baz
+            # Try baz_estimated (may be a dict with wave_type keys)
+            elif hasattr(sd, 'baz_estimated') and sd.baz_estimated is not None:
+                if isinstance(sd.baz_estimated, dict):
+                    # Try to get baz for the current wave_type
+                    baz_val = sd.baz_estimated.get(wave_type.lower(), None)
+                    if baz_val is None:
+                        # Try any available baz value
+                        baz_val = next(iter(sd.baz_estimated.values()), None)
+                    baz = baz_val
+                else:
+                    baz = sd.baz_estimated
+            # Try event_info
+            elif hasattr(sd, 'event_info') and sd.event_info is not None:
+                if isinstance(sd.event_info, dict) and 'backazimuth' in sd.event_info:
+                    baz = sd.event_info['backazimuth']
+        
+        # Extract distance if not provided
+        if distance is None:
+            # Try event_info
+            if hasattr(sd, 'event_info') and sd.event_info is not None:
+                if isinstance(sd.event_info, dict):
+                    if 'distance_km' in sd.event_info:
+                        distance = sd.event_info['distance_km']
+    
+    # Validate that we have required streams
+    if rot0 is None or acc0 is None:
+        raise ValueError("Either provide rot0 and acc0 directly, or provide sd (sixdegrees object)")
+    
+    # Validate that we have baz
+    if baz is None:
+        raise ValueError("baz (backazimuth) must be provided either directly or extractable from sd")
 
     def _cross_correlation_windows(arr1: array, arr2: array, dt: float, Twin: float, overlap: float=0, lag: int=0, demean: bool=True, plot: bool=False) -> Tuple[array, array]:
 
@@ -316,7 +376,12 @@ def plot_waveform_cc(rot0: Stream, acc0: Stream, baz: float, fmin: Optional[floa
     tbeg = acc[0].stats.starttime
     title = f"{tbeg.date} {str(tbeg.time).split('.')[0]} UTC"
     title += f" | {wave_type}"
-    title += f" | f = {fmin}-{fmax} Hz"
+    if fmin is not None and fmax is not None:
+        title += f" | f = {fmin}-{fmax} Hz"
+    elif fmin is not None:
+        title += f" | f ≥ {fmin} Hz"
+    elif fmax is not None:
+        title += f" | f ≤ {fmax} Hz"
     if baz is not None:
         title += f"  |  BAz = {round(baz, 1)}°"
     if distance is not None:
