@@ -590,6 +590,42 @@ class sixdegrees():
         stream += tmp
         return stream
 
+    def apply_dummy_traces(self, stream: Stream=None) -> Stream:
+        """
+        Apply dummy traces to the loaded stream based on configuration.
+        This method should be called after data is loaded.
+
+        Args:
+            stream (Stream, optional): Stream to apply dummy traces to. 
+                                      If None, uses self.st. Defaults to None.
+
+        Returns:
+            Stream: Stream with dummy traces added.
+        """
+        if stream is None:
+            stream = self.st
+        
+        if not self.dummy_trace:
+            return stream
+        
+        # Apply dummy traces based on channel type
+        for dummy in self.dummy_trace:
+            # Check if dummy trace is for rotation (J) or translation (H)
+            if len(dummy) >= 2 and dummy[-2] in ["J", "H"]:
+                # Check if this dummy trace already exists in the stream
+                dummy_exists = any(
+                    tr.id == dummy for tr in stream
+                )
+                
+                if not dummy_exists:
+                    if self.verbose:
+                        print(f"-> adding dummy trace: {dummy}")
+                    stream = self.add_dummy_trace(stream, dummy)
+                elif self.verbose:
+                    print(f"-> dummy trace {dummy} already exists, skipping")
+        
+        return stream
+
     def get_component_lag(self, normalize: bool=True, baz: float=None, correct: bool=True) -> Dict:
         """
         Get lag between rotation and translation components
@@ -814,6 +850,9 @@ class sixdegrees():
         if len(st0) > (len(self.tra_seed) + len(self.rot_seed)):
             st0 = st0.merge(method=1, fill_value=0)
 
+        # apply dummy traces after data is loaded
+        st0 = self.apply_dummy_traces(st0)
+
         # resample stream
         if resample_rate is not None:
             if self.verbose:
@@ -928,14 +967,6 @@ class sixdegrees():
         # merge stream if required
         if merging:
             tra = tra.merge(method=1, fill_value=0)
-
-        # add dummy trace
-        if self.dummy_trace:
-            for dummy in self.dummy_trace:
-                if dummy[-2] == "H":
-                    if self.verbose:
-                        print(f"-> adding dummy trace: {dummy}")
-                    tra = self.add_dummy_trace(tra, dummy)
 
         # get inventory
         if self.tra_inv_file is not None:
@@ -1079,14 +1110,6 @@ class sixdegrees():
         # merge stream if required
         if merging:
             rot = rot.merge(method=1, fill_value=0)
-
-        # add dummy trace
-        if self.dummy_trace:
-            for dummy in self.dummy_trace:
-                if dummy[-2] == "J":
-                    if self.verbose:
-                        print(f"-> adding dummy trace: {dummy}")
-                    rot = self.add_dummy_trace(rot, dummy)
 
         # get inventory
         if self.rot_inv_file is not None:
