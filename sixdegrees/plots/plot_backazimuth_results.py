@@ -243,13 +243,27 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         # get kde stats
         try:
             kde_stats = sd.get_kde_stats(baz, cc, _baz_steps=0.5, Ndegree=60, plot=False)
-            # get max and std
-            baz_max = kde_stats['baz_estimate']
-            baz_std = kde_stats['kde_dev']
-            print(f"baz_max = {baz_max}, baz_std = {baz_std}")
-            got_kde = True
+            
+            # Validate KDE stats before using them
+            kde_values = kde_stats.get('kde_values', None)
+            kde_angles = kde_stats.get('kde_angles', None)
+            
+            if (kde_values is not None and kde_angles is not None and
+                len(kde_values) > 0 and len(kde_angles) > 0 and
+                len(kde_values) == len(kde_angles)):
+                # get max and std
+                baz_max = kde_stats.get('baz_estimate', None)
+                baz_std = kde_stats.get('kde_dev', None)
+                if baz_max is not None and baz_std is not None:
+                    print(f"baz_max = {baz_max}, baz_std = {baz_std}")
+                got_kde = True
+            else:
+                got_kde = False
+                if hasattr(sd, 'verbose') and sd.verbose:
+                    print("Warning: KDE stats returned invalid or empty arrays. Skipping KDE plot.")
         except Exception as e:
             got_kde = False
+            kde_stats = None
             if hasattr(sd, 'verbose') and sd.verbose:
                 print(f"Could not compute KDE stats: {e}")
 
@@ -258,12 +272,39 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         ax_hist.hist(baz, bins=len(angles1)-1, range=[min(angles1), max(angles1)],
                         weights=cc, orientation="horizontal", density=True, color="grey")
         if got_kde and kde_stats is not None:
-            ax_hist.plot(kde_stats['kde_values'],
-                        kde_stats['kde_angles'],
+            # Validate KDE stats before plotting
+            kde_values = kde_stats.get('kde_values', None)
+            kde_angles = kde_stats.get('kde_angles', None)
+            
+            if kde_values is not None and kde_angles is not None:
+                # Convert to numpy arrays and check dimensions
+                kde_values = np.asarray(kde_values)
+                kde_angles = np.asarray(kde_angles)
+                
+                # Check that arrays are not empty, have matching dimensions, and contain valid values
+                if (len(kde_values) > 0 and len(kde_angles) > 0 and 
+                    len(kde_values) == len(kde_angles) and
+                    not np.all(np.isnan(kde_values)) and
+                    not np.all(np.isnan(kde_angles))):
+                    ax_hist.plot(
+                        kde_values,
+                        kde_angles,
                         c="k",
                         lw=2,
                         label='KDE'
-                        )
+                    )
+                else:
+                    if hasattr(sd, 'verbose') and sd.verbose:
+                        if len(kde_values) != len(kde_angles):
+                            print(f"Warning: KDE arrays have mismatched dimensions "
+                                  f"(values: {len(kde_values)}, angles: {len(kde_angles)}). Skipping KDE plot.")
+                        elif len(kde_values) == 0:
+                            print("Warning: KDE arrays are empty. Skipping KDE plot.")
+                        else:
+                            print("Warning: KDE arrays contain only NaN values. Skipping KDE plot.")
+            else:
+                if hasattr(sd, 'verbose') and sd.verbose:
+                    print("Warning: KDE stats missing 'kde_values' or 'kde_angles'. Skipping KDE plot.")
     else:
         # Create empty histogram with proper range
         deltaa = 10
