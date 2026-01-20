@@ -123,10 +123,7 @@ class sixdegrees():
         # path to mseed file if using direct file input
         self.mseed_file = conf.get('path_to_mseed_file', False)
 
-        # add dummy trace
-        self.dummy_trace = conf.get('dummy_trace', False)
-
-        # rotate_zne    
+        # rotate_zne
         self.rotate_zne = conf.get('rotate_zne', False)
 
         # remove_response_tra
@@ -137,6 +134,9 @@ class sixdegrees():
 
         # output type for remove response
         self.tra_output = conf.get('tra_output', "ACC")
+
+        # add dummy trace
+        self.dummy_trace = conf.get('dummy_trace', False)
 
         # units
         self.runit = conf.get('runit', "rad/s")
