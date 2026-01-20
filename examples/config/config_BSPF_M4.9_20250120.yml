@@ -1,0 +1,25 @@
+data_source: fdsn
+fdsn_client_rot: IRIS
+fdsn_client_tra: IRIS
+magnitude: 4.9
+origin_time: '2026-01-20 01:56:14'
+path_to_data_out: ./data/
+project: BSPF_Analysis
+rot_remove_response: true
+rot_seed:
+- PY.BSPF..HJZ
+- PY.BSPF..HJN
+- PY.BSPF..HJE
+rotate_zne: true
+seed: XX.BSPF..
+station_lat: 33.610643
+station_lon: -116.455439
+tbeg: '2025-01-20 01:56:14'
+tend: '2025-01-20 02:00:14'
+tra_remove_response: true
+tra_seed:
+- PY.PFOIX..HHZ
+- PY.PFOIX..HHN
+- PY.PFOIX..HHE
+verbose: true
+workdir: ./
