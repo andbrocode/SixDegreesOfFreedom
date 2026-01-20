@@ -2,7 +2,7 @@
 Plot power spectral density comparison between rotation and acceleration data.
 """
 
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 import numpy as np
 from numpy import ndarray, reshape
 import matplotlib.pyplot as plt
@@ -11,21 +11,25 @@ from obspy import Stream
 import multitaper as mt
 
 
-def plot_spectra_comparison_fill(rot: Stream, acc: Stream, fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
+def plot_spectra_comparison_fill(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None,
+                                 fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
                                  ylog: bool=False, xlog: bool=False, fill: bool=False) -> Figure:
     """
     Plot power spectral density comparison between rotation and acceleration data with horizontal layout
     
     Parameters:
     -----------
-    rot : Stream
-        Rotation rate stream
-    acc : Stream
-        Acceleration stream
-    fmin : float or None
-        Minimum frequency for bandpass filter
-    fmax : float or None
-        Maximum frequency for bandpass filter
+    rot : Stream, optional
+        Rotation rate stream. Required if sd_object is not provided.
+    acc : Stream, optional
+        Acceleration stream. Required if sd_object is not provided.
+    sd_object : sixdegrees, optional
+        sixdegrees object. If provided, will extract rot and acc from sd_object.get_stream(),
+        and extract fmin, fmax from the object if not explicitly provided.
+    fmin : float or None, optional
+        Minimum frequency for bandpass filter. If not provided and sd_object is given, will use sd_object.fmin.
+    fmax : float or None, optional
+        Maximum frequency for bandpass filter. If not provided and sd_object is given, will use sd_object.fmax.
     ylog : bool
         Use logarithmic y-axis scale if True
     xlog : bool
@@ -37,6 +41,24 @@ def plot_spectra_comparison_fill(rot: Stream, acc: Stream, fmin: Union[float, No
     --------
     matplotlib.figure.Figure
     """
+    
+    # Extract streams and parameters from sd_object if provided
+    if sd_object is not None:
+        # Extract streams if not provided
+        if rot is None:
+            rot = sd_object.get_stream("rotation")
+        if acc is None:
+            acc = sd_object.get_stream("translation")
+        
+        # Extract parameters if not explicitly provided (provided parameters have higher priority)
+        if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:
+            fmin = sd_object.fmin
+        if fmax is None and hasattr(sd_object, 'fmax') and sd_object.fmax is not None:
+            fmax = sd_object.fmax
+    
+    # Validate that we have required streams
+    if rot is None or acc is None:
+        raise ValueError("Either provide rot and acc directly, or provide sd_object (sixdegrees object)")
     
     def _multitaper_psd(arr: ndarray, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[ndarray, ndarray]:
         """Calculate multitaper power spectral density"""

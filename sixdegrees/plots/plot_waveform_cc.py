@@ -12,7 +12,7 @@ from obspy.signal.rotate import rotate_ne_rt
 from obspy.core.utcdatetime import UTCDateTime
 
 
-def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, sd: Optional['sixdegrees']=None, 
+def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None, 
                     baz: Optional[float]=None, fmin: Optional[float]=None, fmax: Optional[float]=None, 
                     wave_type: str="both", pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
                     runit: str=r"rad/s", tunit: str=r"m/s$^2$", twin_sec: int=5, twin_overlap: float=0.5, 
@@ -24,24 +24,24 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     Parameters:
     -----------
     rot0 : Stream, optional
-        Rotation rate stream. Required if sd is not provided.
+        Rotation rate stream. Required if sd_object is not provided.
     acc0 : Stream, optional
-        Acceleration stream. Required if sd is not provided.
-    sd : sixdegrees, optional
-        sixdegrees object. If provided, will extract rot0 and acc0 from sd.get_stream(),
+        Acceleration stream. Required if sd_object is not provided.
+    sd_object : sixdegrees, optional
+        sixdegrees object. If provided, will extract rot0 and acc0 from sd_object.get_stream(),
         and extract baz, distance, fmin, fmax from the object if not explicitly provided.
     baz : float, optional
-        Backazimuth. If not provided and sd is given, will try to extract from sd.
+        Backazimuth. If not provided and sd_object is given, will try to extract from sd_object.
     fmin : float or None, optional
-        Minimum frequency for bandpass filter. If not provided and sd is given, will use sd.fmin.
+        Minimum frequency for bandpass filter. If not provided and sd_object is given, will use sd_object.fmin.
     fmax : float or None, optional
-        Maximum frequency for bandpass filter. If not provided and sd is given, will use sd.fmax.
+        Maximum frequency for bandpass filter. If not provided and sd_object is given, will use sd_object.fmax.
     wave_type : str
         Wave type: "love", "rayleigh", or "both"
     pol_dict : dict or None
         Polarity dictionary
     distance : float or None, optional
-        Distance. If not provided and sd is given, will try to extract from sd.event_info.
+        Distance. If not provided and sd_object is given, will try to extract from sd_object.event_info.
     runit : str
         Unit for rotation rate
     tunit : str
@@ -70,55 +70,55 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     from matplotlib.ticker import AutoMinorLocator
     from obspy.core.utcdatetime import UTCDateTime
 
-    # Extract streams and parameters from sd if provided
-    if sd is not None:
+    # Extract streams and parameters from sd_object if provided
+    if sd_object is not None:
         # Extract streams if not provided
         if rot0 is None:
-            rot0 = sd.get_stream("rotation")
+            rot0 = sd_object.get_stream("rotation")
         if acc0 is None:
-            acc0 = sd.get_stream("translation")
+            acc0 = sd_object.get_stream("translation")
         
         # Extract parameters if not explicitly provided (provided parameters have higher priority)
-        if fmin is None and hasattr(sd, 'fmin') and sd.fmin is not None:
-            fmin = sd.fmin
-        if fmax is None and hasattr(sd, 'fmax') and sd.fmax is not None:
-            fmax = sd.fmax
+        if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:
+            fmin = sd_object.fmin
+        if fmax is None and hasattr(sd_object, 'fmax') and sd_object.fmax is not None:
+            fmax = sd_object.fmax
         
         # Extract baz if not provided
         if baz is None:
             # Try theoretical baz first
-            if hasattr(sd, 'baz_theo') and sd.baz_theo is not None:
-                baz = sd.baz_theo
+            if hasattr(sd_object, 'baz_theo') and sd_object.baz_theo is not None:
+                baz = sd_object.baz_theo
             # Try theoretical_baz attribute
-            elif hasattr(sd, 'theoretical_baz') and sd.theoretical_baz is not None:
-                baz = sd.theoretical_baz
+            elif hasattr(sd_object, 'theoretical_baz') and sd_object.theoretical_baz is not None:
+                baz = sd_object.theoretical_baz
             # Try baz_estimated (may be a dict with wave_type keys)
-            elif hasattr(sd, 'baz_estimated') and sd.baz_estimated is not None:
-                if isinstance(sd.baz_estimated, dict):
+            elif hasattr(sd_object, 'baz_estimated') and sd_object.baz_estimated is not None:
+                if isinstance(sd_object.baz_estimated, dict):
                     # Try to get baz for the current wave_type
-                    baz_val = sd.baz_estimated.get(wave_type.lower(), None)
+                    baz_val = sd_object.baz_estimated.get(wave_type.lower(), None)
                     if baz_val is None:
                         # Try any available baz value
-                        baz_val = next(iter(sd.baz_estimated.values()), None)
+                        baz_val = next(iter(sd_object.baz_estimated.values()), None)
                     baz = baz_val
                 else:
-                    baz = sd.baz_estimated
+                    baz = sd_object.baz_estimated
             # Try event_info
-            elif hasattr(sd, 'event_info') and sd.event_info is not None:
-                if isinstance(sd.event_info, dict) and 'backazimuth' in sd.event_info:
-                    baz = sd.event_info['backazimuth']
+            elif hasattr(sd_object, 'event_info') and sd_object.event_info is not None:
+                if isinstance(sd_object.event_info, dict) and 'backazimuth' in sd_object.event_info:
+                    baz = sd_object.event_info['backazimuth']
         
         # Extract distance if not provided
         if distance is None:
             # Try event_info
-            if hasattr(sd, 'event_info') and sd.event_info is not None:
-                if isinstance(sd.event_info, dict):
-                    if 'distance_km' in sd.event_info:
-                        distance = sd.event_info['distance_km']
+            if hasattr(sd_object, 'event_info') and sd_object.event_info is not None:
+                if isinstance(sd_object.event_info, dict):
+                    if 'distance_km' in sd_object.event_info:
+                        distance = sd_object.event_info['distance_km']
     
     # Validate that we have required streams
     if rot0 is None or acc0 is None:
-        raise ValueError("Either provide rot0 and acc0 directly, or provide sd (sixdegrees object)")
+        raise ValueError("Either provide rot0 and acc0 directly, or provide sd_object (sixdegrees object)")
     
     # Validate that we have baz
     if baz is None:

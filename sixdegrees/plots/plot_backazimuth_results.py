@@ -103,12 +103,43 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         ccc = baz_results['cc_max']
         baz = baz_results['baz_max']
     
+    # Convert to numpy arrays if not already
+    time = np.asarray(time)
+    baz = np.asarray(baz)
+    ccc = np.asarray(ccc)
+    
     # apply cc threshold if provided
     if cc_threshold is not None:
         mask = ccc > cc_threshold
         time = time[mask]
         baz = baz[mask]
         cc = ccc[mask]
+    else:
+        cc = ccc
+    
+    # Check for empty or all-NaN backazimuth estimates
+    valid_mask = ~np.isnan(baz)
+    if len(baz) == 0 or not np.any(valid_mask):
+        # Handle empty or all-NaN case
+        print(f"Warning: No valid backazimuth estimates found for {wave_type} waves.")
+        if len(baz) == 0:
+            print("  Backazimuth array is empty.")
+        else:
+            print(f"  All {len(baz)} backazimuth estimates are NaN.")
+        
+        # Create empty arrays for plotting
+        time = np.array([])
+        baz = np.array([])
+        cc = np.array([])
+        has_valid_data = False
+    else:
+        # Filter out NaN values
+        if not np.all(valid_mask):
+            print(f"Warning: {np.sum(~valid_mask)} NaN backazimuth estimates filtered out.")
+            time = time[valid_mask]
+            baz = baz[valid_mask]
+            cc = cc[valid_mask]
+        has_valid_data = True
 
     # Plot transverse components
     times = acc.select(channel="*HZ")[0].times()
@@ -141,23 +172,36 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
     ax_wave2.set_ylabel(f"Rotation rate ({rot_unit})", color="darkred", fontsize=font)
     ax_wave2.legend(loc=4)
     
-    # Plot backazimuth estimates
-    cmap = plt.get_cmap("viridis", 10)
-    scatter = ax_baz.scatter(
-        time,
-        baz,
-        c=cc,
-        s=50,
-        cmap=cmap,
-        edgecolors="k",
-        lw=1,
-        vmin=0,
-        vmax=1,
-        zorder=2
-    )
-    
-    if terr:
-        ax_baz.errorbar(time, baz, xerr=baz_results['parameters']['baz_win_sec']/2, fmt='.', color='gray', alpha=0.6, zorder=0)
+    # Plot backazimuth estimates (only if we have valid data)
+    if has_valid_data and len(baz) > 0:
+        cmap = plt.get_cmap("viridis", 10)
+        scatter = ax_baz.scatter(
+            time,
+            baz,
+            c=cc,
+            s=50,
+            cmap=cmap,
+            edgecolors="k",
+            lw=1,
+            vmin=0,
+            vmax=1,
+            zorder=2
+        )
+        
+        if terr:
+            try:
+                xerr = baz_results.get('parameters', {}).get('baz_win_sec', None)
+                if xerr is not None:
+                    ax_baz.errorbar(time, baz, xerr=xerr/2, fmt='.', color='gray', alpha=0.6, zorder=0)
+            except (KeyError, TypeError):
+                pass  # Skip errorbar if parameters are missing
+    else:
+        # Create a dummy scatter for colorbar (will be empty)
+        cmap = plt.get_cmap("viridis", 10)
+        scatter = ax_baz.scatter([], [], c=[], s=50, cmap=cmap, edgecolors="k", lw=1, vmin=0, vmax=1)
+        ax_baz.text(0.5, 0.5, 'No valid backazimuth estimates', 
+                   transform=ax_baz.transAxes, ha='center', va='center', 
+                   fontsize=font+2, color='red', weight='bold')
     
     # Configure backazimuth axis
     ax_baz.set_ylim(-5, 365)
@@ -179,41 +223,53 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
                         [min(times), min(times)],
                         color='grey', alpha=0.5, zorder=1)
 
-    # Compute statistics
-    deltaa = 10
-    angles1 = arange(0, 365, deltaa)
+    # Compute statistics (only if we have valid data)
+    got_kde = False
+    kde_stats = None
+    
+    if has_valid_data and len(baz) > 0:
+        deltaa = 10
+        angles1 = arange(0, 365, deltaa)
 
-    # Compute histogram
-    hist = histogram(
-        baz,
-        bins=len(angles1)-1,
-        range=[min(angles1), max(angles1)], 
-        weights=cc, 
-        density=True
-    )
+        # Compute histogram
+        hist = histogram(
+            baz,
+            bins=len(angles1)-1,
+            range=[min(angles1), max(angles1)], 
+            weights=cc, 
+            density=True
+        )
 
-    # get kde stats
-    try:
-        kde_stats = sd.get_kde_stats(baz, cc, _baz_steps=0.5, Ndegree=60, plot=False)
-        # get max and std
-        baz_max = kde_stats['baz_estimate']
-        baz_std = kde_stats['kde_dev']
-        print(f"baz_max = {baz_max}, baz_std = {baz_std}")
-        got_kde = True
-    except:
-        got_kde = False
+        # get kde stats
+        try:
+            kde_stats = sd.get_kde_stats(baz, cc, _baz_steps=0.5, Ndegree=60, plot=False)
+            # get max and std
+            baz_max = kde_stats['baz_estimate']
+            baz_std = kde_stats['kde_dev']
+            print(f"baz_max = {baz_max}, baz_std = {baz_std}")
+            got_kde = True
+        except Exception as e:
+            got_kde = False
+            if hasattr(sd, 'verbose') and sd.verbose:
+                print(f"Could not compute KDE stats: {e}")
 
-    # Add histogram
-    # ax_hist2.plot(kernel_density(np.linspace(0, 360, 100)), np.linspace(0, 360, 100), 'k-', lw=2)
-    ax_hist.hist(baz, bins=len(angles1)-1, range=[min(angles1), max(angles1)],
-                    weights=cc, orientation="horizontal", density=True, color="grey")
-    if got_kde:
-        ax_hist.plot(kde_stats['kde_values'],
-                    kde_stats['kde_angles'],
-                    c="k",
-                    lw=2,
-                    label='KDE'
-                    )
+        # Add histogram
+        # ax_hist2.plot(kernel_density(np.linspace(0, 360, 100)), np.linspace(0, 360, 100), 'k-', lw=2)
+        ax_hist.hist(baz, bins=len(angles1)-1, range=[min(angles1), max(angles1)],
+                        weights=cc, orientation="horizontal", density=True, color="grey")
+        if got_kde and kde_stats is not None:
+            ax_hist.plot(kde_stats['kde_values'],
+                        kde_stats['kde_angles'],
+                        c="k",
+                        lw=2,
+                        label='KDE'
+                        )
+    else:
+        # Create empty histogram with proper range
+        deltaa = 10
+        angles1 = arange(0, 365, deltaa)
+        ax_hist.hist([], bins=len(angles1)-1, range=[min(angles1), max(angles1)],
+                    orientation="horizontal", density=True, color="grey")
     ax_hist.set_ylim(-5, 365)
     ax_hist.invert_xaxis()
     ax_hist.set_axis_off()
@@ -234,8 +290,13 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         title += f" | CC > {cc_threshold}"
     if baz_theo is not None:
         title += f" | Theo. BAz = {round(baz_theo, 1)}°"
-    if baz_results['parameters']['baz_win_sec'] is not None:
-        title += f" | T = {baz_results['parameters']['baz_win_sec']} s ({baz_results['parameters']['baz_win_overlap']*100}%)"
+    try:
+        baz_win_sec = baz_results.get('parameters', {}).get('baz_win_sec', None)
+        baz_win_overlap = baz_results.get('parameters', {}).get('baz_win_overlap', None)
+        if baz_win_sec is not None and baz_win_overlap is not None:
+            title += f" | T = {baz_win_sec} s ({baz_win_overlap*100}%)"
+    except (KeyError, TypeError):
+        pass  # Skip if parameters are missing
     fig.suptitle(title, fontsize=font+2, y=0.93)
     
     ax_baz.set_xlabel("Time (s)", fontsize=font)
