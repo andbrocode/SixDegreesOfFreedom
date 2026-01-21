@@ -2978,7 +2978,7 @@ class sixdegrees():
                 xshift, cc_max = xcorr_max(ccorr)
 
                 # if correlation positive add 180 degrees
-                if cc_max > 0:
+                if cc_max < 0:  # cc_max > 0: #  changed after removing the polarity reversal above 
                     baz0 += 180
 
                 # take absolute value of correlation for better visualization
