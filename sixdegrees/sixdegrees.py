@@ -2817,16 +2817,16 @@ class sixdegrees():
         else:
             raise ValueError("no rotation or translation data provided")
 
-        if wave_type.lower() == "tangent":
-            # revert polarity if applied
-            if hasattr(self, 'pol_applied') and self.pol_applied:
-                if hasattr(self, 'pol_dict') and self.pol_dict is not None:
-                    for tr in ACC.select(channel="*Z"):
-                        if tr.stats.channel[1:] in self.pol_dict:
-                            tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
-                    for tr in ROT.select(channel="*Z"):
-                        if tr.stats.channel[1:] in self.pol_dict:
-                            tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
+        # if wave_type.lower() == "tangent":
+        #     # revert polarity if applied
+        #     if hasattr(self, 'pol_applied') and self.pol_applied:
+        #         if hasattr(self, 'pol_dict') and self.pol_dict is not None:
+        #             for tr in ACC.select(channel="*Z"):
+        #                 if tr.stats.channel[1:] in self.pol_dict:
+        #                     tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
+        #             for tr in ROT.select(channel="*Z"):
+        #                 if tr.stats.channel[1:] in self.pol_dict:
+        #                     tr.data = tr.data * self.pol_dict[tr.stats.channel[1:]]
 
         # sampling rate
         df = ROT[0].stats.sampling_rate
@@ -4198,7 +4198,7 @@ class sixdegrees():
     def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
                                   baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
                                   cc_threshold: float=0, cc_method: str='max', plot: bool=False, output: bool=False,
-                                  precomputed: bool=True) -> Tuple[plt.Figure, Dict]:
+                                  precomputed: bool=True, wave_types: list=None) -> Tuple[plt.Figure, Dict]:
         """
         Compare different backazimuth estimation methods
         
@@ -4228,6 +4228,9 @@ class sixdegrees():
             Invert vertical acceleration component if True
         cc_method : str, optional
             Method to use for cross-correlation coefficient thresholding ('max' or 'mid')
+        wave_types : list, optional
+            List of wave types to show. Options: 'love', 'rayleigh', 'tangent'. 
+            Default is None which shows all wave types.
         Returns:
         --------
         Tuple[Figure, Dict] or Dict
@@ -4239,6 +4242,17 @@ class sixdegrees():
         from numpy import ones, linspace, histogram, concatenate, average
         from numpy import argmax, sqrt, cov, array, arange, nan
         
+        # Set default wave types if not provided
+        if wave_types is None:
+            wave_types = ['love', 'rayleigh', 'tangent']
+        else:
+            # Validate wave_types
+            valid_wave_types = ['love', 'rayleigh', 'tangent']
+            wave_types = [wt.lower() for wt in wave_types]
+            invalid_types = [wt for wt in wave_types if wt not in valid_wave_types]
+            if invalid_types:
+                raise ValueError(f"Invalid wave_types: {invalid_types}. Valid options are: {valid_wave_types}")
+        
         # Get and process streams
         rot = self.get_stream("rotation").copy()
         acc = self.get_stream("translation").copy()
@@ -4249,21 +4263,20 @@ class sixdegrees():
         
         # Create figure if plotting
         if plot:
-            fig = plt.figure(figsize=(15, 10))
-            gs = GridSpec(3, 8, figure=fig)
+            n_plots = len(wave_types)
+            fig = plt.figure(figsize=(15, 3.5 * n_plots))
+            gs = GridSpec(n_plots, 8, figure=fig)
             
-            # Create subplots
-            ax1 = fig.add_subplot(gs[0, :8])  # Love wave BAZ
-            ax11 = fig.add_subplot(gs[0, 7:])  # Love wave histogram
-            ax11.set_axis_off()
-            
-            ax2 = fig.add_subplot(gs[1, :8])  # Rayleigh wave BAZ
-            ax22 = fig.add_subplot(gs[1, 7:])  # Rayleigh wave histogram
-            ax22.set_axis_off()
-            
-            ax3 = fig.add_subplot(gs[2, :8])  # Tangent BAZ
-            ax33 = fig.add_subplot(gs[2, 7:])  # Tangent histogram
-            ax33.set_axis_off()
+            # Create subplots dynamically based on wave_types
+            axes_dict = {}
+            for idx, wave_type in enumerate(['love', 'rayleigh', 'tangent']):
+                if wave_type in wave_types:
+                    plot_idx = wave_types.index(wave_type)
+                    axes_dict[wave_type] = {
+                        'main': fig.add_subplot(gs[plot_idx, :8]),
+                        'hist': fig.add_subplot(gs[plot_idx, 7:])
+                    }
+                    axes_dict[wave_type]['hist'].set_axis_off()
             
             # Create color map
             cmap = plt.get_cmap("viridis", 10)
@@ -4275,8 +4288,14 @@ class sixdegrees():
         angles2 = arange(0, 365, 1)
         t1, t2 = 0, rot[0].stats.endtime - rot[0].stats.starttime
         
+        # Initialize scatter for colorbar (only needed for love/rayleigh)
+        scatter = None
+        
         # Process each wave type
         for wave_type, label in [('love', 'Love'), ('rayleigh', 'Rayleigh'), ('tangent', 'Tangent')]:
+            # Skip if wave_type not in requested list
+            if wave_type not in wave_types:
+                continue
             
             # Compute backazimuth for each wave type
 
@@ -4334,9 +4353,12 @@ class sixdegrees():
             }
             
             if plot:
+                # Get the appropriate axes for this wave type
+                ax = axes_dict[wave_type]['main']
+                
                 # Plot results for each wave type
                 if wave_type == 'love':
-                    scatter = ax1.scatter(
+                    scatter = ax.scatter(
                         times_filtered,
                         baz_filtered,
                         c=cc_filtered,
@@ -4350,7 +4372,7 @@ class sixdegrees():
                         zorder=3
                     )
                 elif wave_type == 'rayleigh':
-                    scatter = ax2.scatter(
+                    scatter = ax.scatter(
                         times_filtered,
                         baz_filtered,
                         c=cc_filtered,
@@ -4364,7 +4386,7 @@ class sixdegrees():
                         zorder=3
                     )
                 else:  # tangent
-                    ax3.scatter(
+                    ax.scatter(
                         wave_results['twin_center'][wave_results['cc_max'] > cc_threshold], 
                         wave_results['baz_max'][wave_results['cc_max'] > cc_threshold],
                         c='tab:blue',
@@ -4374,7 +4396,7 @@ class sixdegrees():
                         lw=1,
                         zorder=3
                     )
-                    ax3.scatter(
+                    ax.scatter(
                         wave_results['twin_center'][wave_results['cc_max'] < -cc_threshold], 
                         wave_results['baz_max'][wave_results['cc_max'] < -cc_threshold],
                         c='tab:orange',
@@ -4414,24 +4436,47 @@ class sixdegrees():
         if plot:
 
             # add histograms and KDEs to subplots
-            for ax, ax_hist, label in [(ax1, ax11, "love"), (ax2, ax22, "rayleigh"), (ax3, ax33, "tangent")]:
-                if len(baz_filtered) > 0:
-                    ax_hist.hist(results_dict[label]['backazimuth'], 
-                                bins=len(angles1)-1,
-                                range=[min(angles1), max(angles1)],
-                                weights=results_dict[label]['correlation'],
-                                orientation="horizontal", density=True, color="grey")
-                    if len(baz_filtered) > 5:
-                        ax_hist.plot(results_dict[label]['kde'],
-                                    results_dict[label]['kde_angles'],
-                                    color='k', lw=3)
+            for wave_type in wave_types:
+                label = wave_type
+                ax = axes_dict[wave_type]['main']
+                ax_hist = axes_dict[wave_type]['hist']
+                
+                # Get filtered data for this wave type
+                baz_filtered_current = results_dict[label]['backazimuth']
+                
+                if len(baz_filtered_current) > 0:
+                    try:
+                        ax_hist.hist(results_dict[label]['backazimuth'], 
+                                    bins=len(angles1)-1,
+                                    range=[min(angles1), max(angles1)],
+                                    weights=results_dict[label]['correlation'],
+                                    orientation="horizontal", density=True, color="grey")
+                    except Exception:
+                        # Skip histogram if there's an issue (e.g., all weights are zero)
+                        pass
+                    
+                    # Check if KDE exists before plotting
+                    if (len(baz_filtered_current) > 5 and 
+                        'kde' in results_dict[label] and 
+                        'kde_angles' in results_dict[label] and
+                        results_dict[label].get('kde') is not None and
+                        results_dict[label].get('kde_angles') is not None):
+                        try:
+                            ax_hist.plot(results_dict[label]['kde'],
+                                        results_dict[label]['kde_angles'],
+                                        color='k', lw=3)
+                        except (KeyError, TypeError, ValueError):
+                            # Skip KDE plot if data is missing or invalid
+                            pass
+                    
                     ax_hist.yaxis.tick_right()
                     ax_hist.invert_xaxis()
                     ax_hist.set_ylim(-5, 365)
 
             # Add theoretical BAZ if provided
             if baz_theo is not None:
-                for ax in [ax1, ax2, ax3]:
+                for wave_type in wave_types:
+                    ax = axes_dict[wave_type]['main']
                     ax.plot([t1, t2], [baz_theo, baz_theo], color='k', ls='--', label='Theoretical BAZ')
                     ax.fill_between([t1, t2], 
                                   baz_theo-baz_theo_margin,
@@ -4439,7 +4484,8 @@ class sixdegrees():
                                   color='grey', alpha=0.3, zorder=1)
             
             # Configure axes
-            for ax in [ax1, ax2, ax3]:
+            for wave_type in wave_types:
+                ax = axes_dict[wave_type]['main']
                 ax.set_ylim(-5, 365)
                 ax.set_yticks(range(0, 360+60, 60))
                 ax.grid(True, alpha=0.3)
@@ -4448,17 +4494,22 @@ class sixdegrees():
                     ax.minorticks_on()
             
             # Add labels
-            ax1.set_title(f"Love Wave BAZ (estimated = {baz_estimated['love']}°)", fontsize=font)
-            ax2.set_title(f"Rayleigh Wave BAZ (estimated = {baz_estimated['rayleigh']}°)", fontsize=font)
-            ax3.set_title(f"Tangent BAZ (estimated = {baz_estimated['tangent']}°)", fontsize=font)
-            ax3.set_xlabel("Time (s)", fontsize=font)
-            
-            for ax in [ax1, ax2, ax3]:
+            title_map = {'love': 'Love', 'rayleigh': 'Rayleigh', 'tangent': 'Tangent'}
+            for wave_type in wave_types:
+                ax = axes_dict[wave_type]['main']
+                baz_val = baz_estimated.get(wave_type, nan)
+                title = f"{title_map[wave_type]} Wave BAZ (estimated = {baz_val}°)"
+                ax.set_title(title, fontsize=font)
                 ax.set_ylabel("BAZ (°)", fontsize=font)
             
-            # Add colorbar
-            cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-            plt.colorbar(scatter, cax=cbar_ax, label='CC coefficient')
+            # Set xlabel on last axis
+            if wave_types:
+                axes_dict[wave_types[-1]]['main'].set_xlabel("Time (s)", fontsize=font)
+            
+            # Add colorbar (only if there are scatter plots with colorbar)
+            if scatter is not None:
+                cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+                plt.colorbar(scatter, cax=cbar_ax, label='CC coefficient')
             
             # Add title
             title = f"{rot[0].stats.starttime.date} {str(rot[0].stats.starttime.time).split('.')[0]} UTC"
