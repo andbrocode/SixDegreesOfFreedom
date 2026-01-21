@@ -2959,7 +2959,7 @@ class sixdegrees():
                         0, demean=True, normalize='naive', method='auto'
                     )
 
-                # remove 180° ambiguity using closest to theoretical backazimuth
+                # remove 180° ambiguity using closest to theoretical backazimuth for acceleration components
                 else:
                     if self.event_info and 'backazimuth' in self.event_info:
                         # compute rmse of baz0 and self.event_info['backazimuth']
@@ -4198,7 +4198,7 @@ class sixdegrees():
     def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
                                   baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
                                   cc_threshold: float=0, cc_method: str='max', plot: bool=False, output: bool=False,
-                                  precomputed: bool=True, wave_types: list=None) -> Tuple[plt.Figure, Dict]:
+                                  precomputed: bool=True, wave_types: list=None, colorcode_tangent: bool=True) -> Tuple[plt.Figure, Dict]:
         """
         Compare different backazimuth estimation methods
         
@@ -4231,6 +4231,8 @@ class sixdegrees():
         wave_types : list, optional
             List of wave types to show. Options: 'love', 'rayleigh', 'tangent'. 
             Default is None which shows all wave types.
+        colorcode_tangent : bool, optional
+            Colorcode tangent method if True, otherwise use blue color
         Returns:
         --------
         Tuple[Figure, Dict] or Dict
@@ -4386,26 +4388,32 @@ class sixdegrees():
                         zorder=3
                     )
                 else:  # tangent
-                    ax.scatter(
-                        wave_results['twin_center'][wave_results['cc_max'] > cc_threshold], 
-                        wave_results['baz_max'][wave_results['cc_max'] > cc_threshold],
-                        c='tab:blue',
-                        s=70,
-                        alpha=0.7,
-                        edgecolors="k",
-                        lw=1,
-                        zorder=3
-                    )
-                    ax.scatter(
-                        wave_results['twin_center'][wave_results['cc_max'] < -cc_threshold], 
-                        wave_results['baz_max'][wave_results['cc_max'] < -cc_threshold],
-                        c='tab:orange',
-                        s=70,
-                        alpha=0.7,
-                        edgecolors="k",
-                        lw=1,
-                        zorder=3
-                    )
+                    if colorcode_tangent:
+                        ax.scatter(
+                            wave_results['twin_center'][wave_results['cc_max'] > cc_threshold], 
+                            wave_results['baz_max'][wave_results['cc_max'] > cc_threshold],
+                            c=cc_filtered,
+                            cmap=cmap,
+                            s=70,
+                            alpha=0.7,
+                            vmin=0,
+                            vmax=1,
+                            edgecolors="k",
+                            lw=1,
+                            zorder=3
+                         )
+                    else:
+                        ax.scatter(
+                            wave_results['twin_center'][wave_results['cc_max'] > cc_threshold], 
+                            wave_results['baz_max'][wave_results['cc_max'] > cc_threshold],
+                            c='tab:blue',
+                            s=70,
+                            alpha=0.7,
+                            edgecolors="k",
+                            lw=1,
+                            zorder=3
+                        )
+
                 try:
                     # Compute and plot histogram
                     hist = histogram(baz_filtered,
