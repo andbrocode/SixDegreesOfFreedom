@@ -17,12 +17,14 @@ def plot_filtered_traces_frequency_bands(
     wave_type: str = "rayleigh",
     fmin: Optional[float] = None,
     fmax: Optional[float] = None,
+    fraction_of_octave: int = 1,
     frequency_bands: Optional[List[Tuple[float, float]]] = None,
     baz: Optional[float] = None,
     unitscale: str = "nano",
     figsize: Optional[Tuple[float, float]] = None,
     title: Optional[str] = None,
-    raw: bool = True
+    raw: bool = True,
+    output: bool = False
 ) -> plt.Figure:
     """
     Plot filtered traces in frequency bands for Rayleigh or Love waves.
@@ -46,6 +48,8 @@ def plot_filtered_traces_frequency_bands(
         Minimum frequency for octave band generation. Required if frequency_bands is not provided.
     fmax : float, optional
         Maximum frequency for octave band generation. Required if frequency_bands is not provided.
+    fraction_of_octave : int, optional
+        Fraction of octave for octave band generation. If not provided, uses 1 (octaves).
     frequency_bands : list of tuples, optional
         List of (fmin, fmax) tuples for frequency bands. If provided, overrides fmin/fmax.
     baz : float, optional
@@ -58,7 +62,8 @@ def plot_filtered_traces_frequency_bands(
         Custom title for the plot. If None, generates automatic title.
     raw : bool
         If True and sd_object is provided, uses raw (unfiltered) stream data.
-        
+    output : bool
+        If True, returns a dictionary with velocities and frequencies.
     Returns:
     --------
     fig : plt.Figure
@@ -120,7 +125,7 @@ def plot_filtered_traces_frequency_bands(
         
         # Generate octave bands using sd_object method if available
         if sd_object is not None and hasattr(sd_object, 'get_octave_bands'):
-            f_lower, f_upper, f_center = sd_object.get_octave_bands(fmin=fmin, fmax=fmax, faction_of_octave=1)
+            f_lower, f_upper, f_center = sd_object.get_octave_bands(fmin=fmin, fmax=fmax, faction_of_octave=fraction_of_octave)
             frequency_bands = [(fl, fu) for fl, fu in zip(f_lower, f_upper)]
         else:
             # Simple octave band generation if sd_object method not available
@@ -155,20 +160,30 @@ def plot_filtered_traces_frequency_bands(
     if n_bands == 1:
         axes = [axes]
     
-    plt.subplots_adjust(hspace=0.15)
+    plt.subplots_adjust(hspace=0.0)
     
     # Plot settings
     font = 12
-    lw = 1.0
+    lw = 0.8
     
     # Get sampling rate
     dt = rot[0].stats.delta
     times = rot[0].times()
     
+    out = {}
+    out['velocities'] = np.ones(len(frequency_bands))*np.nan
+    out['frequencies'] = np.ones(len(frequency_bands))*np.nan
+
     # Process each frequency band
     for i, (fl, fu) in enumerate(frequency_bands):
         ax = axes[i]
         
+        # Remove bottom and top spines
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+
         # Filter streams for this frequency band
         rot_filtered = rot.copy()
         acc_filtered = acc.copy()
@@ -176,10 +191,11 @@ def plot_filtered_traces_frequency_bands(
         # Detrend and taper before filtering
         rot_filtered.detrend('linear')
         rot_filtered.detrend('demean')
-        rot_filtered.taper(0.05, type='cosine')
+        rot_filtered.taper(0.02, type='cosine')
+
         acc_filtered.detrend('linear')
         acc_filtered.detrend('demean')
-        acc_filtered.taper(0.05, type='cosine')
+        acc_filtered.taper(0.02, type='cosine')
         
         # Apply bandpass filter
         rot_filtered.filter('bandpass', freqmin=fl, freqmax=fu, corners=4, zerophase=True)
@@ -199,13 +215,29 @@ def plot_filtered_traces_frequency_bands(
             acc_z_scaled = acc_z * acc_scaling
             rot_t_scaled = rot_t * rot_scaling
             
+            # Linear regression with only slope: tra = slope * rot
+            # Calculate slope: slope = sum(tra * rot) / sum(rot * rot)
+            slope = np.sum(acc_z_scaled * rot_t_scaled) / np.sum(rot_t_scaled * rot_t_scaled)
+            
+            out['velocities'][i] = slope*1e3
+            out['frequencies'][i] = np.sqrt(2)*fu
+
+            # Scale rotation data by the slope
+            rot_t_scaled = rot_t_scaled * slope
+            
             # Plot velocity (black) on left axis
             ax.plot(times, acc_z_scaled, color="black", lw=lw, label=f"v_Z")
             
             # Plot rotation (red) on right axis
             ax2 = ax.twinx()
             ax2.plot(times, rot_t_scaled, color="red", lw=lw, label=f"r_H")
-            
+                        
+            # Remove bottom and top spines
+            ax2.spines['bottom'].set_visible(False)
+            ax2.spines['top'].set_visible(False)
+            ax2.spines['right'].set_visible(False)
+            ax2.spines['left'].set_visible(False)
+
             # Get max values for symmetric ylim
             acc_max = max([abs(np.min(acc_z_scaled)), abs(np.max(acc_z_scaled))])
             rot_max = max([abs(np.min(rot_t_scaled)), abs(np.max(rot_t_scaled))])
@@ -220,12 +252,16 @@ def plot_filtered_traces_frequency_bands(
             else:
                 ax2.set_ylim(-1, 1)  # Default range if all zeros
             
-            # Add zero line for clarity
-            ax.axhline(0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5, zorder=0)
+            # Remove y-axis labels and ticks
+            ax.set_ylabel("")
+            ax2.set_ylabel("")
+            ax.set_yticks([])
+            ax2.set_yticks([])
             
-            # Set labels
-            ax.set_ylabel(f"velocity [{acc_unit}]", fontsize=font, color="black")
-            ax2.set_ylabel(f"angle [{rot_unit}]", fontsize=font, color="red")
+            # Show scale factor as text
+            ax.text(0.02, 0.8, f"scale: {slope*1e3:.0f} m/s", 
+                    transform=ax.transAxes, fontsize=font-2,
+                    rotation=0, va='center', ha='left')
             
         elif wave_type == "love":
             # Love: vertical rotation (rot_z) vs horizontal velocity (acc_t)
@@ -240,12 +276,28 @@ def plot_filtered_traces_frequency_bands(
             rot_z_scaled = rot_z * rot_scaling
             acc_t_scaled = acc_t * acc_scaling
             
+            # Linear regression with only slope: tra = slope * rot
+            # Calculate slope: slope = sum(tra * rot) / sum(rot * rot)
+            slope = np.sum(acc_t_scaled * rot_z_scaled) / np.sum(rot_z_scaled * rot_z_scaled)
+
+            out['velocities'][i] = slope*1e3
+            out['frequencies'][i] = np.sqrt(2)*fu
+            
+            # Scale rotation data by the slope
+            rot_z_scaled = rot_z_scaled * slope
+            
             # Plot velocity (black) on left axis
             ax.plot(times, acc_t_scaled, color="black", lw=lw, label=f"v_H")
             
             # Plot rotation (red) on right axis
             ax2 = ax.twinx()
             ax2.plot(times, rot_z_scaled, color="red", lw=lw, label=f"r_Z")
+            
+            # Remove bottom and top spines
+            ax2.spines['bottom'].set_visible(False)
+            ax2.spines['top'].set_visible(False)
+            ax2.spines['right'].set_visible(False)
+            ax2.spines['left'].set_visible(False)
             
             # Get max values for symmetric ylim
             acc_max = max([abs(np.min(acc_t_scaled)), abs(np.max(acc_t_scaled))])
@@ -261,16 +313,20 @@ def plot_filtered_traces_frequency_bands(
             else:
                 ax2.set_ylim(-1, 1)  # Default range if all zeros
             
-            # Add zero line for clarity
-            ax.axhline(0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5, zorder=0)
+            # Remove y-axis labels and ticks
+            ax.set_ylabel("")
+            ax2.set_ylabel("")
+            ax.set_yticks([])
+            ax2.set_yticks([])
             
-            # Set labels
-            ax.set_ylabel(f"velocity [{acc_unit}]", fontsize=font, color="black")
-            ax2.set_ylabel(f"angle [{rot_unit}]", fontsize=font, color="red")
+            # Show scale factor as text
+            ax.text(0.02, 0.8, f"scale: {slope*1e3:.0f} m/s", 
+                    transform=ax.transAxes, fontsize=font-2,
+                    rotation=0, va='center', ha='left')
         
         # Set x-axis label only on bottom subplot
         if i == n_bands - 1:
-            ax.set_xlabel("Time [s]", fontsize=font)
+            ax.set_xlabel("Time (s)", fontsize=font)
         
         # Add frequency band label on the right
         # Format frequency based on magnitude
@@ -288,31 +344,32 @@ def plot_filtered_traces_frequency_bands(
         else:
             fu_str = f"{fu:.1f}"
         
-        ax.text(1.02, 0.5, f"{fl_str}-{fu_str} Hz", 
+        ax.text(0.99, 0.8, f"{fl_str}-{fu_str} Hz", 
                 transform=ax.transAxes, fontsize=font-2,
-                rotation=0, va='center', ha='left')
-        
-        # Set tick colors
-        ax.tick_params(axis='y', labelcolor='black')
-        ax2.tick_params(axis='y', labelcolor='red')
+                rotation=0, va='center', ha='right')
         
         # Add grid
-        ax.grid(True, which='both', ls='--', alpha=0.3)
-        ax.xaxis.set_minor_locator(AutoMinorLocator())
-        ax.yaxis.set_minor_locator(AutoMinorLocator())
+        # ax.grid(True, which='both', ls='--', alpha=0.3)
+        # ax.xaxis.set_minor_locator(AutoMinorLocator())
+        # ax.yaxis.set_minor_locator(AutoMinorLocator())
     
+    ax.spines['bottom'].set_visible(True)
+
     # Set title
     if title is None:
         # Generate automatic title
         start_time = acc[0].stats.starttime
         title = f"{wave_type.capitalize()} waves"
         if baz is not None:
-            title += f" | BAZ = {baz:.1f}°"
+            title += f" | BAz = {baz:.1f}°"
         title += f" | {start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC"
     
-    fig.suptitle(title, fontsize=font+2, y=0.995)
+    fig.suptitle(title, fontsize=font+2, y=0.93)
     
-    return fig
+    if output:
+        return fig, out
+    else:
+        return fig
 
 
 def _generate_octave_bands(fmin: float, fmax: float) -> List[Tuple[float, float]]:
