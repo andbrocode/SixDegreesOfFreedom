@@ -191,11 +191,11 @@ def plot_filtered_traces_frequency_bands(
         # Detrend and taper before filtering
         rot_filtered.detrend('linear')
         rot_filtered.detrend('demean')
-        rot_filtered.taper(0.02, type='cosine')
+        rot_filtered.taper(0.05, type='cosine')
 
         acc_filtered.detrend('linear')
         acc_filtered.detrend('demean')
-        acc_filtered.taper(0.02, type='cosine')
+        acc_filtered.taper(0.05, type='cosine')
         
         # Apply bandpass filter
         rot_filtered.filter('bandpass', freqmin=fl, freqmax=fu, corners=4, zerophase=True)

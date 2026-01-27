@@ -3,12 +3,13 @@ Functions for plotting velocity estimation results.
 """
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from typing import Tuple
 import numpy as np
 from obspy.signal.rotate import rotate_ne_rt
 from typing import Dict, Optional
 
 def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None, 
-                   minors: bool=True, cc_threshold: Optional[float]=None) -> plt.Figure:
+                   minors: bool=True, cc_threshold: Optional[float]=None, figsize: Optional[Tuple[float, float]]=(12, 8)) -> plt.Figure:
     """
     Plot waveforms and velocity estimates
     
@@ -24,7 +25,8 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
         Add minor ticks to axes if True
     cc_threshold : float, optional
         Minimum cross-correlation coefficient threshold
-        
+    figsize : Tuple[float, float], optional
+        Figure size (width, height) in inches (default: (12, 8))
     Returns:
     --------
     matplotlib.figure.Figure
@@ -32,7 +34,7 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     wave_type = velocity_results['parameters']['wave_type'].lower()
 
     # Create figure
-    fig = plt.figure(figsize=(15, 8))
+    fig = plt.figure(figsize=sfigsize)
     gs = GridSpec(4, 8, figure=fig, hspace=0.2)
     
     # Create subplots
@@ -59,19 +61,35 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     for tr in rot:
         tr.data *= rot_scale
 
+    # Get backazimuth for rotation
+    # Check if baz is in parameters, otherwise use median of backazimuth array
+    if 'baz' in velocity_results['parameters']:
+        baz = velocity_results['parameters']['baz']
+    elif 'backazimuth' in velocity_results and len(velocity_results['backazimuth']) > 0:
+        # Use median of backazimuth array for rotation
+        baz = np.nanmedian(velocity_results['backazimuth'])
+    else:
+        # Fallback: try to get from sd object
+        if hasattr(sd, 'theoretical_baz'):
+            baz = sd.theoretical_baz
+        elif hasattr(sd, 'event_info') and 'backazimuth' in sd.event_info:
+            baz = sd.event_info['backazimuth']
+        else:
+            raise ValueError("No backazimuth available for rotation. Provide 'baz' in parameters or 'backazimuth' in results.")
+    
     # rotate waveforms
     if wave_type == "love":
         rot_z = 2*rot.select(channel="*Z")[0].data # times two for velocity scaling (plotting only)
         acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data,
                                    acc.select(channel="*E")[0].data,
-                                   velocity_results['parameters']['baz'])
+                                   baz)
         
 
     elif wave_type == "rayleigh":
         acc_z = acc.select(channel="*Z")[0].data
         rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data,
                                    rot.select(channel="*E")[0].data,
-                                   velocity_results['parameters']['baz'])
+                                   baz)
 
     # Check if we have any data to plot
     if len(velocity_results['time']) == 0:
