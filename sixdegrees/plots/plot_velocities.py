@@ -34,7 +34,7 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     wave_type = velocity_results['parameters']['wave_type'].lower()
 
     # Create figure
-    fig = plt.figure(figsize=sfigsize)
+    fig = plt.figure(figsize=figsize)
     gs = GridSpec(4, 8, figure=fig, hspace=0.2)
     
     # Create subplots
