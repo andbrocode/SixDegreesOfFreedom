@@ -3721,10 +3721,10 @@ class sixdegrees():
         
         Parameters:
         -----------
-        rotation_data : Stream
-            Rotational data stream
-        translation_data : Stream
-            Translation data stream
+        rotation_data : Stream, optional
+            Rotational data stream (if None, uses self.get_stream("rotation", raw=True))
+        translation_data : Stream, optional
+            Translation data stream (if None, uses self.get_stream("translation", raw=True))
         wave_type : str
             Type of wave to analyze ('love' or 'rayleigh')
         baz_results : Dict
@@ -3732,7 +3732,7 @@ class sixdegrees():
         baz_mode : str
             Mode to use for backazimuth selection ('max' or 'mid')
         method : str
-            Method to use for velocity computation ('odr' or 'ransac')
+            Method to use for velocity computation ('odr', 'ransac', or 'theilsen')
         cc_threshold : float, optional
             Minimum cross-correlation coefficient to consider, by default 0.0
         r_squared_threshold : float, optional
@@ -3747,9 +3747,9 @@ class sixdegrees():
         --------
         Dict
             Dictionary containing:
-            - times : array of time points
+            - time : array of time points
             - velocity: array of phase velocities
-            - cc_method: array of cross-correlation coefficients
+            - ccoef: array of cross-correlation coefficients
             - backazimuth: array of backazimuths
             - r_squared: array of R-squared values
             - parameters: dictionary of parameters
@@ -3758,9 +3758,18 @@ class sixdegrees():
         from tqdm import tqdm
         from obspy.signal.rotate import rotate_ne_rt
 
+        # Get streams - use object data if not provided
+        if rotation_data is None:
+            rot = self.get_stream("rotation", raw=False).copy()
+        else:
+            rot = rotation_data.copy()
+        
+        if translation_data is None:
+            tra = self.get_stream("translation", raw=True).copy()
+        else:
+            tra = translation_data.copy()
+
         # Validate inputs
-        if rotation_data is None or translation_data is None:
-            raise ValueError("Both rotation and translation data must be provided")
         if baz_results is None:
             raise ValueError("Backazimuth results must be provided")
         if wave_type.lower() not in ['love', 'rayleigh']:
@@ -3769,10 +3778,6 @@ class sixdegrees():
             raise ValueError(f"Invalid baz mode: {baz_mode}. Use 'max' or 'mid'")
         if method.lower() not in ['odr', 'ransac', 'theilsen']:
             raise ValueError(f"Invalid method: {method}. Use 'odr' or 'ransac' or 'theilsen'")
-
-        # Make copies to avoid modifying original data
-        rot = rotation_data.copy()
-        tra = translation_data.copy()
 
         # Get sampling rate and validate
         df = rot[0].stats.sampling_rate
