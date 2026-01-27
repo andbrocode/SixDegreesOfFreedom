@@ -13,9 +13,7 @@ from .plot_velocities_win import plot_velocities_win
 from .plot_velocity_comparison import plot_velocity_comparison
 from .plot_velocity_method_comparison import plot_velocity_method_comparison
 from .plot_backazimuth_results import plot_backazimuth_results
-from .plot_filtered_traces_frequency_bands import plot_filtered_traces_frequency_bands
-from .plot_trace_dispersion import plot_filtered_traces_frequency_bands as plot_filtered_traces_frequency_bands_optimized
-from .plot_trace_dispersion import plot_dispersion
+from .plot_trace_dispersion import plot_trace_dispersion
 
 __all__ = [
     'animate_waveforms', 
