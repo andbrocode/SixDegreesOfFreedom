@@ -89,6 +89,52 @@ The project is organized as follows:
 - `docs/`: Documentation and environment specifications
 - `tests/`: Comprehensive test suite
 
+### Quick Start
+
+```python
+from sixdegrees import sixdegrees
+
+# Create configuration dictionary
+config = {
+    'tbeg': "2023-09-08 22:13:00",
+    'tend': "2023-09-08 23:00:00",
+    'station_lon': 11.275476,
+    'station_lat': 48.162941,
+    'seed': "XX.ROMY..",
+    'rot_seed': ["XX.ROMY..BJZ", "XX.ROMY..BJN", "XX.ROMY..BJE"],
+    'tra_seed': ["XX.ROMY..BHZ", "XX.ROMY..BHN", "XX.ROMY..BHE"],
+    'data_source': "mseed_file",
+    'path_to_mseed_file': "./data/romy_eventM6.8.mseed",
+}
+
+# Initialize sixdegrees object
+sd = sixdegrees(conf=config)
+
+# Load data
+sd.load_data(config['tbeg'], config['tend'])
+
+# Filter data
+sd.filter_data(fmin=0.02, fmax=0.2)
+
+# Compute backazimuth
+baz_results = sd.compute_backazimuth(
+    wave_type='love',
+    baz_step=1,
+    baz_win_sec=30,
+    baz_win_overlap=0.5,
+    out=True
+)
+
+# Compute velocities
+velocities = sd.compute_velocities(
+    wave_type='love',
+    win_time_s=30.0,
+    overlap=0.5,
+    cc_threshold=0.75,
+    method='odr'
+)
+```
+
 ### Example Usage
 
 The package includes several Jupyter notebooks and workflows in the `examples/` directory:
@@ -156,4 +202,4 @@ pytest --cov=sixdegrees tests/
 
 ## License
 
-The license information is found in the LICENCE file
+The license information is found in the LICENSE file

@@ -12,24 +12,24 @@ from obspy.signal.rotate import rotate_ne_rt
 from obspy.core.utcdatetime import UTCDateTime
 
 
-def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None, 
+def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None, 
                     baz: Optional[float]=None, fmin: Optional[float]=None, fmax: Optional[float]=None, 
                     wave_type: str="both", pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
-                    runit: str=r"rad/s", tunit: str=r"m/s$^2$", twin_sec: int=5, twin_overlap: float=0.5, 
-                    unitscale: str="nano", t1:UTCDateTime=None, t2:UTCDateTime=None) -> plt.Figure:
+                    runit: Optional[str]=None, tunit: Optional[str]=None, twin_sec: int=5, twin_overlap: float=0.5, 
+                    unitscale: str="nano", data_type: str="acceleration", t1:UTCDateTime=None, t2:UTCDateTime=None) -> plt.Figure:
 
     """
     Plot waveform cross-correlation.
 
     Parameters:
     -----------
-    rot0 : Stream, optional
-        Rotation rate stream. Required if sd_object is not provided.
-    acc0 : Stream, optional
-        Acceleration stream. Required if sd_object is not provided.
+    rot : Stream, optional
+        Rotation rate/rotation stream. Required if sd_object is not provided.
+    acc : Stream, optional
+        Acceleration/velocity stream. Required if sd_object is not provided.
     sd_object : sixdegrees, optional
-        sixdegrees object. If provided, will extract rot0 and acc0 from sd_object.get_stream(),
-        and extract baz, distance, fmin, fmax from the object if not explicitly provided.
+        sixdegrees object. If provided, will extract rot and acc from sd_object.get_stream(),
+        and extract baz, distance, fmin, fmax, runit, tunit from the object if not explicitly provided.
     baz : float, optional
         Backazimuth. If not provided and sd_object is given, will try to extract from sd_object.
     fmin : float or None, optional
@@ -42,16 +42,19 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
         Polarity dictionary
     distance : float or None, optional
         Distance. If not provided and sd_object is given, will try to extract from sd_object.event_info.
-    runit : str
-        Unit for rotation rate
-    tunit : str
-        Unit for acceleration
+    runit : str, optional
+        Unit for rotation rate/rotation. If None, will be determined from sd_object or data_type.
+    tunit : str, optional
+        Unit for acceleration/velocity. If None, will be determined from sd_object or data_type.
     twin_sec : int
         Time window length
     twin_overlap : float
         Time window overlap
     unitscale : str
         Unit scale: "nano" or "micro"
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines default units and labels if not explicitly provided.
     t1 : UTCDateTime or None
         Start time to trim data
     t2 : UTCDateTime or None
@@ -73,16 +76,22 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     # Extract streams and parameters from sd_object if provided
     if sd_object is not None:
         # Extract streams if not provided
-        if rot0 is None:
-            rot0 = sd_object.get_stream("rotation")
-        if acc0 is None:
-            acc0 = sd_object.get_stream("translation")
+        if rot is None:
+            rot = sd_object.get_stream("rotation").copy()
+        if acc is None:
+            acc = sd_object.get_stream("translation").copy()
         
         # Extract parameters if not explicitly provided (provided parameters have higher priority)
         if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:
             fmin = sd_object.fmin
         if fmax is None and hasattr(sd_object, 'fmax') and sd_object.fmax is not None:
             fmax = sd_object.fmax
+        
+        # Extract units from sd_object if not provided
+        if runit is None and hasattr(sd_object, 'runit'):
+            runit = sd_object.runit
+        if tunit is None and hasattr(sd_object, 'tunit'):
+            tunit = sd_object.tunit
         
         # Extract baz if not provided
         if baz is None:
@@ -116,9 +125,27 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
                     if 'distance_km' in sd_object.event_info:
                         distance = sd_object.event_info['distance_km']
     
+    # Determine units based on data_type if not explicitly provided
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if runit is None:
+            runit = r"rad"
+        if tunit is None:
+            tunit = r"m/s"
+        rot_label_symbol = "rotation angle"  # Rotation angle
+        tra_label_symbol = "velocity"  # Velocity
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if runit is None:
+            runit = r"rad/s"
+        if tunit is None:
+            tunit = r"m/s$^2$"
+        rot_label_symbol = "rotation rate"  # Rotation rate
+        tra_label_symbol = "acceleration"  # Acceleration
+    
     # Validate that we have required streams
-    if rot0 is None or acc0 is None:
-        raise ValueError("Either provide rot0 and acc0 directly, or provide sd_object (sixdegrees object)")
+    if rot is None or acc is None:
+        raise ValueError("Either provide rot and acc directly, or provide sd_object (sixdegrees object)")
     
     # Validate that we have baz
     if baz is None:
@@ -154,8 +181,8 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
 
         return array(times), array(cc)
 
-    rot = rot0.copy()
-    acc = acc0.copy()
+    _rot = rot.copy()
+    _acc = acc.copy()
 
     if t1 is not None and not isinstance(t1, UTCDateTime):
         t1 = UTCDateTime(t1)
@@ -164,11 +191,11 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
 
     # trim data
     if t1 is not None and t2 is not None:
-        rot = rot.trim(t1, t2)
-        acc = acc.trim(t1, t2)
+        _rot = _rot.trim(t1, t2)
+        _acc = _acc.trim(t1, t2)
 
     # get sampling rate
-    dt = rot[0].stats.delta
+    dt = _rot[0].stats.delta
 
     # define polarity
     pol = {"HZ":1,"HN":1,"HE":1,"HR":1,"HT":1,
@@ -212,9 +239,9 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     # Get vertical and rotated components
     if wave_type == "both" or wave_type == "love":
         # get vertical component
-        rot_z = rot.select(channel="*Z")[0].data
+        rot_z = _rot.select(channel="*Z")[0].data
         # rotate components
-        acc_r, acc_t = rotate_ne_rt(acc.select(channel="*N")[0].data, acc.select(channel="*E")[0].data, baz)
+        acc_r, acc_t = rotate_ne_rt(_acc.select(channel="*N")[0].data, _acc.select(channel="*E")[0].data, baz)
         # apply scaling
         rot_z *= rot_scaling
         acc_r *= acc_scaling
@@ -223,8 +250,10 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
         acc_r_max = max([abs(min(acc_r)), abs(max(acc_r))])
         acc_t_max = max([abs(min(acc_t)), abs(max(acc_t))])
         rot_z_max = max([abs(min(rot_z)), abs(max(rot_z))])
-        # update polarity
-        rot0, acc0, rot0_lbl, acc0_lbl = pol['JZ']*rot_z, pol['HT']*acc_t, f"{pol['JZ']}x ROT-Z", f"{pol['HT']}x ACC-T"
+        # update polarity and labels
+        rot_prefix = "ROT" if data_type.lower() == "velocity" else "ROT"
+        tra_prefix = "VEL" if data_type.lower() == "velocity" else "ACC"
+        rot0, acc0, rot0_lbl, acc0_lbl = pol['JZ']*rot_z, pol['HT']*acc_t, f"{pol['JZ']}x {rot_prefix}-Z", f"{pol['HT']}x {tra_prefix}-T"
         # calculate cross-correlation
         tt0, cc0 = _cross_correlation_windows(rot0, acc0, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
         cc.append(cc0)
@@ -232,9 +261,9 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
 
     if wave_type == "both" or wave_type == "rayleigh":
         # get vertical component
-        acc_z = acc.select(channel="*Z")[0].data
+        acc_z = _acc.select(channel="*Z")[0].data
         # rotate components
-        rot_r, rot_t = rotate_ne_rt(rot.select(channel="*N")[0].data, rot.select(channel="*E")[0].data, baz)
+        rot_r, rot_t = rotate_ne_rt(_rot.select(channel="*N")[0].data, _rot.select(channel="*E")[0].data, baz)
         # apply scaling
         acc_z *= acc_scaling
         rot_r *= rot_scaling
@@ -243,8 +272,10 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
         acc_z_max = max([abs(min(acc_z)), abs(max(acc_z))])
         rot_r_max = max([abs(min(rot_r)), abs(max(rot_r))])
         rot_t_max = max([abs(min(rot_t)), abs(max(rot_t))])
-        # update polarity
-        rot1, acc1, rot1_lbl, acc1_lbl = pol['JT']*rot_t, pol['HZ']*acc_z, f"{pol['JT']}x ROT-T", f"{pol['HZ']}x ACC-Z"
+        # update polarity and labels
+        rot_prefix = "ROT" if data_type.lower() == "velocity" else "ROT"
+        tra_prefix = "VEL" if data_type.lower() == "velocity" else "ACC"
+        rot1, acc1, rot1_lbl, acc1_lbl = pol['JT']*rot_t, pol['HZ']*acc_z, f"{pol['JT']}x {rot_prefix}-T", f"{pol['HZ']}x {tra_prefix}-Z"
         # calculate cross-correlation
         tt1, cc1 = _cross_correlation_windows(rot1, acc1, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
         cc.append(cc1)
@@ -262,9 +293,9 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     cbar_ticks = [-1, -0.6, 0, 0.6, 1]
 
     if wave_type == "love":
-        ax[0].plot(rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
+        ax[0].plot(_rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
         ax00 = ax[0].twinx()
-        ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
+        ax00.plot(_acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
         ax01 = ax[0].twinx()
         cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, label="")
 
@@ -277,9 +308,9 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
         cms = [cm1]
 
     elif wave_type == "rayleigh":
-        ax[0].plot(rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
+        ax[0].plot(_rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
         ax11 = ax[0].twinx()
-        ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
+        ax11.plot(_acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
         ax12 = ax[0].twinx()
         cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, label="")
 
@@ -293,9 +324,9 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
 
     elif wave_type == "both":
         # First subplot
-        ax[0].plot(rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
+        ax[0].plot(_rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
         ax00 = ax[0].twinx()
-        ax00.plot(acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
+        ax00.plot(_acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
         ax01 = ax[0].twinx()
         cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, label="")
 
@@ -305,9 +336,9 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
         ax01.yaxis.set_visible(False)
 
         # Second subplot
-        ax[1].plot(rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
+        ax[1].plot(_rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
         ax11 = ax[1].twinx()
-        ax11.plot(acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
+        ax11.plot(_acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
         ax12 = ax[1].twinx()
         cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, label="")
 
@@ -328,7 +359,6 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
         twinaxs[1].set_yticks(linspace(twinaxs[1].get_yticks()[0], twinaxs[1].get_yticks()[-1], len(ax[1].get_yticks())))
 
     # Set labels and grid
-    rot_rate_label = r"$\dot{\Omega}$"
     if wave_type == "both":
         names = ["love", "rayleigh"]
     else:
@@ -337,7 +367,7 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     for i, wt in zip(range(Nrow), names):
         ax[i].legend(loc=1, ncols=4)
         ax[i].grid(which="both", alpha=0.5)
-        ax[i].set_ylabel(f"{rot_rate_label} ({rot_unit})", fontsize=font)
+        ax[i].set_ylabel(f"{rot_label_symbol} ({rot_unit})", fontsize=font)
         ax[i].text(0.05, 0.9,
                     f"{wt.capitalize()}: CC={cc_all[i]:.2f}",
                     ha='left', va='top', 
@@ -348,7 +378,7 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
 
     for _ax in twinaxs:
         _ax.legend(loc=1, bbox_to_anchor=(1, 0.9))
-        _ax.set_ylabel(f"$a$ ({acc_unit})", fontsize=font)
+        _ax.set_ylabel(f"{tra_label_symbol} ({acc_unit})", fontsize=font)
 
     # Add colorbar
     cax = ax[Nrow-1].inset_axes([0.8, -0.25, 0.2, 0.1], transform=ax[Nrow-1].transAxes)
@@ -373,7 +403,7 @@ def plot_waveform_cc(rot0: Optional[Stream]=None, acc0: Optional[Stream]=None, s
     ax[Nrow-1].set_xlabel("Time (s)", fontsize=font)
 
     # Set title
-    tbeg = acc[0].stats.starttime
+    tbeg = _acc[0].stats.starttime
     title = f"{tbeg.date} {str(tbeg.time).split('.')[0]} UTC"
     title += f" | {wave_type}"
     if fmin is not None and fmax is not None:

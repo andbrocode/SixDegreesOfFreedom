@@ -132,7 +132,8 @@ def plot_trace_dispersion(
     output: bool = False,
     optimized: bool = True,
     baz_range: float = 20.0,
-    baz_step: float = 1.0
+    baz_step: float = 1.0,
+    data_type: str = "acceleration"
 ) -> plt.Figure:
     """
     Plot filtered traces in frequency bands for Rayleigh or Love waves.
@@ -147,9 +148,12 @@ def plot_trace_dispersion(
         sixdegrees object. If provided, will extract rot and acc from sd_object.get_stream(),
         and extract baz, fmin, fmax from the object if not explicitly provided.
     rot : Stream, optional
-        Rotation rate stream. Required if sd_object is not provided.
+        Rotation rate/rotation stream. Required if sd_object is not provided.
     acc : Stream, optional
-        Acceleration stream. Required if sd_object is not provided.
+        Acceleration/velocity stream. Required if sd_object is not provided.
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
     wave_type : str
         Wave type: "rayleigh" or "love"
     fmin : float, optional
@@ -256,16 +260,32 @@ def plot_trace_dispersion(
     
     n_bands = len(frequency_bands)
     
-    # Define scaling factors
+    # Define scaling factors based on data_type
     mu = r"$\mu$"
-    if unitscale == "nano":
-        acc_scaling, acc_unit = 1e6, f"{mu}m/s"
-        rot_scaling, rot_unit = 1e9, f"nrad"
-    elif unitscale == "micro":
-        acc_scaling, acc_unit = 1e3, f"mm/s"
-        rot_scaling, rot_unit = 1e6, f"{mu}rad"
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{mu}m/s"
+            rot_scaling, rot_unit = 1e9, f"nrad"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"mm/s"
+            rot_scaling, rot_unit = 1e6, f"{mu}rad"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
+        tra_label_prefix = "v"
+        rot_label_prefix = "r"
     else:
-        raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{mu}m/s$^2$"
+            rot_scaling, rot_unit = 1e9, f"nrad/s"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"mm/s$^2$"
+            rot_scaling, rot_unit = 1e6, f"{mu}rad/s"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
+        tra_label_prefix = "a"
+        rot_label_prefix = r"$\dot{r}$"
     
     # Set figure size
     if figsize is None:
@@ -354,12 +374,12 @@ def plot_trace_dispersion(
             # Scale rotation data by the slope
             rot_t_scaled = rot_t_scaled * slope
             
-            # Plot velocity (black) on left axis
-            ax.plot(times, acc_z_scaled, color="black", lw=lw, label=f"v_Z")
+            # Plot velocity/acceleration (black) on left axis
+            ax.plot(times, acc_z_scaled, color="black", lw=lw, label=f"{tra_label_prefix}_Z")
             
             # Plot rotation (red) on right axis
             ax2 = ax.twinx()
-            ax2.plot(times, rot_t_scaled, color="red", lw=lw, label=f"r_H")
+            ax2.plot(times, rot_t_scaled, color="red", lw=lw, label=f"{rot_label_prefix}_H")
                         
             # Remove bottom and top spines
             ax2.spines['bottom'].set_visible(False)
@@ -389,12 +409,14 @@ def plot_trace_dispersion(
             
             # Show scale factor and backazimuth as text
             text_y_pos = 0.8
-            ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} m/s", 
+            scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
+            ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} {scale_unit}", 
                     transform=ax.transAxes, fontsize=font-2,
                     rotation=0, va='center', ha='left')
-            ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
-                    transform=ax.transAxes, fontsize=font-2,
-                    rotation=0, va='center', ha='left')
+            if optimized:
+                ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
+                        transform=ax.transAxes, fontsize=font-2,
+                        rotation=0, va='center', ha='left')
             
         elif wave_type == "love":
             # Love: vertical rotation (rot_z) vs horizontal velocity (acc_t)
@@ -419,12 +441,12 @@ def plot_trace_dispersion(
             # Scale rotation data by the slope
             rot_z_scaled = rot_z_scaled * slope
             
-            # Plot velocity (black) on left axis
-            ax.plot(times, acc_t_scaled, color="black", lw=lw, label=f"v_H")
+            # Plot velocity/acceleration (black) on left axis
+            ax.plot(times, acc_t_scaled, color="black", lw=lw, label=f"{tra_label_prefix}_H")
             
             # Plot rotation (red) on right axis
             ax2 = ax.twinx()
-            ax2.plot(times, rot_z_scaled, color="red", lw=lw, label=f"r_Z")
+            ax2.plot(times, rot_z_scaled, color="red", lw=lw, label=f"{rot_label_prefix}_Z")
             
             # Remove bottom and top spines
             ax2.spines['bottom'].set_visible(False)
@@ -454,12 +476,14 @@ def plot_trace_dispersion(
             
             # Show scale factor and backazimuth as text
             text_y_pos = 0.8
-            ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} m/s", 
+            scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
+            ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} {scale_unit}", 
                     transform=ax.transAxes, fontsize=font-2,
                     rotation=0, va='center', ha='left')
-            ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
-                    transform=ax.transAxes, fontsize=font-2,
-                    rotation=0, va='center', ha='left')
+            if optimized:
+                ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
+                        transform=ax.transAxes, fontsize=font-2,
+                        rotation=0, va='center', ha='left')
         
         # Set x-axis label only on bottom subplot
         if i == n_bands - 1:

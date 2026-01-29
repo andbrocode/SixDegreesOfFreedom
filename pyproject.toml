@@ -13,7 +13,7 @@ authors = [
     {name = "Andreas Brotzer", email = "rotzleffel@tutanota.com"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Physics",
     "Programming Language :: Python :: 3",
@@ -21,6 +21,17 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12"
+]
+
+keywords = [
+    "seismology",
+    "6-dof",
+    "rotation",
+    "backazimuth",
+    "velocity",
+    "seismic",
+    "array-derived-rotation",
+    "ADR"
 ]
 
 dependencies = [

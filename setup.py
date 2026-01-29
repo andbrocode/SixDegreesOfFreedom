@@ -55,7 +55,7 @@ setup(
         "pyyaml>=6.0,<7.0",
     ],
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Physics",
         "Programming Language :: Python :: 3",

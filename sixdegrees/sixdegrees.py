@@ -3,8 +3,8 @@
 @copyright:
     Andreas Brotzer (rotzleffel@tutanota.com)
 @license:
-    GNU Lesser General Public License, Version 3
-    (http://www.gnu.org/copyleft/lesser.html)
+    GNU General Public License, Version 3
+    (http://www.gnu.org/licenses/gpl-3.0.html)
 '''
 
 import os

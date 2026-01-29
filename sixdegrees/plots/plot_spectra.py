@@ -121,23 +121,27 @@ def calculate_spectrum(data: ndarray, dt: float, method: SpectralMethod = Spectr
     else:
         raise ValueError(f"Unknown spectral method: {method}")
 
-def plot_spectra(rot: Stream, acc: Stream, 
+def plot_spectra(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None,
                 fmin: Optional[float] = None, 
                 fmax: Optional[float] = None,
                 ylog: bool = False, 
                 xlog: bool = False, 
                 fill: bool = False,
                 method: Union[SpectralMethod, str] = SpectralMethod.MULTITAPER,
+                data_type: str = "acceleration",
                 **kwargs) -> Figure:
     """
-    Plot power spectral density comparison between rotation and acceleration data with horizontal layout.
+    Plot power spectral density comparison between rotation and acceleration/velocity data with horizontal layout.
     
     Parameters
     ----------
-    rot : Stream
-        Rotation rate stream
-    acc : Stream
-        Acceleration stream
+    rot : Stream, optional
+        Rotation rate/rotation stream. Required if sd_object is not provided.
+    acc : Stream, optional
+        Acceleration/velocity stream. Required if sd_object is not provided.
+    sd_object : sixdegrees, optional
+        sixdegrees object. If provided, will extract rot and acc from sd_object.get_stream(),
+        and extract fmin, fmax from the object if not explicitly provided.
     fmin : float, optional
         Minimum frequency for plotting
     fmax : float, optional
@@ -154,6 +158,9 @@ def plot_spectra(rot: Stream, acc: Stream,
         - 'fft': Fast Fourier Transform with Hanning window
         - 'multitaper': Thomson multitaper method (better for non-stationary signals)
         - 'welch': Welch's method (good for noise reduction)
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
     **kwargs : dict
         Additional arguments for specific spectral methods:
         - FFT: no additional parameters
@@ -166,6 +173,34 @@ def plot_spectra(rot: Stream, acc: Stream,
         Matplotlib figure containing the plots
     """
 
+    # Extract streams and parameters from sd_object if provided
+    if sd_object is not None:
+        # Extract streams if not provided
+        if rot is None:
+            rot = sd_object.get_stream("rotation")
+        if acc is None:
+            acc = sd_object.get_stream("translation")
+        
+        # Extract parameters if not explicitly provided (provided parameters have higher priority)
+        if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:
+            fmin = sd_object.fmin
+        if fmax is None and hasattr(sd_object, 'fmax') and sd_object.fmax is not None:
+            fmax = sd_object.fmax
+    
+    # Validate that we have required streams
+    if rot is None or acc is None:
+        raise ValueError("Either provide rot and acc directly, or provide sd_object (sixdegrees object)")
+    
+    # Determine units and labels based on data_type
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        rot_unit_label = r"rad/s/$\sqrt{Hz}$"  # ASD of rotation
+        tra_unit_label = r"m/s/$\sqrt{Hz}$"  # ASD of velocity
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        rot_unit_label = r"rad/s/$\sqrt{Hz}$"  # ASD of rotation rate
+        tra_unit_label = r"m/s$^2$/$\sqrt{Hz}$"  # ASD of acceleration
+    
     # Plot settings
     PLOT_SETTINGS = {
         'font_size': 12,
@@ -306,11 +341,11 @@ def plot_spectra(rot: Stream, acc: Stream,
         # Add labels
         ax1.set_xlabel('Frequency (Hz)', fontsize=PLOT_SETTINGS['font_size'])
         if i == 0:
-            ax1.set_ylabel(r'ASD (rad/s/$\sqrt{Hz}$)', 
+            ax1.set_ylabel(f'ASD ({rot_unit_label})', 
                          fontsize=PLOT_SETTINGS['font_size'],
                          color=PLOT_SETTINGS['rot_color'])
         if i == 2:
-            ax2.set_ylabel(r'ASD (m/s$^2$/$\sqrt{Hz}$)',
+            ax2.set_ylabel(f'ASD ({tra_unit_label})',
                          fontsize=PLOT_SETTINGS['font_size'],
                          color=PLOT_SETTINGS['acc_color'])
 

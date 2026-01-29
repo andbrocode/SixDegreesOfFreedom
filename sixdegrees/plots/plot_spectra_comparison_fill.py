@@ -13,16 +13,16 @@ import multitaper as mt
 
 def plot_spectra_comparison_fill(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None,
                                  fmin: Union[float, None]=None, fmax: Union[float, None]=None, 
-                                 ylog: bool=False, xlog: bool=False, fill: bool=False) -> Figure:
+                                 ylog: bool=False, xlog: bool=False, fill: bool=False, data_type: str="acceleration") -> Figure:
     """
-    Plot power spectral density comparison between rotation and acceleration data with horizontal layout
+    Plot power spectral density comparison between rotation and acceleration/velocity data with horizontal layout
     
     Parameters:
     -----------
     rot : Stream, optional
-        Rotation rate stream. Required if sd_object is not provided.
+        Rotation rate/rotation stream. Required if sd_object is not provided.
     acc : Stream, optional
-        Acceleration stream. Required if sd_object is not provided.
+        Acceleration/velocity stream. Required if sd_object is not provided.
     sd_object : sixdegrees, optional
         sixdegrees object. If provided, will extract rot and acc from sd_object.get_stream(),
         and extract fmin, fmax from the object if not explicitly provided.
@@ -36,6 +36,9 @@ def plot_spectra_comparison_fill(rot: Optional[Stream]=None, acc: Optional[Strea
         Use logarithmic x-axis scale if True
     fill : bool
         Fill the area under curves if True
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
         
     Returns:
     --------
@@ -59,6 +62,16 @@ def plot_spectra_comparison_fill(rot: Optional[Stream]=None, acc: Optional[Strea
     # Validate that we have required streams
     if rot is None or acc is None:
         raise ValueError("Either provide rot and acc directly, or provide sd_object (sixdegrees object)")
+    
+    # Determine units and labels based on data_type
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        rot_unit_label = r"rad$^2$/s$^2$/Hz"  # PSD of rotation
+        tra_unit_label = r"m$^2$/s$^2$/Hz"  # PSD of velocity
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        rot_unit_label = r"rad$^2$/s$^2$/Hz"  # PSD of rotation rate
+        tra_unit_label = r"m$^2$/s$^4$/Hz"  # PSD of acceleration
     
     def _multitaper_psd(arr: ndarray, dt: float, n_win: int=5, time_bandwidth: float=4.0) -> Tuple[ndarray, ndarray]:
         """Calculate multitaper power spectral density"""
@@ -174,9 +187,9 @@ def plot_spectra_comparison_fill(rot: Optional[Stream]=None, acc: Optional[Strea
 
         # For the last panel (E component), don't create new y-axis ticks on the right
         if i == 2:
-            ax2.set_ylabel(r"PSD (m$^2$/s$^4$/Hz)", fontsize=font)
+            ax2.set_ylabel(f"PSD ({tra_unit_label})", fontsize=font)
         if i == 0:
-            axes[i].set_ylabel(r"PSD (rad$^2$/s$^2$/Hz)", fontsize=font, color=rot_color)
+            axes[i].set_ylabel(f"PSD ({rot_unit_label})", fontsize=font, color=rot_color)
         
         # Add component label
         axes[i].set_title(f"Component {comp_name}", fontsize=font)

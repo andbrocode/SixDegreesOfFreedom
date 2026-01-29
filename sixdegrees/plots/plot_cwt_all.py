@@ -3,24 +3,28 @@ Functions for plotting continuous wavelet transform analysis.
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 from matplotlib.gridspec import GridSpec
 from obspy import Stream
 
-def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False, 
+def plot_cwt_all(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_object: Optional['sixdegrees']=None,
+                 cwt_output: Optional[Dict]=None, clog: bool=False, 
                 fmin: Union[float, None]=None, fmax: Union[float, None]=None,
-                ylim: Union[float, None]=None) -> plt.Figure:
+                ylim: Union[float, None]=None, data_type: str="acceleration") -> plt.Figure:
     """
     Plot continuous wavelet transform analysis for all components of rotation and translation
     
     Parameters:
     -----------
-    rot : Stream
-        Rotation rate stream
-    acc : Stream
-        Acceleration stream
-    cwt_output : Dict
-        Dictionary containing CWT results for each component
+    rot : Stream, optional
+        Rotation rate/rotation stream. Required if sd_object is not provided.
+    acc : Stream, optional
+        Acceleration/velocity stream. Required if sd_object is not provided.
+    sd_object : sixdegrees, optional
+        sixdegrees object. If provided, will extract rot and acc from sd_object.get_stream(),
+        and extract fmin, fmax from the object if not explicitly provided.
+    cwt_output : Dict, optional
+        Dictionary containing CWT results for each component. Required if not provided.
     clog : bool
         Use logarithmic colorscale if True
     fmin : float or None
@@ -30,6 +34,9 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
     ylim : float or None, deprecated
         Upper frequency limit for plotting (deprecated, use fmax instead).
         If provided, will override fmax for backward compatibility.
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
         
     Returns:
     --------
@@ -39,12 +46,48 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
     import numpy as np
     from matplotlib.gridspec import GridSpec
     
+    # Extract streams and parameters from sd_object if provided
+    if sd_object is not None:
+        # Extract streams if not provided
+        if rot is None:
+            rot = sd_object.get_stream("rotation")
+        if acc is None:
+            acc = sd_object.get_stream("translation")
+        
+        # Extract parameters if not explicitly provided (provided parameters have higher priority)
+        if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:
+            fmin = sd_object.fmin
+        if fmax is None and hasattr(sd_object, 'fmax') and sd_object.fmax is not None:
+            fmax = sd_object.fmax
+    
+    # Validate that we have required streams
+    if rot is None or acc is None:
+        raise ValueError("Either provide rot and acc directly, or provide sd_object (sixdegrees object)")
+    if cwt_output is None:
+        raise ValueError("cwt_output dictionary is required")
+    
     # Plot settings
     tscale = 1
     font = 12
     cmap = plt.get_cmap("viridis")
-    rot_scale = 1e6
-    acc_scale = 1e3
+    
+    # Determine scaling and units based on data_type
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        rot_scale = 1e6  # micro-radians
+        acc_scale = 1e3  # mm/s
+        rot_unit_base = r"$\mu$rad"
+        tra_unit_base = r"mm/s"
+        rot_label_base = r"$\Omega"
+        tra_label_base = r"$v"
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        rot_scale = 1e6  # micro-rad/s
+        acc_scale = 1e3  # mm/s²
+        rot_unit_base = r"$\mu$rad/s"
+        tra_unit_base = r"mm/s$^2$"
+        rot_label_base = r"$\dot{\Omega}"
+        tra_label_base = r"$a"
 
     # Count total components and calculate needed subplots
     n_panels = len(cwt_output.keys())
@@ -69,21 +112,21 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
         vmin, vmax, norm = 0.0, 0.9, None
         
     # Plot each component
-    for i, (comp, data_type) in enumerate(components):
+    for i, (comp, data_type_comp) in enumerate(components):
         wave_ax = fig.add_subplot(gs[2*i])
         cwt_ax = fig.add_subplot(gs[2*i+1])
         
         # Get data and scale
-        if data_type == 'Rotation':
+        if data_type_comp == 'Rotation':
             tr = rot.select(channel=f"*{comp}")[0]
             data = tr.data * rot_scale
-            unit = r"$\mu$rad"
-            label = f"$\Omega_{comp[-1]}$"
+            unit = rot_unit_base
+            label = f"{rot_label_base}_{comp[-1]}$"
         else:
             tr = acc.select(channel=f"*{comp}")[0]
             data = tr.data * acc_scale
-            unit = r"mm/s$^2$"
-            label = f"$a_{comp[-1]}$"
+            unit = tra_unit_base
+            label = f"{tra_label_base}_{comp[-1]}$"
         
         # Get times from the current trace instead of rotation stream
         times = tr.times() * tscale
@@ -97,10 +140,10 @@ def plot_cwt_all(rot: Stream, acc: Stream, cwt_output: Dict, clog: bool=False,
         wave_ax.grid(True, alpha=0.3)
         
         # Plot CWT
-        # Construct key matching the format used in CWT computation: "{component}_{data_type}"
+        # Construct key matching the format used in CWT computation: "{component}_{data_type_comp}"
         # e.g., "Z_Rotation", "N_Translation", etc.
         component_letter = comp[-1]  # Get last character (Z, N, E)
-        key = f"{component_letter}_{data_type}"
+        key = f"{component_letter}_{data_type_comp}"
         
         # Check if key exists, if not try alternative formats
         if key not in cwt_output:

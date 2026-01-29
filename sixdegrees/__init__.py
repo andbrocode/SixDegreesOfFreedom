@@ -5,4 +5,8 @@ A comprehensive Python package for processing 6-degree-of-freedom (6-DoF) seismi
 including array-derived rotation computation, backazimuth analysis, and velocity estimation.
 """
 
+from .sixdegrees import sixdegrees
+from .seismicarray import seismicarray
+
 __version__ = "0.1.1"
+__all__ = ['sixdegrees', 'seismicarray', '__version__']
