@@ -109,6 +109,46 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
         'longitude': sd.station_longitude
     }
     
+    # Create labels dict based on data_type and unitscale
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == "nano":
+            rot_unit = f"nrad"
+            tra_unit = f"$\mu$m/s"
+        elif unitscale == "micro":
+            rot_unit = f"$\mu$rad"
+            tra_unit = f"mm/s"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}")
+        rot_label_prefix = "ANG"
+        tra_label_prefix = "VEL"
+        rot_label_full = "Angle"
+        tra_label_full = "Velocity"
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == "nano":
+            rot_unit = f"nrad/s"
+            tra_unit = f"$\mu$m/s$^2$"
+        elif unitscale == "micro":
+            rot_unit = f"$\mu$rad/s"
+            tra_unit = f"mm/s$^2$"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}")
+        rot_label_prefix = "ROT"
+        tra_label_prefix = "ACC"
+        rot_label_full = "Rotation rate"
+        tra_label_full = "Acceleration"
+    
+    labels = {
+        "rot_label_prefix": rot_label_prefix,
+        "tra_label_prefix": tra_label_prefix,
+        "rot_label_full": rot_label_full,
+        "tra_label_full": tra_label_full,
+        "rot_unit": rot_unit,
+        "tra_unit": tra_unit,
+        "acc_unit": tra_unit  # alias for compatibility
+    }
+    
     # Prepare baz_estimates for map
     baz_estimates = {}
     if baz_results:
@@ -174,7 +214,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
     # ========== WAVEFORM COMPARISON ==========
     ax_wave = fig.add_subplot(gs[3:5, :9])
     p_arrival_time, s_arrival_time, max_time = _plot_waveform_comparison(ax_wave, sd, baz_theo, wave_type, unitscale, 
-                             fmin, fmax, twin_sec, twin_overlap, event_info, rot_scale_factor, data_type)
+                             fmin, fmax, twin_sec, twin_overlap, labels, event_info, rot_scale_factor, data_type)
     
     # ========== P AND S WAVE ZOOM WINDOWS ==========
     # Side by side below waveform comparison (with small gap in column 4)
@@ -193,7 +233,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
         else:
             t2 = p_arrival_time + zoom_t2
         _plot_zoom_window(ax_p_zoom, sd, baz_theo, wave_type, unitscale, fmin, fmax,
-                            t1, t2, 'P', 12, arrival_time=p_arrival_time, 
+                            t1, t2, 'P', 12, labels, arrival_time=p_arrival_time, 
                             zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor, data_type=data_type)
     
     if s_arrival_time is not None:
@@ -208,19 +248,19 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
         else:
             t2 = s_arrival_time + zoom_t2
         _plot_zoom_window(ax_s_zoom, sd, baz_theo, wave_type, unitscale, fmin, fmax,
-                        t1, t2, 'S', 12, arrival_time=s_arrival_time,
+                        t1, t2, 'S', 12, labels, arrival_time=s_arrival_time,
                         zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor, data_type=data_type)
     
     # ========== BACKAZIMUTH ESTIMATES ==========
     ax_baz = fig.add_subplot(gs[6, :9])
-    _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type, 
-                           baz_theo, baz_theo_margin, unitscale, cc_threshold, 
+    _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type,
+                           baz_theo, baz_theo_margin, cc_threshold, 
                            cc_method, minors, max_time=max_time)
     
     # ========== VELOCITY ESTIMATES ==========
     ax_vel = fig.add_subplot(gs[7, :9])
-    _plot_velocity_panel(ax_vel, None, sd, velocity_results, 
-                        wave_type, vmax, cc_threshold, minors, max_time=max_time)
+    _plot_velocity_panel(ax_vel, None, sd, velocity_results, wave_type,
+                        vmax, cc_threshold, minors, labels=labels, max_time=max_time)
     
     # Add overall title
     title = f"{wave_type.capitalize()} Wave Event Analysis"
@@ -291,7 +331,7 @@ def _plot_event_info_box(ax, event_info, baz_theo):
 
 
 def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax, 
-                             twin_sec, twin_overlap, event_info=None, rot_scale_factor=3.0, data_type="acceleration"):
+                             twin_sec, twin_overlap, labels, event_info=None, rot_scale_factor=3.0, data_type="acceleration"):
     """Plot waveform comparison similar to plot_waveform_cc with crosscorrelation dots"""
     from numpy import linspace, ones, array
     from obspy.signal.cross_correlation import correlate, xcorr_max
@@ -330,35 +370,25 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         rot.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
         acc.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
     
-    # Define scaling factors and labels based on data_type
-    if data_type.lower() == "velocity":
-        # Velocity mode: rotation (rad) and velocity (m/s)
-        if unitscale == "nano":
-            acc_scaling, acc_unit = 1e6, f"$\mu$m/s"
-            rot_scaling, rot_unit = 1e9, f"nrad"
-        elif unitscale == "micro":
-            acc_scaling, acc_unit = 1e3, f"mm/s"
-            rot_scaling, rot_unit = 1e6, f"$\mu$rad"
-        else:
-            raise ValueError(f"Invalid unitscale: {unitscale}")
-        rot_label_prefix = "ANG"
-        tra_label_prefix = "VEL"
-        rot_label_full = "Angle"
-        tra_label_full = "Velocity"
+    # Extract labels from dict
+    rot_label_prefix = labels["rot_label_prefix"]
+    tra_label_prefix = labels["tra_label_prefix"]
+    rot_label_full = labels["rot_label_full"]
+    tra_label_full = labels["tra_label_full"]
+    rot_unit = labels["rot_unit"]
+    tra_unit = labels["tra_unit"]
+    
+    # Define scaling factors based on unitscale
+    if unitscale == "nano":
+        acc_scaling = 1e6
+        rot_scaling = 1e9
+    elif unitscale == "micro":
+        acc_scaling = 1e3
+        rot_scaling = 1e6
     else:
-        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
-        if unitscale == "nano":
-            acc_scaling, acc_unit = 1e6, f"$\mu$m/s$^2$"
-            rot_scaling, rot_unit = 1e9, f"nrad/s"
-        elif unitscale == "micro":
-            acc_scaling, acc_unit = 1e3, f"mm/s$^2$"
-            rot_scaling, rot_unit = 1e6, f"$\mu$rad/s"
-        else:
-            raise ValueError(f"Invalid unitscale: {unitscale}")
-        rot_label_prefix = "ROT"
-        tra_label_prefix = "ACC"
-        rot_label_full = "Rotation rate"
-        tra_label_full = "Acceleration"
+        raise ValueError(f"Invalid unitscale: {unitscale}")
+    
+    acc_unit = tra_unit
     
     font = 12
     lw = 1.0
@@ -570,7 +600,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
 
 
 def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax, 
-                     t_start, t_end, phase_label, font, arrival_time=None, zoom_t1=None, zoom_t2=None, rot_scale_factor=3.0, data_type="acceleration"):
+                     t_start, t_end, phase_label, font, labels, arrival_time=None, zoom_t1=None, zoom_t2=None, rot_scale_factor=3.0, data_type="acceleration"):
     """Plot zoom window for P or S wave arrival with time axis relative to arrival time"""
     from obspy.signal.rotate import rotate_ne_rt
 
@@ -583,32 +613,24 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
         rot.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
         acc.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
     
-    # Define scaling factors and labels based on data_type
-    if data_type.lower() == "velocity":
-        # Velocity mode: rotation (rad) and velocity (m/s)
-        if unitscale == "nano":
-            acc_scaling, acc_unit = 1e6, f"{sd.mu}m/s"
-            rot_scaling, rot_unit = 1e9, f"nrad"
-        elif unitscale == "micro":
-            acc_scaling, acc_unit = 1e3, f"mm/s"
-            rot_scaling, rot_unit = 1e6, f"{sd.mu}rad"
-        else:
-            raise ValueError(f"Invalid unitscale: {unitscale}")
-        rot_label_prefix = "ANG"
-        tra_label_prefix = "VEL"
-    else:
-        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
-        if unitscale == "nano":
-            acc_scaling, acc_unit = 1e6, f"{sd.mu}{sd.tunit}"
-            rot_scaling, rot_unit = 1e9, f"n{sd.runit}"
-        elif unitscale == "micro":
-            acc_scaling, acc_unit = 1e3, f"m{sd.tunit}"
-            rot_scaling, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
-        else:
-            raise ValueError(f"Invalid unitscale: {unitscale}")
-        rot_label_prefix = "ROT"
-        tra_label_prefix = "ACC"
+    # Extract labels from dict
+    rot_label_prefix = labels["rot_label_prefix"]
+    tra_label_prefix = labels["tra_label_prefix"]
+    rot_unit = labels["rot_unit"]
+    tra_unit = labels["tra_unit"]
     
+    # Define scaling factors based on unitscale
+    if unitscale == "nano":
+        acc_scaling = 1e6
+        rot_scaling = 1e9
+    elif unitscale == "micro":
+        acc_scaling = 1e3
+        rot_scaling = 1e6
+    else:
+        raise ValueError(f"Invalid unitscale: {unitscale}")
+    
+    acc_unit = tra_unit
+
     # Use baz from event_info or default to 0
     if baz is None:
         baz = 0
@@ -696,8 +718,8 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
     # make rotation y-axis label and text red 
     ax_zoom.tick_params(axis='y', labelcolor="tab:red")
 
-def _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type, 
-                           baz_theo, baz_theo_margin, unitscale, cc_threshold,
+def _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type,
+                           baz_theo, baz_theo_margin, cc_threshold,
                            cc_method, minors, max_time=None):
     """Plot backazimuth estimation panel with histogram inside"""
     font = 12
@@ -777,7 +799,7 @@ def _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type,
 
 
 def _plot_velocity_panel(ax_vel, ax_cbar, sd, velocity_results, wave_type,
-                        vmax, cc_threshold, minors, max_time=None):
+                        vmax, cc_threshold, minors, labels=None, max_time=None):
     """Plot velocity estimation panel"""
     font = 12
     
@@ -813,8 +835,8 @@ def _plot_velocity_panel(ax_vel, ax_cbar, sd, velocity_results, wave_type,
                        xerr=velocity_results['terr'][mask],
                        color='black', alpha=0.4, ls='none', zorder=1)
     
-    # Configure axis
-    ax_vel.set_ylabel("Velocity (m/s)", fontsize=font)
+    # Configure axis - phase velocity is always in m/s regardless of data_type
+    ax_vel.set_ylabel("phase velocity (m/s)", fontsize=font)
     ax_vel.set_xlabel("Time (s)", fontsize=font)
     ax_vel.set_ylim(bottom=0)
     ax_vel.set_xlim(left=0)
