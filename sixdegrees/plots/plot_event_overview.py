@@ -589,11 +589,11 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Plot S arrival line
         if s_arrival_time is not None and 0 <= s_arrival_time <= times[-1]:
-            ax.axvline(x=s_arrival_time, color='tab:red', linestyle='--', linewidth=2, 
+            ax.axvline(x=s_arrival_time, color='green', linestyle='--', linewidth=2, 
                       alpha=0.7, zorder=5, label='S arrival')
             ax.text(s_arrival_time+20, ax.get_ylim()[1]*0.95, 'S', 
                    horizontalalignment='center', verticalalignment='top',
-                   fontsize=font+2, fontweight='bold', color='tab:red', zorder=6,
+                   fontsize=font+2, fontweight='bold', color='green', zorder=6,
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=1))
     
     return p_arrival_time, s_arrival_time, max_time
@@ -687,7 +687,7 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
     
     # Mark arrival time at x=0 (arrival_time is now the reference)
     if arrival_time is not None:
-        ax_zoom.axvline(x=0, color='blue' if phase_label == 'P' else 'red', 
+        ax_zoom.axvline(x=0, color='blue' if phase_label == 'P' else 'green', 
                        linestyle='--', linewidth=2, alpha=0.8, zorder=5)
     
     # Set x-axis limits relative to arrival time
