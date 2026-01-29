@@ -198,9 +198,9 @@ def plot_trace_dispersion(
     if sd_object is not None:
         # Extract streams if not provided
         if rot is None:
-            rot = sd_object.get_stream("rotation", raw=raw)
+            rot = sd_object.get_stream("rotation", raw=raw).copy()
         if acc is None:
-            acc = sd_object.get_stream("translation", raw=raw)
+            acc = sd_object.get_stream("translation", raw=raw).copy()
         
         # Extract parameters if not explicitly provided
         if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:
@@ -428,7 +428,7 @@ def plot_trace_dispersion(
             )
             
             # Apply scaling
-            rot_z_scaled = rot_z * rot_scaling
+            rot_z_scaled = 0.5*rot_z * rot_scaling
             acc_t_scaled = acc_t * acc_scaling
             
             # Linear regression with only slope: tra = slope * rot

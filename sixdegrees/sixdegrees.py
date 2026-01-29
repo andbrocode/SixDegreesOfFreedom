@@ -713,7 +713,7 @@ class sixdegrees():
                     tr.stats.starttime = tr.stats.starttime + lag_time_z
             
                 if tr.stats.channel.endswith("N") or tr.stats.channel.endswith("E"):
-                    print(f" -> shifting rotation N/E waveform by {lag_time_h} seconds")
+                    print(f" -> shifting rotation {tr.stats.channel[-1]} waveform by {lag_time_h} seconds")
                     # tr.data = roll(tr.data, lag_samples)
                     tr.stats.starttime = tr.stats.starttime + lag_time_h
 
@@ -727,7 +727,7 @@ class sixdegrees():
                     tr.stats.starttime = tr.stats.starttime + lag_time_z
             
                 if tr.stats.channel.endswith("N") or tr.stats.channel.endswith("E"):
-                    print(f" -> shifting rotation N/E waveform by {lag_time_h} seconds")
+                    print(f" -> shifting rotation {tr.stats.channel[-1]} waveform by {lag_time_h} seconds")
                     # tr.data = roll(tr.data, lag_samples)
                     tr.stats.starttime = tr.stats.starttime + lag_time_h
               
@@ -3862,7 +3862,217 @@ class sixdegrees():
         # Return if requested
         if output:
             return spectra_dict
-    
+
+    def compute_velocities_optimized(self, rotation_data: Stream=None, translation_data: Stream=None,
+                                     wave_type: str='love', baz_results: Dict=None, cc_method: str='mid',
+                                     method: str='odr', cc_threshold: float=0.0, r_squared_threshold: float=0.0, 
+                                     zero_intercept: bool=True, verbose: bool=False, plot: bool=False) -> Dict:
+        """
+        Compute phase velocities in time intervals for Love or Rayleigh waves
+        
+        Parameters:
+        -----------
+        rotation_data : Stream, optional
+            Rotational data stream (if None, uses self.get_stream("rotation", raw=True))
+        translation_data : Stream, optional
+            Translation data stream (if None, uses self.get_stream("translation", raw=True))
+        wave_type : str
+            Type of wave to analyze ('love' or 'rayleigh')
+        baz_results : Dict
+            Dictionary containing backazimuth results
+        cc_method : str
+            Mode to use for backazimuth selection ('max' or 'mid')
+        method : str
+            Method to use for velocity computation ('odr', 'ransac', or 'theilsen')
+        cc_threshold : float, optional
+            Minimum cross-correlation coefficient to consider, by default 0.0
+        r_squared_threshold : float, optional
+            Minimum R-squared value for regression quality, by default 0.0
+        zero_intercept : bool
+            Force intercept to be zero if True
+        verbose : bool
+            Print regression results if True
+        plot : bool
+            Plot regression results if True
+        Returns:
+        --------
+        Dict
+            Dictionary containing:
+            - time : array of time points
+            - velocity: array of phase velocities
+            - ccoef: array of cross-correlation coefficients
+            - backazimuth: array of backazimuths
+            - r_squared: array of R-squared values
+            - parameters: dictionary of parameters
+        """
+        import numpy as np
+        from tqdm import tqdm
+        from obspy.signal.rotate import rotate_ne_rt
+
+        # Get streams - use object data if not provided
+        if rotation_data is None:
+            rot = self.get_stream("rotation", raw=False).copy()
+        else:
+            rot = rotation_data.copy()
+        
+        if translation_data is None:
+            tra = self.get_stream("translation", raw=True).copy()
+        else:
+            tra = translation_data.copy()
+
+        # Validate inputs
+        if baz_results is None:
+            raise ValueError("Backazimuth results must be provided")
+        if wave_type.lower() not in ['love', 'rayleigh']:
+            raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+        if cc_method.lower() not in ['max', 'mid']:
+            raise ValueError(f"Invalid cc method: {cc_method}. Use 'max' or 'mid'")
+        if method.lower() not in ['odr', 'ransac', 'theilsen']:
+            raise ValueError(f"Invalid method: {method}. Use 'odr' or 'ransac' or 'theilsen'")
+
+        # Get sampling rate and validate
+        df = rot[0].stats.sampling_rate
+        if df <= 0:
+            raise ValueError(f"Invalid sampling rate: {df}")
+
+        # Extract parameters from baz_results
+        try:
+            win_time_s = baz_results['parameters']['baz_win_sec']
+            overlap = baz_results['parameters']['baz_win_overlap']
+            ttt = baz_results['twin_center']
+
+            if cc_method.lower() == 'max':
+                baz = baz_results['baz_max']
+                ccc = baz_results['cc_max']
+            else:  # 'mid'
+                baz = baz_results['baz_mid']
+                ccc = baz_results['cc_mid']
+        except KeyError as e:
+            raise ValueError(f"Missing required key in baz_results: {e}")
+
+        # Validate array lengths
+        if not (len(baz) == len(ttt) == len(ccc)):
+            raise ValueError("Inconsistent lengths in backazimuth results")
+
+        # Get components
+        try:
+            rot_z = rot.select(channel="*Z")[0].data
+            acc_z = tra.select(channel="*Z")[0].data
+        except Exception as e:
+            raise RuntimeError(f"Error accessing vertical components: {str(e)}")
+
+        # Calculate window parameters
+        win_samples = int(win_time_s * df)
+        if win_samples <= 0:
+            raise ValueError(f"Invalid window size: {win_samples} samples")
+
+        overlap_samples = int(win_samples * overlap)
+        step = win_samples - overlap_samples
+
+        # number of windows
+        n_windows = len(ttt)
+
+        # Initialize arrays
+        times = np.zeros(n_windows)
+        velocities = np.zeros(n_windows)
+        cc_coeffs = np.zeros(n_windows)
+        r_squared = np.zeros(n_windows)
+
+        # Loop through windows
+        velocities = np.ones_like(baz) * np.nan
+
+        for i, (_baz, _ttt, _ccc) in enumerate(zip(baz, ttt, ccc)):
+            i1 = i * step
+            i2 = i1 + win_samples
+
+            # apply cc threshold
+            if _ccc <= cc_threshold:
+                velocities[i] = np.nan
+                r_squared[i] = np.nan
+                continue
+
+            # Rotate components to radial-transverse
+            if wave_type.lower() == 'rayleigh':
+                rot_r, rot_t = rotate_ne_rt(
+                    rot.select(channel='*N')[0].data,
+                    rot.select(channel='*E')[0].data,
+                    _baz
+                )
+            elif wave_type.lower() == 'love':
+                acc_r, acc_t = rotate_ne_rt(
+                    tra.select(channel='*N')[0].data,
+                    tra.select(channel='*E')[0].data,
+                    _baz
+                )
+
+            # Compute velocity using amplitude ratio
+            if wave_type.lower() == 'love':
+                # get velocity from amplitude ratio via regression
+                reg_results = self.regression(
+                    rot_z[i1:i2],
+                    0.5*acc_t[i1:i2],
+                    method=method.lower(),
+                    zero_intercept=zero_intercept,
+                    verbose=verbose
+                )
+                if plot:
+                    plt.figure()
+                    plt.scatter(rot_z[i1:i2], 0.5*acc_t[i1:i2], color='black')
+                    plt.plot(rot_z[i1:i2], reg_results['slope']*rot_z[i1:i2] + reg_results['intercept'], color='red')
+                    plt.title(f"Love Wave Regression: baz={_baz:.2f}°, slope={reg_results['slope']:.2f}, R²={reg_results['r_squared']:.4f}")
+                    plt.xlabel("Vertical Rotation")
+                    plt.ylabel("Transverse Acceleration")
+                    plt.show()
+  
+            
+            elif wave_type.lower() == 'rayleigh':
+                # get velocity from amplitude ratio via regression
+                reg_results = self.regression(
+                    rot_t[i1:i2],
+                    acc_z[i1:i2],
+                    method=method.lower(),
+                    zero_intercept=zero_intercept,
+                    verbose=verbose
+                )
+                if plot:
+                    plt.figure()
+                    plt.scatter(rot_t[i1:i2], acc_z[i1:i2], color='black')
+                    plt.plot(rot_t[i1:i2], reg_results['slope']*rot_t[i1:i2] + reg_results['intercept'], color='red')
+                    plt.title(f"Rayleigh Wave Regression: slope={reg_results['slope']:.6f}, R²={reg_results['r_squared']:.4f}")
+                    plt.xlabel("Transverse Rotation")
+                    plt.ylabel("Vertical Acceleration")
+                    plt.show()
+            
+            # add r_squared
+            r_squared[i] = reg_results['r_squared']
+
+            # Apply R² threshold filter
+            if reg_results['r_squared'] < r_squared_threshold:
+                velocities[i] = np.nan
+            else:
+                velocities[i] = reg_results['slope']
+
+        if self.event_info and 'backazimuth' in self.event_info:
+            baz_theo = self.event_info['backazimuth']
+
+        return {
+            'time': ttt,
+            'velocity': velocities,
+            'ccoef': ccc,
+            'terr': np.full(len(ttt), win_time_s/2),
+            'backazimuth': baz,
+            'r_squared': r_squared,
+            'parameters': {
+                'wave_type': wave_type,
+                'win_time_s': win_time_s,
+                'overlap': overlap,
+                'method': method,
+                'baz': baz_theo,
+                'cc_method': cc_method,
+                'r_squared_threshold': r_squared_threshold
+            }
+        }
+
     @staticmethod
     def get_time_windows(tbeg: Union[None, str, UTCDateTime]=None, tend: Union[None, str, UTCDateTime]=None, interval_seconds: int=3600, fractional_overlap: float=0) -> List[Tuple[UTCDateTime, UTCDateTime]]:
         '''
@@ -4699,213 +4909,6 @@ class sixdegrees():
     #     # return output if out required
     #     if out:
     #         return results
-
-    # # OLD
-    # # def compute_velocities_optimized(self, rotation_data: Stream=None, translation_data: Stream=None,
-    #                                  wave_type: str='love', baz_results: Dict=None, baz_mode: str='mid',
-    #                                  method: str='odr', cc_threshold: float=0.0, r_squared_threshold: float=0.0, 
-    #                                  zero_intercept: bool=True, verbose: bool=False, plot: bool=False) -> Dict:
-    #     """
-    #     Compute phase velocities in time intervals for Love or Rayleigh waves
-        
-    #     Parameters:
-    #     -----------
-    #     rotation_data : Stream, optional
-    #         Rotational data stream (if None, uses self.get_stream("rotation", raw=True))
-    #     translation_data : Stream, optional
-    #         Translation data stream (if None, uses self.get_stream("translation", raw=True))
-    #     wave_type : str
-    #         Type of wave to analyze ('love' or 'rayleigh')
-    #     baz_results : Dict
-    #         Dictionary containing backazimuth results
-    #     baz_mode : str
-    #         Mode to use for backazimuth selection ('max' or 'mid')
-    #     method : str
-    #         Method to use for velocity computation ('odr', 'ransac', or 'theilsen')
-    #     cc_threshold : float, optional
-    #         Minimum cross-correlation coefficient to consider, by default 0.0
-    #     r_squared_threshold : float, optional
-    #         Minimum R-squared value for regression quality, by default 0.0
-    #     zero_intercept : bool
-    #         Force intercept to be zero if True
-    #     verbose : bool
-    #         Print regression results if True
-    #     plot : bool
-    #         Plot regression results if True
-    #     Returns:
-    #     --------
-    #     Dict
-    #         Dictionary containing:
-    #         - time : array of time points
-    #         - velocity: array of phase velocities
-    #         - ccoef: array of cross-correlation coefficients
-    #         - backazimuth: array of backazimuths
-    #         - r_squared: array of R-squared values
-    #         - parameters: dictionary of parameters
-    #     """
-    #     import numpy as np
-    #     from tqdm import tqdm
-    #     from obspy.signal.rotate import rotate_ne_rt
-
-    #     # Get streams - use object data if not provided
-    #     if rotation_data is None:
-    #         rot = self.get_stream("rotation", raw=False).copy()
-    #     else:
-    #         rot = rotation_data.copy()
-        
-    #     if translation_data is None:
-    #         tra = self.get_stream("translation", raw=True).copy()
-    #     else:
-    #         tra = translation_data.copy()
-
-    #     # Validate inputs
-    #     if baz_results is None:
-    #         raise ValueError("Backazimuth results must be provided")
-    #     if wave_type.lower() not in ['love', 'rayleigh']:
-    #         raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
-    #     if baz_mode.lower() not in ['max', 'mid']:
-    #         raise ValueError(f"Invalid baz mode: {baz_mode}. Use 'max' or 'mid'")
-    #     if method.lower() not in ['odr', 'ransac', 'theilsen']:
-    #         raise ValueError(f"Invalid method: {method}. Use 'odr' or 'ransac' or 'theilsen'")
-
-    #     # Get sampling rate and validate
-    #     df = rot[0].stats.sampling_rate
-    #     if df <= 0:
-    #         raise ValueError(f"Invalid sampling rate: {df}")
-
-    #     # Extract parameters from baz_results
-    #     try:
-    #         win_time_s = baz_results['parameters']['baz_win_sec']
-    #         overlap = baz_results['parameters']['baz_win_overlap']
-    #         ttt = baz_results['twin_center']
-
-    #         if baz_mode.lower() == 'max':
-    #             baz = baz_results['baz_max']
-    #             ccc = baz_results['cc_max']
-    #         else:  # 'mid'
-    #             baz = baz_results['baz_mid']
-    #             ccc = baz_results['cc_mid']
-    #     except KeyError as e:
-    #         raise ValueError(f"Missing required key in baz_results: {e}")
-
-    #     # Validate array lengths
-    #     if not (len(baz) == len(ttt) == len(ccc)):
-    #         raise ValueError("Inconsistent lengths in backazimuth results")
-
-    #     # Get components
-    #     try:
-    #         rot_z = rot.select(channel="*Z")[0].data
-    #         acc_z = tra.select(channel="*Z")[0].data
-    #     except Exception as e:
-    #         raise RuntimeError(f"Error accessing vertical components: {str(e)}")
-
-    #     # Calculate window parameters
-    #     win_samples = int(win_time_s * df)
-    #     if win_samples <= 0:
-    #         raise ValueError(f"Invalid window size: {win_samples} samples")
-
-    #     overlap_samples = int(win_samples * overlap)
-    #     step = win_samples - overlap_samples
-
-    #     # number of windows
-    #     n_windows = len(ttt)
-
-    #     # Initialize arrays
-    #     times = np.zeros(n_windows)
-    #     velocities = np.zeros(n_windows)
-    #     cc_coeffs = np.zeros(n_windows)
-    #     r_squared = np.zeros(n_windows)
-
-    #     # Loop through windows
-    #     velocities = np.ones_like(baz) * np.nan
-
-    #     for i, (_baz, _ttt, _ccc) in enumerate(zip(baz, ttt, ccc)):
-    #         i1 = i * step
-    #         i2 = i1 + win_samples
-
-    #         # apply cc threshold
-    #         if _ccc <= cc_threshold:
-    #             velocities[i] = np.nan
-    #             r_squared[i] = np.nan
-    #             continue
-
-    #         # Rotate components to radial-transverse
-    #         if wave_type.lower() == 'rayleigh':
-    #             rot_r, rot_t = rotate_ne_rt(
-    #                 rot.select(channel='*N')[0].data,
-    #                 rot.select(channel='*E')[0].data,
-    #                 _baz
-    #             )
-    #         elif wave_type.lower() == 'love':
-    #             acc_r, acc_t = rotate_ne_rt(
-    #                 tra.select(channel='*N')[0].data,
-    #                 tra.select(channel='*E')[0].data,
-    #                 _baz
-    #             )
-
-    #         # Compute velocity using amplitude ratio
-    #         if wave_type.lower() == 'love':
-    #             # get velocity from amplitude ratio via regression
-    #             reg_results = self.regression(
-    #                 rot_z[i1:i2],
-    #                 0.5*acc_t[i1:i2],
-    #                 method=method.lower(),
-    #                 zero_intercept=zero_intercept,
-    #                 verbose=verbose
-    #             )
-    #             if plot:
-    #                 plt.figure()
-    #                 plt.scatter(rot_z[i1:i2], 0.5*acc_t[i1:i2], color='black')
-    #                 plt.plot(rot_z[i1:i2], reg_results['slope']*rot_z[i1:i2] + reg_results['intercept'], color='red')
-    #                 plt.title(f"Love Wave Regression: baz={_baz:.2f}°, slope={reg_results['slope']:.2f}, R²={reg_results['r_squared']:.4f}")
-    #                 plt.xlabel("Vertical Rotation")
-    #                 plt.ylabel("Transverse Acceleration")
-    #                 plt.show()
-  
-            
-    #         elif wave_type.lower() == 'rayleigh':
-    #             # get velocity from amplitude ratio via regression
-    #             reg_results = self.regression(
-    #                 rot_t[i1:i2],
-    #                 acc_z[i1:i2],
-    #                 method=method.lower(),
-    #                 zero_intercept=zero_intercept,
-    #                 verbose=verbose
-    #             )
-    #             if plot:
-    #                 plt.figure()
-    #                 plt.scatter(rot_t[i1:i2], acc_z[i1:i2], color='black')
-    #                 plt.plot(rot_t[i1:i2], reg_results['slope']*rot_t[i1:i2] + reg_results['intercept'], color='red')
-    #                 plt.title(f"Rayleigh Wave Regression: slope={reg_results['slope']:.6f}, R²={reg_results['r_squared']:.4f}")
-    #                 plt.xlabel("Transverse Rotation")
-    #                 plt.ylabel("Vertical Acceleration")
-    #                 plt.show()
-            
-    #         # add r_squared
-    #         r_squared[i] = reg_results['r_squared']
-
-    #         # Apply R² threshold filter
-    #         if reg_results['r_squared'] < r_squared_threshold:
-    #             velocities[i] = np.nan
-    #         else:
-    #             velocities[i] = reg_results['slope']
-
-    #     return {
-    #         'time': ttt,
-    #         'velocity': velocities,
-    #         'ccoef': ccc,
-    #         'terr': np.full(len(ttt), win_time_s/2),
-    #         'backazimuth': baz,
-    #         'r_squared': r_squared,
-    #         'parameters': {
-    #             'wave_type': wave_type,
-    #             'win_time_s': win_time_s,
-    #             'overlap': overlap,
-    #             'method': method,
-    #             'baz_mode': baz_mode,
-    #             'r_squared_threshold': r_squared_threshold
-    #         }
-    #     }
 
     # # OLD
     # # def _process_frequency_band(self, freq_params, wave_type, t_win_factor, overlap, baz_mode, method, cc_threshold, rot_data, tra_data):
