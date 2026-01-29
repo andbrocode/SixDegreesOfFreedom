@@ -16,3 +16,6 @@ event_configs/
 
 # exclude development prototypes
 examples/DEV*.ipynb
+
+# non relevant events
+data/eventM*.mseed

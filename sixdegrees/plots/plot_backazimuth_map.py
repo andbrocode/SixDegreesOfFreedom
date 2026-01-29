@@ -589,7 +589,7 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
         #         bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
         # Configure histogram axis
-        ax.set_title(f'{wave_type.upper()} Wave Backazimuth', fontsize=12, fontweight='bold')
+        ax.set_title(f'{wave_type.upper()} Method Backazimuth', fontsize=12)
         ax.set_ylabel('Density')
         ax.set_xlim(0, 360)
         ax.set_xticks([0, 90, 180, 270, 360])
