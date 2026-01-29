@@ -132,16 +132,16 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
             runit = r"rad"
         if tunit is None:
             tunit = r"m/s"
-        rot_label_symbol = "rotation angle"  # Rotation angle
-        tra_label_symbol = "velocity"  # Velocity
+        rot_label_symbol = "Rotation angle"  # Rotation angle
+        tra_label_symbol = "Velocity"  # Velocity
     else:
         # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
         if runit is None:
             runit = r"rad/s"
         if tunit is None:
             tunit = r"m/s$^2$"
-        rot_label_symbol = "rotation rate"  # Rotation rate
-        tra_label_symbol = "acceleration"  # Acceleration
+        rot_label_symbol = "Rotation rate"  # Rotation rate
+        tra_label_symbol = "Acceleration"  # Acceleration
     
     # Validate that we have required streams
     if rot is None or acc is None:
@@ -368,13 +368,14 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
         ax[i].legend(loc=1, ncols=4)
         ax[i].grid(which="both", alpha=0.5)
         ax[i].set_ylabel(f"{rot_label_symbol} ({rot_unit})", fontsize=font)
-        ax[i].text(0.05, 0.9,
-                    f"{wt.capitalize()}: CC={cc_all[i]:.2f}",
-                    ha='left', va='top', 
-                    transform=ax[i].transAxes, 
-                    fontsize=font-1,
-                    bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.1)
-                    )
+        ax[i].text(
+            0.05, 0.9,
+            f"{wt.capitalize()}: CC={cc_all[i]:.2f}",
+            ha='left', va='top', 
+            transform=ax[i].transAxes, 
+            fontsize=font-1,
+            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.1)
+        )
 
     for _ax in twinaxs:
         _ax.legend(loc=1, bbox_to_anchor=(1, 0.9))
@@ -405,7 +406,8 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # Set title
     tbeg = _acc[0].stats.starttime
     title = f"{tbeg.date} {str(tbeg.time).split('.')[0]} UTC"
-    title += f" | {wave_type}"
+    if wave_type is not "both":
+        title += f" | {wave_type}"
     if fmin is not None and fmax is not None:
         title += f" | f = {fmin}-{fmax} Hz"
     elif fmin is not None:
