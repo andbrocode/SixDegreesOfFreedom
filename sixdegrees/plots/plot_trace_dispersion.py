@@ -428,7 +428,7 @@ def plot_trace_dispersion(
             )
             
             # Apply scaling
-            rot_z_scaled = 0.5*rot_z * rot_scaling
+            rot_z_scaled = 2*rot_z * rot_scaling
             acc_t_scaled = acc_t * acc_scaling
             
             # Linear regression with only slope: tra = slope * rot
