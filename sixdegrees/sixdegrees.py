@@ -682,23 +682,27 @@ class sixdegrees():
 
         # Compute cross-correlation
         cc0 = correlate(tra_z, rot_t, 0, normalize=normalize)
+        _, cc0_max_h = xcorr_max(cc0)
+
         cc = correlate(tra_z, rot_t, len(rot_t), normalize=normalize)
         lag_samples_h, cc_max_h = xcorr_max(cc)
         
         # Convert to time
         lag_time_h = lag_samples_h / self.get_stream("rotation")[0].stats.sampling_rate
 
-        print(f"ROT-T & ACC-Z:  cc_zero: {cc0:.2f}, lag_time: {lag_time_h} s, lag_samples: {lag_samples_h}, cc_max: {cc_max_h:.2f}")
+        print(f"ROT-T & ACC-Z:  cc_zero: {cc0_max_h:.2f}, lag_time: {lag_time_h} s, lag_samples: {lag_samples_h}, cc_max: {cc_max_h:.2f}")
 
         # Compute cross-correlation
         cc0 = correlate(tra_t, rot_z, 0, normalize=normalize)
+        _, cc0_max_z = xcorr_max(cc0)
+
         cc = correlate(tra_t, rot_z, len(rot_z), normalize=normalize)
         lag_samples_z, cc_max_z = xcorr_max(cc)
         
         # Convert to time
         lag_time_z = lag_samples_z / self.get_stream("rotation")[0].stats.sampling_rate
 
-        print(f"ROT-Z & ACC-T:  cc_zero: {cc0:.2f}, lag_time: {lag_time_z} s, lag_samples: {lag_samples_z}, cc_max: {cc_max_z:.2f}")
+        print(f"ROT-Z & ACC-T:  cc_zero: {cc0_max_z:.2f}, lag_time: {lag_time_z} s, lag_samples: {lag_samples_z}, cc_max: {cc_max_z:.2f}")
        
         # shift rotataion waveforms
         if correct_traces:
