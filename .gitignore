@@ -14,3 +14,5 @@ OLD/
 # exclude event_configs
 event_configs/
 
+# exclude development prototypes
+examples/DEV*.ipynb

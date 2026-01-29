@@ -55,6 +55,20 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
             if debug:
                 print("⚠ Using matplotlib fallback")
         
+        # Fix for cartopy/matplotlib compatibility issue with _autoscaleXon/_autoscaleYon
+        # These attributes were removed in newer matplotlib versions
+        if use_cartopy and hasattr(ax, 'get_autoscalex_on'):
+            if not hasattr(ax, '_autoscaleXon'):
+                try:
+                    ax._autoscaleXon = ax.get_autoscalex_on()
+                except:
+                    ax._autoscaleXon = True
+            if not hasattr(ax, '_autoscaleYon'):
+                try:
+                    ax._autoscaleYon = ax.get_autoscaley_on()
+                except:
+                    ax._autoscaleYon = True
+        
         # Set up map features
         if use_cartopy:
             ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
@@ -395,6 +409,18 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
                     proj = ccrs.Orthographic(center_lon, center_lat)
                     ax = fig.add_subplot(gridspec, projection=proj)
                     
+                    # Fix for cartopy/matplotlib compatibility
+                    if not hasattr(ax, '_autoscaleXon'):
+                        try:
+                            ax._autoscaleXon = ax.get_autoscalex_on()
+                        except:
+                            ax._autoscaleXon = True
+                    if not hasattr(ax, '_autoscaleYon'):
+                        try:
+                            ax._autoscaleYon = ax.get_autoscaley_on()
+                        except:
+                            ax._autoscaleYon = True
+                    
                     # Set map bounds to ensure visibility
                     if event_info and 'latitude' in event_info and 'longitude' in event_info:
                         try:
@@ -416,8 +442,34 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
                             pass
                     
                 else:
-                    ax = fig.add_subplot(gridspec, projection=ccrs.PlateCarree())
+                    proj = ccrs.Orthographic(center_lon, center_lat)
+                    ax = fig.add_subplot(gridspec, projection=proj)
+                    # Fix for cartopy/matplotlib compatibility
+                    if not hasattr(ax, '_autoscaleXon'):
+                        try:
+                            ax._autoscaleXon = ax.get_autoscalex_on()
+                        except:
+                            ax._autoscaleXon = True
+                    if not hasattr(ax, '_autoscaleYon'):
+                        try:
+                            ax._autoscaleYon = ax.get_autoscaley_on()
+                        except:
+                            ax._autoscaleYon = True
                     
+                return ax
+            else:
+                ax = fig.add_subplot(gridspec, projection=ccrs.PlateCarree())
+                # Fix for cartopy/matplotlib compatibility
+                if not hasattr(ax, '_autoscaleXon'):
+                    try:
+                        ax._autoscaleXon = ax.get_autoscalex_on()
+                    except:
+                        ax._autoscaleXon = True
+                if not hasattr(ax, '_autoscaleYon'):
+                    try:
+                        ax._autoscaleYon = ax.get_autoscaley_on()
+                    except:
+                        ax._autoscaleYon = True
                 return ax
         except ImportError:
             return fig.add_subplot(gridspec)
