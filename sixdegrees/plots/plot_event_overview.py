@@ -334,11 +334,11 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
     if data_type.lower() == "velocity":
         # Velocity mode: rotation (rad) and velocity (m/s)
         if unitscale == "nano":
-            acc_scaling, acc_unit = 1e6, f"{sd.mu}m/s"
+            acc_scaling, acc_unit = 1e6, f"$\mu$m/s"
             rot_scaling, rot_unit = 1e9, f"nrad"
         elif unitscale == "micro":
             acc_scaling, acc_unit = 1e3, f"mm/s"
-            rot_scaling, rot_unit = 1e6, f"{sd.mu}rad"
+            rot_scaling, rot_unit = 1e6, f"$\mu$rad"
         else:
             raise ValueError(f"Invalid unitscale: {unitscale}")
         rot_label_prefix = "ANG"
@@ -348,11 +348,11 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
     else:
         # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
         if unitscale == "nano":
-            acc_scaling, acc_unit = 1e6, f"{sd.mu}{sd.tunit}"
-            rot_scaling, rot_unit = 1e9, f"n{sd.runit}"
+            acc_scaling, acc_unit = 1e6, f"$\mu$m/s$^2$"
+            rot_scaling, rot_unit = 1e9, f"nrad/s"
         elif unitscale == "micro":
-            acc_scaling, acc_unit = 1e3, f"m{sd.tunit}"
-            rot_scaling, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
+            acc_scaling, acc_unit = 1e3, f"mm/s$^2$"
+            rot_scaling, rot_unit = 1e6, f"$\mu$rad/s"
         else:
             raise ValueError(f"Invalid unitscale: {unitscale}")
         rot_label_prefix = "ROT"
@@ -594,7 +594,7 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
             rot_scaling, rot_unit = 1e6, f"{sd.mu}rad"
         else:
             raise ValueError(f"Invalid unitscale: {unitscale}")
-        rot_label_prefix = "ROT"
+        rot_label_prefix = "ANG"
         tra_label_prefix = "VEL"
     else:
         # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)

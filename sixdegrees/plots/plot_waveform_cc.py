@@ -125,14 +125,14 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
                     if 'distance_km' in sd_object.event_info:
                         distance = sd_object.event_info['distance_km']
     
-    # Determine units based on data_type if not explicitly provided
+    # Determine units and labels based on data_type if not explicitly provided
     if data_type.lower() == "velocity":
         # Velocity mode: rotation (rad) and velocity (m/s)
         if runit is None:
             runit = r"rad"
         if tunit is None:
             tunit = r"m/s"
-        rot_label_symbol = "Rotation angle"  # Rotation angle
+        rot_label_symbol = "Angle"  # Rotation angle
         tra_label_symbol = "Velocity"  # Velocity
     else:
         # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
@@ -218,16 +218,28 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
         fig, axes = plt.subplots(Nrow, Ncol, figsize=(15, 5), sharex=True)
         ax = [axes]  # wrap single axes in list for consistent indexing
     
-    # define scaling factors
+    # Define scaling factors and units based on data_type and unitscale
     mu = r"$\mu$"
-    if unitscale == "nano":
-        acc_scaling, acc_unit = 1e6, f"{mu}{tunit}"
-        rot_scaling, rot_unit = 1e9, f"n{runit}"
-    elif unitscale == "micro":
-        acc_scaling, acc_unit = 1e3, f"m{tunit}"
-        rot_scaling, rot_unit = 1e6, f"{mu}{runit}"
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{mu}m/s"
+            rot_scaling, rot_unit = 1e9, f"nrad"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"mm/s"
+            rot_scaling, rot_unit = 1e6, f"{mu}rad"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
     else:
-        raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{mu}m/s$^2$"
+            rot_scaling, rot_unit = 1e9, f"nrad/s"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"mm/s$^2$"
+            rot_scaling, rot_unit = 1e6, f"{mu}rad/s"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
 
     # define linewidth and fontsize
     lw = 1
