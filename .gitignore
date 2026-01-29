@@ -10,6 +10,7 @@ figures/
 
 # exclude trash folder
 OLD/
+OLD2/
 
 # exclude event_configs
 event_configs/
