@@ -29,7 +29,8 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
                        zoom_t1: float = 2.0,
                        zoom_t2: float = 20.0,
                        figsize: Optional[tuple] = None,
-                       rot_scale_factor: float = 3.0) -> plt.Figure:
+                       rot_scale_factor: float = 3.0,
+                       data_type: str = "acceleration") -> plt.Figure:
     """
     Create a comprehensive event overview plot combining waveform comparison, 
     backazimuth estimates, velocity estimates, and a geographic map.
@@ -84,6 +85,9 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
         Figure size (width, height). If None, auto-determined.
     rot_scale_factor : float
         Scaling factor for rotation data in plots (default: 3.0)
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
 
     Returns:
     --------
@@ -170,7 +174,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
     # ========== WAVEFORM COMPARISON ==========
     ax_wave = fig.add_subplot(gs[3:5, :9])
     p_arrival_time, s_arrival_time, max_time = _plot_waveform_comparison(ax_wave, sd, baz_theo, wave_type, unitscale, 
-                             fmin, fmax, twin_sec, twin_overlap, event_info, rot_scale_factor)
+                             fmin, fmax, twin_sec, twin_overlap, event_info, rot_scale_factor, data_type)
     
     # ========== P AND S WAVE ZOOM WINDOWS ==========
     # Side by side below waveform comparison (with small gap in column 4)
@@ -190,7 +194,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
             t2 = p_arrival_time + zoom_t2
         _plot_zoom_window(ax_p_zoom, sd, baz_theo, wave_type, unitscale, fmin, fmax,
                             t1, t2, 'P', 12, arrival_time=p_arrival_time, 
-                            zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor)
+                            zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor, data_type=data_type)
     
     if s_arrival_time is not None:
         starttime = sd.get_stream("translation")[0].stats.starttime
@@ -205,7 +209,7 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
             t2 = s_arrival_time + zoom_t2
         _plot_zoom_window(ax_s_zoom, sd, baz_theo, wave_type, unitscale, fmin, fmax,
                         t1, t2, 'S', 12, arrival_time=s_arrival_time,
-                        zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor)
+                        zoom_t1=zoom_t1, zoom_t2=zoom_t2, rot_scale_factor=rot_scale_factor, data_type=data_type)
     
     # ========== BACKAZIMUTH ESTIMATES ==========
     ax_baz = fig.add_subplot(gs[6, :9])
@@ -287,7 +291,7 @@ def _plot_event_info_box(ax, event_info, baz_theo):
 
 
 def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax, 
-                             twin_sec, twin_overlap, event_info=None, rot_scale_factor=3.0):
+                             twin_sec, twin_overlap, event_info=None, rot_scale_factor=3.0, data_type="acceleration"):
     """Plot waveform comparison similar to plot_waveform_cc with crosscorrelation dots"""
     from numpy import linspace, ones, array
     from obspy.signal.cross_correlation import correlate, xcorr_max
@@ -326,15 +330,35 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         rot.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
         acc.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
     
-    # Define scaling factors
-    if unitscale == "nano":
-        acc_scaling, acc_unit = 1e6, f"{sd.mu}{sd.tunit}"
-        rot_scaling, rot_unit = 1e9, f"n{sd.runit}"
-    elif unitscale == "micro":
-        acc_scaling, acc_unit = 1e3, f"m{sd.tunit}"
-        rot_scaling, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
+    # Define scaling factors and labels based on data_type
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{sd.mu}m/s"
+            rot_scaling, rot_unit = 1e9, f"nrad"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"mm/s"
+            rot_scaling, rot_unit = 1e6, f"{sd.mu}rad"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}")
+        rot_label_prefix = "ANG"
+        tra_label_prefix = "VEL"
+        rot_label_full = "Angle"
+        tra_label_full = "Velocity"
     else:
-        raise ValueError(f"Invalid unitscale: {unitscale}")
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{sd.mu}{sd.tunit}"
+            rot_scaling, rot_unit = 1e9, f"n{sd.runit}"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"m{sd.tunit}"
+            rot_scaling, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}")
+        rot_label_prefix = "ROT"
+        tra_label_prefix = "ACC"
+        rot_label_full = "Rotation rate"
+        tra_label_full = "Acceleration"
     
     font = 12
     lw = 1.0
@@ -371,9 +395,9 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Plot
         times = rot.select(channel="*Z")[0].times()
-        ax.plot(times, rot_z*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-Z", color="tab:red", lw=lw, zorder=3)
+        ax.plot(times, rot_z*rot_scale_factor, label=f"{rot_scale_factor:.1f}x {rot_label_prefix}-Z", color="tab:red", lw=lw, zorder=3)
         ax2 = ax.twinx()
-        ax2.plot(times, acc_t, label=f"ACC-T", color="black", lw=lw)
+        ax2.plot(times, acc_t, label=f"{tra_label_prefix}-T", color="black", lw=lw)
         
         # Add crosscorrelation dots at bottom
         ax3 = ax.twinx()
@@ -390,8 +414,8 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         ax.set_xlim(left=0)
         ax2.set_xlim(left=0)
         
-        ax.set_ylabel(f"Rotation rate ({rot_unit})", fontsize=font, color="tab:red")
-        ax2.set_ylabel(f"Acceleration ({acc_unit})", fontsize=font, color="black")
+        ax.set_ylabel(f"{rot_label_full} ({rot_unit})", fontsize=font, color="tab:red")
+        ax2.set_ylabel(f"{tra_label_full} ({acc_unit})", fontsize=font, color="black")
         ax.tick_params(axis='y', labelcolor="tab:red")
         ax2.tick_params(axis='y', labelcolor="black")
         
@@ -438,9 +462,9 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Plot
         times = acc.select(channel="*Z")[0].times()
-        ax.plot(times, rot_t*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-T", color="tab:red", lw=lw, zorder=3)
+        ax.plot(times, rot_t*rot_scale_factor, label=f"{rot_scale_factor:.1f}x {rot_label_prefix}-T", color="tab:red", lw=lw, zorder=3)
         ax2 = ax.twinx()
-        ax2.plot(times, acc_z, label=f"ACC-Z", color="black", lw=lw)
+        ax2.plot(times, acc_z, label=f"{tra_label_prefix}-Z", color="black", lw=lw)
         
         # Add crosscorrelation dots at bottom
         ax3 = ax.twinx()
@@ -457,8 +481,8 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         ax.set_xlim(left=0)
         ax2.set_xlim(left=0)
 
-        ax.set_ylabel(f"Rotation rate ({rot_unit})", fontsize=font, color="tab:red")
-        ax2.set_ylabel(f"Acceleration ({acc_unit})", fontsize=font, color="black")
+        ax.set_ylabel(f"{rot_label_full} ({rot_unit})", fontsize=font, color="tab:red")
+        ax2.set_ylabel(f"{tra_label_full} ({acc_unit})", fontsize=font, color="black")
         ax.tick_params(axis='y', labelcolor="tab:red")
         ax2.tick_params(axis='y', labelcolor="black")
         
@@ -546,7 +570,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
 
 
 def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax, 
-                     t_start, t_end, phase_label, font, arrival_time=None, zoom_t1=None, zoom_t2=None, rot_scale_factor=3.0):
+                     t_start, t_end, phase_label, font, arrival_time=None, zoom_t1=None, zoom_t2=None, rot_scale_factor=3.0, data_type="acceleration"):
     """Plot zoom window for P or S wave arrival with time axis relative to arrival time"""
     from obspy.signal.rotate import rotate_ne_rt
 
@@ -559,15 +583,31 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
         rot.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
         acc.filter('bandpass', freqmin=fmin, freqmax=fmax, zerophase=True)
     
-    # Define scaling factors
-    if unitscale == "nano":
-        acc_scaling, acc_unit = 1e6, f"{sd.mu}{sd.tunit}"
-        rot_scaling, rot_unit = 1e9, f"n{sd.runit}"
-    elif unitscale == "micro":
-        acc_scaling, acc_unit = 1e3, f"m{sd.tunit}"
-        rot_scaling, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
+    # Define scaling factors and labels based on data_type
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{sd.mu}m/s"
+            rot_scaling, rot_unit = 1e9, f"nrad"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"mm/s"
+            rot_scaling, rot_unit = 1e6, f"{sd.mu}rad"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}")
+        rot_label_prefix = "ROT"
+        tra_label_prefix = "VEL"
     else:
-        raise ValueError(f"Invalid unitscale: {unitscale}")
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == "nano":
+            acc_scaling, acc_unit = 1e6, f"{sd.mu}{sd.tunit}"
+            rot_scaling, rot_unit = 1e9, f"n{sd.runit}"
+        elif unitscale == "micro":
+            acc_scaling, acc_unit = 1e3, f"m{sd.tunit}"
+            rot_scaling, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}")
+        rot_label_prefix = "ROT"
+        tra_label_prefix = "ACC"
     
     # Use baz from event_info or default to 0
     if baz is None:
@@ -601,9 +641,9 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
         # Convert to relative to arrival_time: times + t_start - arrival_time
         times_raw = rot_zoom.select(channel="*Z")[0].times()
         times = times_raw + t_start - arrival_time
-        ax_zoom.plot(times, rot_z*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-Z", color="tab:red", lw=lw, zorder=3)
+        ax_zoom.plot(times, rot_z*rot_scale_factor, label=f"{rot_scale_factor:.1f}x {rot_label_prefix}-Z", color="tab:red", lw=lw, zorder=3)
         ax_zoom2 = ax_zoom.twinx()
-        ax_zoom2.plot(times, acc_t, label=f"ACC-T", color="black", lw=lw)
+        ax_zoom2.plot(times, acc_t, label=f"{tra_label_prefix}-T", color="black", lw=lw)
         
     elif wave_type == "rayleigh":
         acc_z = acc_zoom.select(channel="*Z")[0].data * acc_scaling
@@ -619,9 +659,9 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
         # Convert to relative to arrival_time: times + t_start - arrival_time
         times_raw = acc_zoom.select(channel="*Z")[0].times()
         times = times_raw + t_start - arrival_time
-        ax_zoom.plot(times, rot_t*rot_scale_factor, label=f"{rot_scale_factor:.1f}x ROT-T", color="tab:red", lw=lw, zorder=3)
+        ax_zoom.plot(times, rot_t*rot_scale_factor, label=f"{rot_scale_factor:.1f}x {rot_label_prefix}-T", color="tab:red", lw=lw, zorder=3)
         ax_zoom2 = ax_zoom.twinx()
-        ax_zoom2.plot(times, acc_z, label=f"ACC-Z", color="black", lw=lw)
+        ax_zoom2.plot(times, acc_z, label=f"{tra_label_prefix}-Z", color="black", lw=lw)
     
     # Mark arrival time at x=0 (arrival_time is now the reference)
     if arrival_time is not None:
@@ -650,8 +690,8 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
     ax_zoom2.tick_params(labelsize=font-3)
 
     # add y-axis label to ax_zoom and ax_zoom2
-    ax_zoom.set_ylabel(f"ROT ({rot_unit})", fontsize=font, color="tab:red")
-    ax_zoom2.set_ylabel(f"ACC ({acc_unit})", fontsize=font, color="black")
+    ax_zoom.set_ylabel(f"{rot_label_prefix} ({rot_unit})", fontsize=font, color="tab:red")
+    ax_zoom2.set_ylabel(f"{tra_label_prefix} ({acc_unit})", fontsize=font, color="black")
 
     # make rotation y-axis label and text red 
     ax_zoom.tick_params(axis='y', labelcolor="tab:red")

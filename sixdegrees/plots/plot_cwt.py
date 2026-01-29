@@ -8,7 +8,7 @@ from matplotlib.gridspec import GridSpec
 from obspy import Stream
 
 def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False, 
-            ylim: Union[float, None]=None, scale: float=1e6) -> plt.Figure:
+            ylim: Union[float, None]=None, scale: float=1e6, data_type: str="acceleration") -> plt.Figure:
     """
     Plot continuous wavelet transform analysis for all components of rotation and translation
     
@@ -24,6 +24,9 @@ def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False,
         Upper frequency limit for plotting
     scale : float
         Scale factor for data
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
         
     Returns:
     --------
@@ -38,29 +41,59 @@ def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False,
     font = 12
     cmap = plt.get_cmap("viridis")
 
-    # decide if rotation or translation data 
+    # decide if rotation or translation data and set units based on data_type
     if "J" in st[0].stats.channel:
-        if scale == 1e9:
-            unit = r"nrad"
-        elif scale == 1e6:
-            unit = r"$\mu$rad"
-        elif scale == 1e3:
-            unit = r"mrad"
+        # Rotation data
+        if data_type.lower() == "velocity":
+            # Rotation angle (rad)
+            if scale == 1e9:
+                unit = r"nrad"
+            elif scale == 1e6:
+                unit = r"$\mu$rad"
+            elif scale == 1e3:
+                unit = r"mrad"
+            else:
+                unit = r"rad"
+                scale = 1
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
         else:
-            unit = r"rad"
-            scale = 1
-            print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+            # Rotation rate (rad/s) - default
+            if scale == 1e9:
+                unit = r"nrad/s"
+            elif scale == 1e6:
+                unit = r"$\mu$rad/s"
+            elif scale == 1e3:
+                unit = r"mrad/s"
+            else:
+                unit = r"rad/s"
+                scale = 1
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
     else:
-        if scale == 1e9:
-            unit = r"nm/s$^2$"
-        elif scale == 1e6:
-            unit = r"mm/s$^2$"
-        elif scale == 1e3:
-            unit = r"m/s$^2$"
+        # Translation data
+        if data_type.lower() == "velocity":
+            # Velocity (m/s)
+            if scale == 1e9:
+                unit = r"nm/s"
+            elif scale == 1e6:
+                unit = r"mm/s"
+            elif scale == 1e3:
+                unit = r"m/s"
+            else:
+                unit = r"m/s"
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+                scale = 1
         else:
-            unit = r"m/s$^2$"
-            print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
-            scale = 1
+            # Acceleration (m/s²) - default
+            if scale == 1e9:
+                unit = r"nm/s$^2$"
+            elif scale == 1e6:
+                unit = r"mm/s$^2$"
+            elif scale == 1e3:
+                unit = r"m/s$^2$"
+            else:
+                unit = r"m/s$^2$"
+                print(f"WARNING: unknown scale factor (1e3, 1e6, 1e9): {scale}. Using 1 for scale")
+                scale = 1
 
 
     # Create figure with GridSpec

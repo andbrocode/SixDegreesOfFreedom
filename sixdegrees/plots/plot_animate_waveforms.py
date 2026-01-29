@@ -16,7 +16,7 @@ from typing import Optional, Union
 def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = None,
                      save_path: Optional[str] = None, dpi: int = 150, show_arrivals: bool = False,
                      rotate_zrt: bool = False, tail_duration: float = 50.0, baz: Optional[float] = None,
-                     n_frames: Optional[int] = None) -> FuncAnimation:
+                     n_frames: Optional[int] = None, data_type: str = "acceleration") -> FuncAnimation:
     """
     Create an animation of waveforms and particle motion.
     
@@ -42,6 +42,9 @@ def animate_waveforms(sd, time_step: float = 0.5, duration: Optional[float] = No
         Backazimuth in degrees. If provided, overrides event-based backazimuth
     n_frames : int, optional
         Number of frames for the animation. If provided, adjusts duration accordingly
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
     
     Returns:
     --------

@@ -19,7 +19,7 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
                         save_path: Optional[str] = None, dpi: int = 150, show_arrivals: bool = False,
                         rotate_zrt: bool = False, tail_duration: float = 50.0, baz: Optional[float] = None,
                         n_frames: Optional[int] = None, cube_scale: float = 0.3, 
-                        normalize_traces: bool = True) -> FuncAnimation:
+                        normalize_traces: bool = True, data_type: str = "acceleration") -> FuncAnimation:
     """
     Create an animation of waveforms, particle motion, and 3D cube visualization.
     
@@ -49,6 +49,9 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
         Scale factor for cube size (default: 0.3)
     normalize_traces : bool
         Whether to normalize each trace individually to [-1, 1] (default: True)
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
     
     Returns:
     --------
@@ -240,21 +243,39 @@ def animate_waveforms_3d(sd, time_step: float = 0.5, duration: Optional[float] =
     print(f"Number of frames: {n_frames}")
     print(f"Frame rate: {1/time_step:.1f} fps")
     
-    # Integrate translational data (acceleration to displacement)
-    print("Integrating translational data (acceleration to displacement)...")
-    trans_integrated = trans_st.copy()
-    for comp in components:
-        trans_data = trans_integrated.select(component=comp)[0].data
-        trans_integrated.select(component=comp)[0].data = integrate_twice(trans_data, dt)
-        trans_integrated.select(component=comp)[0].detrend('linear')
 
-    # Integrate rotational data (rotation rate to rotation angle)
-    print("Integrating rotational data (rotation rate to rotation angle)...")
-    rot_integrated = rot_st.copy()
-    for comp in components:
-        rot_data = rot_integrated.select(component=comp)[0].data
-        rot_integrated.select(component=comp)[0].data = integrate_once(rot_data, dt)
-        rot_integrated.select(component=comp)[0].detrend('linear')
+    if data_type.lower() == "acceleration":
+        # Integrate translational data (acceleration to displacement)
+        print("Integrating translational data (acceleration to displacement)...")
+        trans_integrated = trans_st.copy()
+        for comp in components:
+            trans_data = trans_integrated.select(component=comp)[0].data
+            trans_integrated.select(component=comp)[0].data = integrate_twice(trans_data, dt)
+            trans_integrated.select(component=comp)[0].detrend('linear')
+
+        # Integrate rotational data (rotation rate to rotation angle)
+        print("Integrating rotational data (rotation rate to rotation angle)...")
+        rot_integrated = rot_st.copy()
+        for comp in components:
+            rot_data = rot_integrated.select(component=comp)[0].data
+            rot_integrated.select(component=comp)[0].data = integrate_once(rot_data, dt)
+            rot_integrated.select(component=comp)[0].detrend('linear')
+
+    elif data_type.lower() == "velocity":
+        # Integrate translational data (velocity to displacement)
+        print("Integrating translational data (velocity to displacement)...")
+        trans_integrated = trans_st.copy()
+        for comp in components:
+            trans_data = trans_integrated.select(component=comp)[0].data
+            trans_integrated.select(component=comp)[0].data = integrate_once(trans_data, dt)
+            trans_integrated.select(component=comp)[0].detrend('linear')
+        # Integrate rotational data (rotation rate to rotation angle)
+        print("Integrating rotational data (rotation rate to rotation angle)...")
+        rot_integrated = rot_st.copy()
+        for comp in components:
+            rot_integrated.select(component=comp)[0].data = rot_integrated.select(component=comp)[0].data
+            rot_integrated.select(component=comp)[0].detrend('linear')
+
 
     # Normalize all traces if requested (after integration, before plotting)
     if normalize_traces:
