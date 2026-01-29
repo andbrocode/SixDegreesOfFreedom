@@ -4444,7 +4444,7 @@ class sixdegrees():
                 baz_estimated[wave_type] = nan
                 results_dict[wave_type]['n_samples'] = 0
             
-            print(f"\nEstimated BAZ {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
+            print(f"\nEstimated BAz {label} = {baz_estimated[wave_type]}° (CC ≥ {cc_threshold})")
     
         if plot:
 
@@ -4511,9 +4511,9 @@ class sixdegrees():
             for wave_type in wave_types:
                 ax = axes_dict[wave_type]['main']
                 baz_val = baz_estimated.get(wave_type, nan)
-                title = f"{title_map[wave_type]} Wave BAZ (estimated = {baz_val}°)"
+                title = f"{title_map[wave_type]} Method BAz (estimated = {baz_val}°)"
                 ax.set_title(title, fontsize=font)
-                ax.set_ylabel("BAZ (°)", fontsize=font)
+                ax.set_ylabel("BAz (°)", fontsize=font)
             
             # Set xlabel on last axis
             if wave_types:
