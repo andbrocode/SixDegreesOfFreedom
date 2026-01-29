@@ -9,7 +9,8 @@ from obspy.signal.rotate import rotate_ne_rt
 from typing import Dict, Optional
 
 def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None, 
-                   minors: bool=True, cc_threshold: Optional[float]=None, figsize: Optional[Tuple[float, float]]=(12, 8)) -> plt.Figure:
+                   minors: bool=True, cc_threshold: Optional[float]=None, figsize: Optional[Tuple[float, float]]=(12, 8),
+                   data_type: str = "acceleration", unitscale: str = "nano") -> plt.Figure:
     """
     Plot waveforms and velocity estimates
     
@@ -27,6 +28,11 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
         Minimum cross-correlation coefficient threshold
     figsize : Tuple[float, float], optional
         Figure size (width, height) in inches (default: (12, 8))
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
+    unitscale : str
+        Unit scale: "nano" or "micro" (default: "nano")
     Returns:
     --------
     matplotlib.figure.Figure
@@ -45,8 +51,32 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     # Plot settings
     font = 12
     lw = 1.0
-    rot_scale, rot_unit = 1e9, f"n{sd.runit}"
-    tra_scale, tra_unit = 1e6, f"{sd.mu}{sd.tunit}"
+    
+    # Define scaling factors and labels based on data_type and unitscale
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == 'nano':
+            rot_scale, rot_unit = 1e9, f"nrad"
+            tra_scale, tra_unit = 1e6, f"$\mu$m/s"
+        elif unitscale == 'micro':
+            rot_scale, rot_unit = 1e6, f"$\mu$rad"
+            tra_scale, tra_unit = 1e3, f"mm/s"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
+        rot_label = "Angle"
+        tra_label = "Velocity"
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == 'nano':
+            rot_scale, rot_unit = 1e9, f"nrad/s"
+            tra_scale, tra_unit = 1e6, f"$\mu$m/s$^2$"
+        elif unitscale == 'micro':
+            rot_scale, rot_unit = 1e6, f"$\mu$rad/s"
+            tra_scale, tra_unit = 1e3, f"mm/s$^2$"
+        else:
+            raise ValueError(f"Invalid unitscale: {unitscale}. Valid options are: 'nano', 'micro'")
+        rot_label = "Rotation rate"
+        tra_label = "Acceleration"
     
     # Get time vector
     times = np.arange(len(sd.st[0])) / sd.sampling_rate
@@ -133,9 +163,9 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     # Configure waveform axes
     ax_wave.grid(True, which='both', ls='--', alpha=0.3)
     ax_wave.legend(loc=1)
-    ax_wave.set_ylabel(f"acceleration ({tra_unit})", fontsize=font)
+    ax_wave.set_ylabel(f"{tra_label.lower()} ({tra_unit})", fontsize=font)
     ax_wave2.tick_params(axis='y', colors="darkred")
-    ax_wave2.set_ylabel(f"rotation rate ({rot_unit})", color="darkred", fontsize=font)
+    ax_wave2.set_ylabel(f"{rot_label.lower()} ({rot_unit})", color="darkred", fontsize=font)
     ax_wave2.legend(loc=4)
 
     sd.sync_twin_axes(ax_wave, ax_wave2)

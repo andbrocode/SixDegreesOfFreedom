@@ -12,7 +12,7 @@ from numpy import arange, histogram, average, cov
 def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love', 
                             baz_theo: float=None, baz_theo_margin: float=10, unitscale: str='nano',
                             cc_threshold: float=None, minors: bool=True, cc_method: str='mid',
-                            terr: bool=True) -> plt.Figure:
+                            terr: bool=True, data_type: str = "acceleration") -> plt.Figure:
     """
     Plot backazimuth estimation results
     
@@ -38,6 +38,9 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
         Unit scale for rotation rate ('nano' or 'micro')
     terr : bool, optional
         Add error bars to backazimuth estimates if True
+    data_type : str
+        Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
+        Default is "acceleration". This determines units and labels.
 
     Returns:
     --------
@@ -58,12 +61,28 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
     # Plot settings
     font = 12
     lw = 1.0
-    if unitscale == 'nano':
-        rot_scale, rot_unit = 1e9, f"n{sd.runit}"
-        trans_scale, trans_unit = 1e6, f"{sd.mu}{sd.tunit}"
-    elif unitscale == 'micro':
-        rot_scale, rot_unit = 1e6, f"{sd.mu}{sd.runit}"
-        trans_scale, trans_unit = 1e3, f"m{sd.tunit}"
+    
+    # Define scaling factors and labels based on data_type
+    if data_type.lower() == "velocity":
+        # Velocity mode: rotation (rad) and velocity (m/s)
+        if unitscale == 'nano':
+            rot_scale, rot_unit = 1e9, f"nrad"
+            trans_scale, trans_unit = 1e6, f"$\mu$m/s"
+        elif unitscale == 'micro':
+            rot_scale, rot_unit = 1e6, f"$\mu$rad"
+            trans_scale, trans_unit = 1e3, f"mm/s"
+        rot_label = "Angle"
+        tra_label = "Velocity"
+    else:
+        # Acceleration mode (default): rotation rate (rad/s) and acceleration (m/s²)
+        if unitscale == 'nano':
+            rot_scale, rot_unit = 1e9, f"nrad/s"
+            trans_scale, trans_unit = 1e6, f"$\mu$m/s$^2$"
+        elif unitscale == 'micro':
+            rot_scale, rot_unit = 1e6, f"$\mu$rad/s"
+            trans_scale, trans_unit = 1e3, f"mm/s$^2$"
+        rot_label = "Rotation rate"
+        tra_label = "Acceleration"
 
     
     # Get streams and apply filtering if needed
@@ -167,9 +186,9 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
     # Configure waveform axes
     # ax_wave.grid(which="both", ls=":", alpha=0.7, color="grey", zorder=0)
     ax_wave.legend(loc=1)
-    ax_wave.set_ylabel(f"Acceleration ({trans_unit})", fontsize=font)
+    ax_wave.set_ylabel(f"{tra_label} ({trans_unit})", fontsize=font)
     ax_wave2.tick_params(axis='y', colors="darkred")
-    ax_wave2.set_ylabel(f"Rotation rate ({rot_unit})", color="darkred", fontsize=font)
+    ax_wave2.set_ylabel(f"{rot_label} ({rot_unit})", color="darkred", fontsize=font)
     ax_wave2.legend(loc=4)
     
     # Plot backazimuth estimates (only if we have valid data)
