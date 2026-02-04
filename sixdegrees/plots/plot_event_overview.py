@@ -158,24 +158,66 @@ def plot_event_overview(sd, baz_results: Dict, velocity_results: Dict,
             baz_est = baz_results.get('baz_max', None)
         
         if baz_est is not None:
-            # Get mean or median of estimates
+            # Get KDE-based estimate (similar to plot_backazimuth_results)
             if isinstance(baz_est, (list, np.ndarray)):
                 if len(baz_est) > 0:
-                    # Use weighted mean if CC values available
+                    # Convert to numpy arrays
+                    baz_est = np.array(baz_est)
+                    
+                    # Get CC values
                     if cc_method == 'mid':
                         cc_vals = baz_results.get('cc_mid', np.ones(len(baz_est)))
                     else:
                         cc_vals = baz_results.get('cc_max', np.ones(len(baz_est)))
+                    cc_vals = np.array(cc_vals)
                     
+                    # Apply CC threshold filtering if specified
                     if cc_threshold is not None:
-                        mask = np.array(cc_vals) > cc_threshold
+                        mask = cc_vals > cc_threshold
                         if np.any(mask):
-                            baz_est = np.average(np.array(baz_est)[mask], weights=np.array(cc_vals)[mask])
+                            baz_filtered = baz_est[mask]
+                            cc_filtered = cc_vals[mask]
                         else:
-                            baz_est = np.mean(baz_est)
+                            # If no values pass threshold, use all data
+                            baz_filtered = baz_est
+                            cc_filtered = cc_vals
                     else:
-                        baz_est = np.average(baz_est, weights=cc_vals)
-            baz_estimates[wave_type] = baz_est
+                        baz_filtered = baz_est
+                        cc_filtered = cc_vals
+                    
+                    # Check if we have enough samples for KDE (need at least 5)
+                    if len(baz_filtered) < 5:
+                        error_msg = (f"Insufficient samples for KDE estimation: {len(baz_filtered)} samples "
+                                   f"(required: 5). Cannot compute backazimuth estimate for {wave_type} wave.")
+                        print(f"Warning: {error_msg}")
+                        baz_est = None
+                    else:
+                        # Use KDE to estimate backazimuth
+                        try:
+                            kde_stats = sd.get_kde_stats(baz_filtered, cc_filtered, 
+                                                        _baz_steps=0.5, Ndegree=60, plot=False)
+                            baz_estimate = kde_stats.get('baz_estimate', None)
+                            
+                            # Validate KDE result
+                            if baz_estimate is not None and not np.isnan(baz_estimate):
+                                baz_est = baz_estimate
+                            else:
+                                error_msg = (f"KDE estimation failed: returned invalid result (NaN or None). "
+                                           f"Cannot compute backazimuth estimate for {wave_type} wave.")
+                                print(f"Warning: {error_msg}")
+                                baz_est = None
+                        except Exception as e:
+                            error_msg = (f"KDE estimation failed with error: {str(e)}. "
+                                       f"Cannot compute backazimuth estimate for {wave_type} wave.")
+                            print(f"Warning: {error_msg}")
+                            baz_est = None
+                    
+                    # Only add to baz_estimates if we have a valid estimate
+                    if baz_est is not None:
+                        baz_estimates[wave_type] = baz_est
+            else:
+                # baz_est is already a single value (not a list/array), use it directly
+                baz_estimates[wave_type] = baz_est
     
     # Determine figure size
     if figsize is None:
@@ -717,6 +759,7 @@ def _plot_zoom_window(ax_zoom, sd, baz, wave_type, unitscale, fmin, fmax,
 
     # make rotation y-axis label and text red 
     ax_zoom.tick_params(axis='y', labelcolor="tab:red")
+
 
 def _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type,
                            baz_theo, baz_theo_margin, cc_threshold,
