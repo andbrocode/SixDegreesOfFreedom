@@ -10,6 +10,7 @@ from matplotlib.ticker import AutoMinorLocator
 from obspy import Stream
 from obspy.signal.rotate import rotate_ne_rt
 from obspy.signal.cross_correlation import correlate, xcorr_max
+from ..utils.regression import regression
 
 
 def _optimize_backazimuth(
@@ -133,6 +134,8 @@ def plot_trace_dispersion(
     optimized: bool = True,
     baz_range: float = 20.0,
     baz_step: float = 1.0,
+    regression_method: str = "odr",
+    zero_intercept: bool = True,
     data_type: str = "acceleration"
 ) -> plt.Figure:
     """
@@ -183,7 +186,10 @@ def plot_trace_dispersion(
         Search range in degrees for backazimuth optimization (±baz_range around baz).
     baz_step : float
         Step size in degrees for backazimuth optimization search.
-        
+    regression_method : str
+        Method to use for regression: "odr", "ransac", or "theilsen".
+    zero_intercept : bool
+        Force intercept to be zero if True.
     Returns:
     --------
     fig : plt.Figure
@@ -365,8 +371,9 @@ def plot_trace_dispersion(
             rot_t_scaled = rot_t * rot_scaling
             
             # Linear regression with only slope: tra = slope * rot
-            # Calculate slope: slope = sum(tra * rot) / sum(rot * rot)
-            slope = np.sum(acc_z_scaled * rot_t_scaled) / np.sum(rot_t_scaled * rot_t_scaled)
+            # Use regression function for slope estimation
+            reg_result = regression(rot_t_scaled, acc_z_scaled, method=regression_method, zero_intercept=zero_intercept, verbose=False)
+            slope = reg_result['slope']
             
             out['velocities'][i] = slope*1e3
             out['frequencies'][i] = np.sqrt(2)*fu
@@ -432,8 +439,9 @@ def plot_trace_dispersion(
             acc_t_scaled = acc_t * acc_scaling
             
             # Linear regression with only slope: tra = slope * rot
-            # Calculate slope: slope = sum(tra * rot) / sum(rot * rot)
-            slope = np.sum(acc_t_scaled * rot_z_scaled) / np.sum(rot_z_scaled * rot_z_scaled)
+            # Use regression function for slope estimation
+            reg_result = regression(rot_z_scaled, acc_t_scaled, method=regression_method, zero_intercept=zero_intercept, verbose=False)
+            slope = reg_result['slope']
 
             out['velocities'][i] = slope*1e3
             out['frequencies'][i] = np.sqrt(2)*fu
