@@ -225,7 +225,8 @@ def plot_trace_dispersion(
         - 'n_iterations': int, number of bootstrap iterations (default: 1000)
         - 'stat': str, statistic to use ('mean' or 'median', default: 'mean')
         - 'random_seed': int, random seed for reproducibility (default: 42)
-        Example: bootstrap={'n_iterations': 2000, 'stat': 'median', 'random_seed': 123}
+        - 'sample_fraction': float, fraction of data to use in each bootstrap iteration (0.0 to 1.0, default: 0.8)
+        Example: bootstrap={'n_iterations': 2000, 'stat': 'median', 'random_seed': 123, 'sample_fraction': 0.8}
     Returns:
     --------
     fig : plt.Figure

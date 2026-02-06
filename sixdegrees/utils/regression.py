@@ -50,10 +50,11 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
     bootstrap : dict, optional
         Bootstrap options dictionary. If None, bootstrap is disabled.
         Valid keys:
-        - 'n_iterations': int, number of bootstrap iterations (default: 1000)
+        - 'n_iterations': int, number of bootstrap iterations (default: 100)
         - 'stat': str, statistic to use ('mean' or 'median', default: 'mean')
         - 'random_seed': int, random seed for reproducibility (default: 42)
-        Example: bootstrap={'n_iterations': 2000, 'stat': 'median', 'random_seed': 123}
+        - 'sample_fraction': float, fraction of data to use in each bootstrap iteration (0.0 to 1.0, default: 0.8)
+        Example: bootstrap={'n_iterations': 2000, 'stat': 'median', 'random_seed': 123, 'sample_fraction': 0.8}
     
     Returns:
     --------
@@ -63,8 +64,8 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
         - intercept: Y-intercept (0 if zero_intercept=True, or mean/median if bootstrap enabled)
         - r_squared: R-squared value
         - method: Method used
-        - slope_std or slope_mad: Standard deviation or MAD of slope (if bootstrap enabled)
-        - intercept_std or intercept_mad: Standard deviation or MAD of intercept (if bootstrap enabled)
+        - slope_dev: Standard deviation or MAD of slope (if bootstrap enabled)
+        - intercept_dev: Standard deviation or MAD of intercept (if bootstrap enabled)
     """
     # Validate inputs
     if len(x_data) != len(y_data):
@@ -90,12 +91,15 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
         n_bootstrap = bootstrap.get('n_iterations', 100)
         bootstrap_stat = bootstrap.get('stat', 'mean')
         random_seed = bootstrap.get('random_seed', 42)
+        sample_fraction = bootstrap.get('sample_fraction', 0.8)
         
         # Validate bootstrap parameters
         if bootstrap_stat not in ['mean', 'median']:
             raise ValueError(f"bootstrap['stat'] must be 'mean' or 'median', got '{bootstrap_stat}'")
         if n_bootstrap < 1:
             raise ValueError("bootstrap['n_iterations'] must be at least 1")
+        if not (0 < sample_fraction <= 1.0):
+            raise ValueError("bootstrap['sample_fraction'] must be between 0 and 1.0")
     
     # Reshape for sklearn compatibility
     X = x_clean.reshape(-1, 1)
@@ -109,9 +113,12 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
         
         np.random.seed(random_seed)  # For reproducibility
         
+        # Calculate number of samples to use per iteration
+        n_samples = max(2, int(np.round(len(x_clean) * sample_fraction)))
+        
         for i in range(n_bootstrap):
-            # Resample with replacement
-            indices = np.random.choice(len(x_clean), size=len(x_clean), replace=True)
+            # Randomly select fraction of data without replacement
+            indices = np.random.choice(len(x_clean), size=n_samples, replace=False)
             x_boot = x_clean[indices]
             y_boot = y_clean[indices]
             
@@ -160,7 +167,7 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
         
         if verbose:
             stat_name = 'mean±std' if bootstrap_stat == 'mean' else 'median±MAD'
-            uncertainty = result.get('slope_std', result.get('slope_mad', 0))
+            uncertainty = result.get('slope_dev', 0)
             print(f"Bootstrap Results ({stat_name}): "
                   f"slope={result['slope']:.6f}±{uncertainty:.6f}, "
                   f"R²={result['r_squared']:.4f}")
