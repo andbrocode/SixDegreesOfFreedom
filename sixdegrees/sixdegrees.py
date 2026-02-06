@@ -2227,7 +2227,7 @@ class sixdegrees():
                     if len(baz_valid) > 5:
 
                         # Compute KDE and find maximum and index
-                        kde_stats = self.get_kde_stats(baz_valid, cc_valid, _baz_steps=0.5, Ndegree=60, plot=False)
+                        kde_stats = self.get_kde_stats(baz_valid, cc_valid, _baz_steps=0.5, Ndegree=120, plot=False)
 
                         kde = kde_stats['kde_values']
                         baz_estimates[wave_type] = kde_stats['baz_estimate']
@@ -2318,7 +2318,7 @@ class sixdegrees():
         from numpy.linalg import eigh
         from numpy import argsort
 
-        def _padding(_baz, _ccc, _baz_steps, Ndegree=60):
+        def _padding(_baz, _ccc, _baz_steps, Ndegree=120):
             # get lower and upper array that is padded
             _baz_lower = np.arange(-Ndegree, 0, _baz_steps)
             _baz_upper = np.arange(max(_baz)+_baz_steps, max(_baz)+Ndegree, _baz_steps)
@@ -2728,7 +2728,7 @@ class sixdegrees():
                 if cc_method in ['mid', 'both']:
                     try:
                         # Use zero crossing approach
-                        baz_pad, cc_pad = _padding(coarse_backazimuths, np.array(coarse_correlations), coarse_step, Ndegree=60)
+                        baz_pad, cc_pad = _padding(coarse_backazimuths, np.array(coarse_correlations), coarse_step, Ndegree=120)
                         null1, null2 = _get_zero_crossings(cc_pad)
                         
                         # Calculate mid backazimuth as center between zero crossings
@@ -3397,7 +3397,7 @@ class sixdegrees():
             # Compute KDE
             if len(baz_filtered) > 5:  # Need at least 5 points for KDE
                 # get kde stats
-                kde_stats = self.get_kde_stats(baz_filtered, cc_filtered, _baz_steps=0.5, Ndegree=60, plot=False)
+                kde_stats = self.get_kde_stats(baz_filtered, cc_filtered, _baz_steps=0.5, Ndegree=120, plot=False)
 
                 baz_estimated[wave_type] = kde_stats['baz_estimate']
                 results_dict[wave_type]['kde'] = kde_stats['kde_values']
