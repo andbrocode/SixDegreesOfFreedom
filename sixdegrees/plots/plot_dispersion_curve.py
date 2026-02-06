@@ -15,7 +15,8 @@ def plot_dispersion_curve(
     ylog: bool = False,
     markersize: float = 7,
     linewidth: float = 1.5,
-    title: Optional[str] = None
+    title: Optional[str] = None,
+    show_errors: bool = False
 ) -> Figure:
     """
     Plot dispersion curves for Love and/or Rayleigh waves.
@@ -40,6 +41,9 @@ def plot_dispersion_curve(
         Width of lines connecting points. Default is 1.5.
     title : str, optional
         Plot title. If None, generates automatic title.
+    show_errors : bool, optional
+        If True, display error bars when 'velocity_errors' are available in results.
+        Default is False.
         
     Returns:
     --------
@@ -82,38 +86,74 @@ def plot_dispersion_curve(
         freq_love = love_results['frequencies']
         vel_love = love_results['velocities']
         
+        # Get velocity errors if available and show_errors is True
+        vel_err_love = None
+        if show_errors and 'velocity_errors' in love_results:
+            vel_err_love = love_results['velocity_errors']
+        
         # Filter out NaN values
-        valid_mask = ~(np.isnan(freq_love) | np.isnan(vel_love))
+        if vel_err_love is not None:
+            valid_mask = ~(np.isnan(freq_love) | np.isnan(vel_love) | np.isnan(vel_err_love))
+        else:
+            valid_mask = ~(np.isnan(freq_love) | np.isnan(vel_love))
         freq_love = freq_love[valid_mask]
         vel_love = vel_love[valid_mask]
+        if vel_err_love is not None:
+            vel_err_love = vel_err_love[valid_mask]
         
         if len(freq_love) > 0:
             # Sort by frequency for better line plotting
             sort_idx = np.argsort(freq_love)
             freq_love = freq_love[sort_idx]
             vel_love = vel_love[sort_idx]
+            if vel_err_love is not None:
+                vel_err_love = vel_err_love[sort_idx]
             
-            ax.plot(freq_love, vel_love, 'o-', color='tab:red', 
-                   label='Love', markersize=markersize, linewidth=linewidth, zorder=3)
+            # Plot with or without error bars
+            if show_errors and vel_err_love is not None:
+                ax.errorbar(freq_love, vel_love, yerr=vel_err_love, fmt='o-', 
+                           color='tab:red', label='Love', markersize=markersize, 
+                           linewidth=linewidth, capsize=3, capthick=1, zorder=3)
+            else:
+                ax.plot(freq_love, vel_love, 'o-', color='tab:red', 
+                       label='Love', markersize=markersize, linewidth=linewidth, zorder=3)
     
     # Plot Rayleigh dispersion if provided
     if rayleigh_results is not None:
         freq_rayleigh = rayleigh_results['frequencies']
         vel_rayleigh = rayleigh_results['velocities']
         
+        # Get velocity errors if available and show_errors is True
+        vel_err_rayleigh = None
+        if show_errors and 'velocity_errors' in rayleigh_results:
+            vel_err_rayleigh = rayleigh_results['velocity_errors']
+        
         # Filter out NaN values
-        valid_mask = ~(np.isnan(freq_rayleigh) | np.isnan(vel_rayleigh))
+        if vel_err_rayleigh is not None:
+            valid_mask = ~(np.isnan(freq_rayleigh) | np.isnan(vel_rayleigh) | np.isnan(vel_err_rayleigh))
+        else:
+            valid_mask = ~(np.isnan(freq_rayleigh) | np.isnan(vel_rayleigh))
         freq_rayleigh = freq_rayleigh[valid_mask]
         vel_rayleigh = vel_rayleigh[valid_mask]
+        if vel_err_rayleigh is not None:
+            vel_err_rayleigh = vel_err_rayleigh[valid_mask]
         
         if len(freq_rayleigh) > 0:
             # Sort by frequency for better line plotting
             sort_idx = np.argsort(freq_rayleigh)
             freq_rayleigh = freq_rayleigh[sort_idx]
             vel_rayleigh = vel_rayleigh[sort_idx]
+            if vel_err_rayleigh is not None:
+                vel_err_rayleigh = vel_err_rayleigh[sort_idx]
             
-            ax.plot(freq_rayleigh, vel_rayleigh, 's-', color='tab:blue', 
-                   label='Rayleigh', markersize=markersize, linewidth=linewidth, zorder=2)
+            # Plot with or without error bars
+            if show_errors and vel_err_rayleigh is not None:
+                ax.errorbar(freq_rayleigh, vel_rayleigh, yerr=vel_err_rayleigh, fmt='s-', 
+                           color='tab:blue', label='Rayleigh', markersize=markersize, 
+                           linewidth=linewidth, capsize=3, capthick=1, zorder=2)
+            else:
+                ax.plot(freq_rayleigh, vel_rayleigh, 's-', color='tab:blue', 
+                       label='Rayleigh', markersize=markersize, linewidth=linewidth, zorder=2)
     
     # Set axis scales
     if xlog:

@@ -353,6 +353,7 @@ def plot_trace_dispersion(
     out['velocities'] = np.ones(len(frequency_bands))*np.nan
     out['frequencies'] = np.ones(len(frequency_bands))*np.nan
     out['backazimuths'] = np.ones(len(frequency_bands))*np.nan
+    out['velocity_errors'] = np.ones(len(frequency_bands))*np.nan
 
     # Process each frequency band
     for i, (fl, fu) in enumerate(frequency_bands):
@@ -423,6 +424,11 @@ def plot_trace_dispersion(
             
             out['velocities'][i] = slope*1e3
             out['frequencies'][i] = np.sqrt(2)*fu
+            # Store velocity error if bootstrap is enabled
+            if bootstrap is not None:
+                slope_dev = reg_result.get('slope_dev', None)
+                if slope_dev is not None:
+                    out['velocity_errors'][i] = slope_dev*1e3
 
             # Scale rotation data by the slope
             rot_t_scaled = rot_t_scaled * slope
@@ -488,7 +494,7 @@ def plot_trace_dispersion(
             )
             
             # Apply scaling
-            rot_z_scaled = 2*rot_z * rot_scaling
+            rot_z_scaled = 2*rot_z * rot_scaling # factor 2 for forumla for Love waves
             acc_t_scaled = acc_t * acc_scaling
             
             # Linear regression with only slope: tra = slope * rot
@@ -499,6 +505,11 @@ def plot_trace_dispersion(
 
             out['velocities'][i] = slope*1e3
             out['frequencies'][i] = np.sqrt(2)*fu
+            # Store velocity error if bootstrap is enabled
+            if bootstrap is not None:
+                slope_dev = reg_result.get('slope_dev', None)
+                if slope_dev is not None:
+                    out['velocity_errors'][i] = slope_dev*1e3
             
             # Scale rotation data by the slope
             rot_z_scaled = rot_z_scaled * slope
