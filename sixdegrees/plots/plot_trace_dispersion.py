@@ -468,6 +468,10 @@ def plot_trace_dispersion(
                 ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f}±{uncertainty*1e3:.0f} {scale_unit}", 
                         transform=ax.transAxes, fontsize=font-2,
                         rotation=0, va='center', ha='left')
+            else:
+                ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} {scale_unit}", 
+                        transform=ax.transAxes, fontsize=font-2,
+                        rotation=0, va='center', ha='left')
             if optimized:
                 ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
                         transform=ax.transAxes, fontsize=font-2,
@@ -538,6 +542,10 @@ def plot_trace_dispersion(
             if bootstrap is not None:
                 uncertainty = reg_result.get('slope_dev', None)
                 ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f}±{uncertainty*1e3:.0f} {scale_unit}", 
+                        transform=ax.transAxes, fontsize=font-2,
+                        rotation=0, va='center', ha='left')
+            else:
+                ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} {scale_unit}", 
                         transform=ax.transAxes, fontsize=font-2,
                         rotation=0, va='center', ha='left')
             if optimized:
