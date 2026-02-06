@@ -223,5 +223,5 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     fig.suptitle(title, fontsize=font+2, y=0.95)
     
     # plt.tight_layout()
-    plt.show()
+    # plt.show()
     return fig

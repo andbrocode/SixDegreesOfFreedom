@@ -13,6 +13,34 @@ from obspy.signal.cross_correlation import correlate, xcorr_max
 from ..utils.regression import regression
 
 
+def _generate_octave_bands(fmin: float, fmax: float) -> List[Tuple[float, float]]:
+    """
+    Generate octave frequency bands between fmin and fmax.
+    
+    Parameters:
+    -----------
+    fmin : float
+        Minimum frequency
+    fmax : float
+        Maximum frequency
+        
+    Returns:
+    --------
+    bands : list of tuples
+        List of (fmin, fmax) tuples for each octave band
+    """
+    bands = []
+    f = fmin
+    
+    while f < fmax:
+        f_next = f * 2  # Next octave
+        if f_next > fmax:
+            f_next = fmax
+        bands.append((f, f_next))
+        f = f_next
+    
+    return bands
+
 def _optimize_backazimuth(
     rot_filtered: Stream,
     acc_filtered: Stream,
@@ -78,7 +106,7 @@ def _optimize_backazimuth(
                 )
                 
                 # Get maximum correlation
-                xshift, cc_max = xcorr_max(ccorr)
+                xshift, cc_max = xcorr_max(ccor, abs_max=False)
                 
             elif wave_type == "love":
                 # Love: correlate vertical rotation with transverse acceleration
@@ -100,7 +128,7 @@ def _optimize_backazimuth(
                 )
                 
                 # Get maximum correlation
-                xshift, cc_max = xcorr_max(ccorr)
+                xshift, cc_max = xcorr_max(ccorr, abs_max=False)
             else:
                 continue
             
@@ -334,16 +362,24 @@ def plot_trace_dispersion(
         # Detrend and taper before filtering
         rot_filtered = rot_filtered.detrend('linear')
         rot_filtered = rot_filtered.detrend('demean')
-        rot_filtered = rot_filtered.taper(0.05, type='cosine')
+        rot_filtered = rot_filtered.taper(0.1, type='cosine')
 
         acc_filtered = acc_filtered.detrend('linear')
         acc_filtered = acc_filtered.detrend('demean')
-        acc_filtered = acc_filtered.taper(0.05, type='cosine')
+        acc_filtered = acc_filtered.taper(0.1, type='cosine')
         
         # Apply bandpass filter
         rot_filtered = rot_filtered.filter('bandpass', freqmin=fl, freqmax=fu, corners=4, zerophase=True)
         acc_filtered = acc_filtered.filter('bandpass', freqmin=fl, freqmax=fu, corners=4, zerophase=True)
         
+        # Detrend and taper after filtering
+        rot_filtered = rot_filtered.detrend('demean')
+        rot_filtered = rot_filtered.taper(0.1, type='cosine')
+
+        acc_filtered = acc_filtered.detrend('demean')
+        acc_filtered = acc_filtered.taper(0.1, type='cosine')
+        
+
         # Optimize backazimuth if requested
         if optimized:
             optimized_baz, max_cc = _optimize_backazimuth(
@@ -543,30 +579,3 @@ def plot_trace_dispersion(
         return fig
 
 
-def _generate_octave_bands(fmin: float, fmax: float) -> List[Tuple[float, float]]:
-    """
-    Generate octave frequency bands between fmin and fmax.
-    
-    Parameters:
-    -----------
-    fmin : float
-        Minimum frequency
-    fmax : float
-        Maximum frequency
-        
-    Returns:
-    --------
-    bands : list of tuples
-        List of (fmin, fmax) tuples for each octave band
-    """
-    bands = []
-    f = fmin
-    
-    while f < fmax:
-        f_next = f * 2  # Next octave
-        if f_next > fmax:
-            f_next = fmax
-        bands.append((f, f_next))
-        f = f_next
-    
-    return bands
