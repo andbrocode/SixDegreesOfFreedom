@@ -87,7 +87,7 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
         if not isinstance(bootstrap, dict):
             raise TypeError("bootstrap must be a dictionary or None")
         
-        n_bootstrap = bootstrap.get('n_iterations', 1000)
+        n_bootstrap = bootstrap.get('n_iterations', 100)
         bootstrap_stat = bootstrap.get('stat', 'mean')
         random_seed = bootstrap.get('random_seed', 42)
         
@@ -127,6 +127,7 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
                 slopes.append(boot_result['slope'])
                 intercepts.append(boot_result['intercept'])
                 r_squareds.append(boot_result['r_squared'])
+            
             except Exception:
                 # Skip failed bootstrap iterations by appending NaN
                 slopes.append(np.nan)
@@ -144,8 +145,8 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
                 'intercept': np.nanmean(intercepts) if not zero_intercept else 0.0,
                 'r_squared': np.nanmean(r_squareds),
                 'method': method.lower(),
-                'slope_std': np.nanstd(slopes, ddof=1),
-                'intercept_std': np.nanstd(intercepts, ddof=1) if not zero_intercept else 0.0,
+                'slope_dev': np.nanstd(slopes, ddof=1),
+                'intercept_dev': np.nanstd(intercepts, ddof=1) if not zero_intercept else 0.0,
             }
         else:  # median
             result = {
@@ -153,8 +154,8 @@ def regression(x_data: np.ndarray, y_data: np.ndarray, method: str = "odr",
                 'intercept': np.nanmedian(intercepts) if not zero_intercept else 0.0,
                 'r_squared': np.nanmedian(r_squareds),
                 'method': method.lower(),
-                'slope_mad': mad(slopes),
-                'intercept_mad': mad(intercepts) if not zero_intercept else 0.0,
+                'slope_dev': mad(slopes),
+                'intercept_dev': mad(intercepts) if not zero_intercept else 0.0,
             }
         
         if verbose:

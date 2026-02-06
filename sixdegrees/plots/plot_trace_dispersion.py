@@ -106,7 +106,7 @@ def _optimize_backazimuth(
                 )
                 
                 # Get maximum correlation
-                xshift, cc_max = xcorr_max(ccor, abs_max=False)
+                xshift, cc_max = xcorr_max(ccorr, abs_max=False)
                 
             elif wave_type == "love":
                 # Love: correlate vertical rotation with transverse acceleration
@@ -164,7 +164,8 @@ def plot_trace_dispersion(
     baz_step: float = 1.0,
     regression_method: str = "odr",
     zero_intercept: bool = True,
-    data_type: str = "acceleration"
+    data_type: str = "acceleration",
+    bootstrap: Optional[Dict] = None
 ) -> plt.Figure:
     """
     Plot filtered traces in frequency bands for Rayleigh or Love waves.
@@ -218,6 +219,13 @@ def plot_trace_dispersion(
         Method to use for regression: "odr", "ransac", or "theilsen".
     zero_intercept : bool
         Force intercept to be zero if True.
+    bootstrap : dict, optional
+        Bootstrap options dictionary for regression. If None, bootstrap is disabled.
+        Valid keys:
+        - 'n_iterations': int, number of bootstrap iterations (default: 1000)
+        - 'stat': str, statistic to use ('mean' or 'median', default: 'mean')
+        - 'random_seed': int, random seed for reproducibility (default: 42)
+        Example: bootstrap={'n_iterations': 2000, 'stat': 'median', 'random_seed': 123}
     Returns:
     --------
     fig : plt.Figure
@@ -408,7 +416,8 @@ def plot_trace_dispersion(
             
             # Linear regression with only slope: tra = slope * rot
             # Use regression function for slope estimation
-            reg_result = regression(rot_t_scaled, acc_z_scaled, method=regression_method, zero_intercept=zero_intercept, verbose=False)
+            reg_result = regression(rot_t_scaled, acc_z_scaled, method=regression_method, 
+                                   zero_intercept=zero_intercept, verbose=False, bootstrap=bootstrap)
             slope = reg_result['slope']
             
             out['velocities'][i] = slope*1e3
@@ -453,9 +462,12 @@ def plot_trace_dispersion(
             # Show scale factor and backazimuth as text
             text_y_pos = 0.8
             scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
-            ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} {scale_unit}", 
-                    transform=ax.transAxes, fontsize=font-2,
-                    rotation=0, va='center', ha='left')
+            # Format scale with bootstrap uncertainty if available
+            if bootstrap is not None:
+                uncertainty = reg_result.get('slope_dev', reg_result.get('slope_dev', None))
+                ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f}±{uncertainty*1e3:.0f} {scale_unit}", 
+                        transform=ax.transAxes, fontsize=font-2,
+                        rotation=0, va='center', ha='left')
             if optimized:
                 ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
                         transform=ax.transAxes, fontsize=font-2,
@@ -476,7 +488,8 @@ def plot_trace_dispersion(
             
             # Linear regression with only slope: tra = slope * rot
             # Use regression function for slope estimation
-            reg_result = regression(rot_z_scaled, acc_t_scaled, method=regression_method, zero_intercept=zero_intercept, verbose=False)
+            reg_result = regression(rot_z_scaled, acc_t_scaled, method=regression_method, 
+                                   zero_intercept=zero_intercept, verbose=False, bootstrap=bootstrap)
             slope = reg_result['slope']
 
             out['velocities'][i] = slope*1e3
@@ -521,9 +534,12 @@ def plot_trace_dispersion(
             # Show scale factor and backazimuth as text
             text_y_pos = 0.8
             scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
-            ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f} {scale_unit}", 
-                    transform=ax.transAxes, fontsize=font-2,
-                    rotation=0, va='center', ha='left')
+            # Format scale with bootstrap uncertainty if available
+            if bootstrap is not None:
+                uncertainty = reg_result.get('slope_dev', None)
+                ax.text(0.02, text_y_pos, f"scale: {slope*1e3:.0f}±{uncertainty*1e3:.0f} {scale_unit}", 
+                        transform=ax.transAxes, fontsize=font-2,
+                        rotation=0, va='center', ha='left')
             if optimized:
                 ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
                         transform=ax.transAxes, fontsize=font-2,
