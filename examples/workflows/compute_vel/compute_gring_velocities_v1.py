@@ -158,8 +158,8 @@ def process_hour(sd, config, hour_beg, hour_end):
                         translation_data=sd_filtered.get_stream("translation", raw=True),
                         wave_type=config.get('wave_type', 'love'),
                         baz_results=baz_results,
-                        baz_mode=config.get('baz_mode', 'mid'),
-                        method=config.get('method', 'theilsen'),
+                        cc_method=config.get('cc_method', 'mid'),
+                        method=config.get('method', 'odr'),
                         cc_threshold=config.get('cc_threshold', 0.0),
                         r_squared_threshold=config.get('r_squared_threshold', 0.0),
                         zero_intercept=True
@@ -230,7 +230,6 @@ def process_hour(sd, config, hour_beg, hour_end):
     
     return hourly_df
 
-
 def process_day(args):
     """Process one day of data in hourly intervals."""
     date, config_file, output_dir, verbose = args
@@ -255,10 +254,30 @@ def process_day(args):
         # Initialize sixdegrees object
         sd = sixdegrees(config)
         
+        # Add dummy event_info for noise analysis (no specific event)
+        sd.event_info = {
+            'origin_time': day_beg,
+            'latitude': None,
+            'longitude': None,
+            'depth_km': None,
+            'magnitude': None,
+            'magnitude_type': None,
+            'distance_km': None,
+            'distance_deg': None,
+            'azimuth': None,
+            'backazimuth': None,
+            'catalog': 'noise',
+            'event_id': f'noise_{date}'
+        }
+        
         # Request data for the entire day
         if verbose:
             print(f"Loading data for {date}...")
-        sd.load_data(day_beg, day_end)
+        
+        if config.get('resample_rate', None) is not None:
+            sd.load_data(day_beg, day_end, resample_rate=config.get('resample_rate'))
+        else:
+            sd.load_data(day_beg, day_end)
 
         # ensure the stream has traces with the same length
         sd.trim_stream()
@@ -317,7 +336,6 @@ def process_day(args):
         if verbose:
             print(f"Error processing {date}: {str(e)}")
         return None
-
 
 def plot_dispersion_curve(daily_df, output_dir, date):
     """Plot the velocity dispersion curve for a single day."""
@@ -411,12 +429,12 @@ def main():
     end_dt = UTCDateTime(end_date).datetime.date()
     dates = pd.date_range(start_dt, end_dt, freq='D')
     
-    # Prepare arguments for parallel processing
+    # Prepare arguments for parallel
     process_args = [(date.date(), config_file, output_dir, verbose) for date in dates]
     
     # Process days in parallel
-    if config.get('Nprocesses', False):
-        num_processes = min(cpu_count(), len(dates), config.get('Nprocesses', 4))
+    if config.get('n_processes', False):
+        num_processes = min(cpu_count(), len(dates), config.get('n_processes', 4))
     else:
         num_processes = min(cpu_count(), len(dates), 4)
     

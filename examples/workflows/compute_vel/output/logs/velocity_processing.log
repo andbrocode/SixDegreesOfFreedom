@@ -1,16 +1,6 @@
-2025-09-18 15:00:41,010 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:00:41,011 - INFO - Processing 1 days using 1 processes
-2025-09-18 15:01:43,138 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:01:43,139 - INFO - Processing 1 days using 1 processes
-2025-09-18 15:01:49,104 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:01:49,105 - INFO - Processing 1 days using 1 processes
-2025-09-18 15:03:10,320 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:03:10,321 - INFO - Processing 1 days using 1 processes
-2025-09-18 15:13:49,174 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:13:49,176 - INFO - Processing 1 days using 1 processes
-2025-09-18 15:16:31,796 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:16:31,797 - INFO - Processing 1 days using 1 processes
-2025-09-18 15:40:19,312 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 15:40:19,313 - INFO - Processing 1 days using 1 processes
-2025-09-18 16:44:05,441 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-01
-2025-09-18 16:44:05,442 - INFO - Processing 1 days using 1 processes
+2026-02-08 20:02:32,658 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-31
+2026-02-08 20:02:32,659 - INFO - Processing 31 days using 4 processes
+2026-02-08 21:13:04,869 - INFO - Processed 2024-01-03: 147 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-03.csv
+2026-02-08 21:14:18,121 - INFO - Processed 2024-01-01: 122 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-01.csv
+2026-02-08 21:14:20,981 - INFO - Processed 2024-01-02: 143 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-02.csv
+2026-02-08 21:15:07,886 - INFO - Processed 2024-01-04: 131 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-04.csv
