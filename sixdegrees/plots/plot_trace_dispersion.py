@@ -494,7 +494,7 @@ def plot_trace_dispersion(
             )
             
             # Apply scaling
-            rot_z_scaled = 2*rot_z * rot_scaling # factor 2 for forumla for Love waves
+            rot_z_scaled = 2 * rot_z * rot_scaling # factor 2 for forumla for Love waves
             acc_t_scaled = acc_t * acc_scaling
             
             # Linear regression with only slope: tra = slope * rot

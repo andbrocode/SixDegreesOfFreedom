@@ -127,6 +127,7 @@ def plot_spectra(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_obje
                 ylog: bool = False, 
                 xlog: bool = False, 
                 fill: bool = False,
+                raw: bool = False,
                 method: Union[SpectralMethod, str] = SpectralMethod.MULTITAPER,
                 data_type: str = "acceleration",
                 **kwargs) -> Figure:
@@ -152,6 +153,8 @@ def plot_spectra(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_obje
         Use logarithmic x-axis scale, by default False
     fill : bool, optional
         Fill the area under curves, by default False
+    raw : bool, optional
+        Plot raw data if True, by default False
     method : SpectralMethod or str, optional
         Spectral estimation method to use, by default SpectralMethod.MULTITAPER
         Options:
@@ -177,9 +180,9 @@ def plot_spectra(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_obje
     if sd_object is not None:
         # Extract streams if not provided
         if rot is None:
-            rot = sd_object.get_stream("rotation")
+            rot = sd_object.get_stream("rotation", raw=raw)
         if acc is None:
-            acc = sd_object.get_stream("translation")
+            acc = sd_object.get_stream("translation", raw=raw)
         
         # Extract parameters if not explicitly provided (provided parameters have higher priority)
         if fmin is None and hasattr(sd_object, 'fmin') and sd_object.fmin is not None:

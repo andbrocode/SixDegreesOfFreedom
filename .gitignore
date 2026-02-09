@@ -1,4 +1,3 @@
-
 # exclude all caches
 __pycache__/
 
@@ -20,3 +19,6 @@ examples/DEV*.ipynb
 
 # non relevant events
 data/eventM*.mseed
+
+# output files
+output/

@@ -1,0 +1,73 @@
+# Configuration file for G-ring velocity dispersion curve computation
+# Compatible with compute_gring_velocities.py (original script)
+
+# =============================================================================
+# DATA SOURCE CONFIGURATION
+# =============================================================================
+data_source: fdsn
+
+# FDSN clients
+fdsn_client_rot: LMU  # For rotation data (RLAS)
+fdsn_client_tra: BGR  # For translation data (WET)
+
+# SEED identifiers for G-ring
+seed: XX.RLAS..  # Output stream identifier
+rot_seed:
+  - BW.RLAS..BJZ  # Rotation sensor (vertical rotation rate)
+
+tra_seed:
+  - GR.WET..BHZ   # Translation sensor (vertical)
+  - GR.WET..BHN   # Translation sensor (north)
+  - GR.WET..BHE   # Translation sensor (east)
+
+# =============================================================================
+# DATA PROCESSING PARAMETERS
+# =============================================================================
+rot_remove_response: true
+tra_remove_response: true
+
+resample_rate: 5  # Resample rate in Hz
+
+# =============================================================================
+# FREQUENCY BAND CONFIGURATION
+# =============================================================================
+freq_min: 0.1        # Minimum frequency in Hz
+freq_max: 1.0        # Maximum frequency in Hz
+octave_fraction: 3   # Fraction of octave for band division (3 = 1/3 octave)
+
+# =============================================================================
+# WAVE TYPE PARAMETERS
+# =============================================================================
+wave_type: "love"    # 'love' or 'rayleigh'
+
+# =============================================================================
+# BACKAZIMUTH COMPUTATION PARAMETERS
+# =============================================================================
+cc_method: "max"      # 'max' or 'mid' for backazimuth computation
+t_win_factor: 8.0    # Window length factor (window = t_win_factor / center_frequency)
+overlap: 0.25         # Overlap fraction between windows (0-1)
+cc_threshold: 0.6    # Minimum cross-correlation coefficient threshold for backazimuth computation
+
+# =============================================================================
+# VELOCITY COMPUTATION PARAMETERS
+# =============================================================================
+method: "odr"   # 'odr' or 'ransac' or 'theilsen' for velocity computation
+zero_intercept: true    # Force intercept to be zero if True
+r_squared_threshold: 0.0  # Minimum R-squared value for regression quality (0.0 = no filtering)
+
+# =============================================================================
+# PROCESSING CONFIGURATION
+# =============================================================================
+n_processes: 4        # Number of parallel processes for frequency bands (set to False for auto-detection)
+n_window_processes: 4 # Number of parallel processes for time windows (defaults to n_processes)
+hours_per_window: 3   # Subdivide days into time windows of this many hours (default: 6)
+verbose: true       # Enable verbose output for detailed progress information
+
+# =============================================================================
+# OUTPUT CONFIGURATION
+# =============================================================================
+output_dir: ./output/
+log_dir: ./logs/
+
+# Optional: Create daily dispersion curve plots
+plot_dispersion: true  # Set to true to generate daily dispersion curve plots

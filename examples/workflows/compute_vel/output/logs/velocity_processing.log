@@ -1,6 +1,31 @@
-2026-02-08 20:02:32,658 - INFO - Starting G-ring velocity processing from 2024-01-01 to 2024-01-31
-2026-02-08 20:02:32,659 - INFO - Processing 31 days using 4 processes
-2026-02-08 21:13:04,869 - INFO - Processed 2024-01-03: 147 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-03.csv
-2026-02-08 21:14:18,121 - INFO - Processed 2024-01-01: 122 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-01.csv
-2026-02-08 21:14:20,981 - INFO - Processed 2024-01-02: 143 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-02.csv
-2026-02-08 21:15:07,886 - INFO - Processed 2024-01-04: 131 frequency bands, saved to output/velocity_data/gring_velocity_2024-01-04.csv
+2026-02-09 15:38:10,603 - INFO - Starting G-ring velocity processing from 2023-01-01 to 2023-01-02
+2026-02-09 15:38:10,605 - INFO - Processing 2 days sequentially
+2026-02-09 15:48:39,450 - INFO - Starting G-ring velocity processing from 2023-01-01 to 2023-01-02
+2026-02-09 15:48:39,451 - INFO - Processing 2 days sequentially
+2026-02-09 16:34:04,801 - INFO - Starting G-ring velocity processing from 2023-01-01 to 2023-01-02
+2026-02-09 16:34:04,802 - INFO - Processing 2 days sequentially
+2026-02-09 17:02:46,995 - INFO - Starting G-ring velocity processing from 2023-01-01 to 2023-01-02
+2026-02-09 17:02:46,996 - INFO - Processing 2 days sequentially
+2026-02-09 17:02:51,404 - ERROR - Failed to process window 2023-01-01T00:00:00.000000Z to 2023-01-01T03:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:02:55,657 - ERROR - Failed to process window 2023-01-01T06:00:00.000000Z to 2023-01-01T09:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:02:55,771 - ERROR - Failed to process window 2023-01-01T09:00:00.000000Z to 2023-01-01T12:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:02:58,645 - ERROR - Failed to process window 2023-01-01T12:00:00.000000Z to 2023-01-01T15:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:02:59,936 - ERROR - Failed to process window 2023-01-01T18:00:00.000000Z to 2023-01-01T21:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:02:59,938 - ERROR - Failed to process window 2023-01-01T03:00:00.000000Z to 2023-01-01T06:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:02,677 - ERROR - Failed to process window 2023-01-01T15:00:00.000000Z to 2023-01-01T18:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:04,821 - ERROR - Failed to process window 2023-01-01T21:00:00.000000Z to 2023-01-02T00:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:04,911 - WARNING - No data processed for 2023-01-01
+2026-02-09 17:03:17,095 - ERROR - Failed to process window 2023-01-02T00:00:00.000000Z to 2023-01-02T03:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:17,854 - ERROR - Failed to process window 2023-01-02T06:00:00.000000Z to 2023-01-02T09:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:18,043 - ERROR - Failed to process window 2023-01-02T03:00:00.000000Z to 2023-01-02T06:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:21,412 - ERROR - Failed to process window 2023-01-02T09:00:00.000000Z to 2023-01-02T12:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:21,562 - ERROR - Failed to process window 2023-01-02T18:00:00.000000Z to 2023-01-02T21:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:21,924 - ERROR - Failed to process window 2023-01-02T15:00:00.000000Z to 2023-01-02T18:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:23,051 - ERROR - Failed to process window 2023-01-02T12:00:00.000000Z to 2023-01-02T15:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:25,251 - ERROR - Failed to process window 2023-01-02T21:00:00.000000Z to 2023-01-03T00:00:00.000000Z: daemonic processes are not allowed to have children
+2026-02-09 17:03:25,331 - WARNING - No data processed for 2023-01-02
+2026-02-09 17:03:25,391 - INFO - Processing Summary: Total days: 2, Successful: 0, Failed: 2
+2026-02-09 17:03:25,391 - INFO - Processing completed! Results saved to: output
+2026-02-09 17:23:16,213 - INFO - Starting G-ring velocity processing from 2023-01-01 to 2023-01-02
+2026-02-09 17:23:16,214 - INFO - Processing 2 days sequentially
+2026-02-09 18:41:59,072 - WARNING - No data processed for 2023-01-01

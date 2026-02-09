@@ -112,21 +112,21 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
         
         # Plot station
         if use_cartopy:
-            ax.plot(station_lon_norm, station_lat, marker='^', color='red', markersize=15,
-                    label='Station', markeredgecolor='black', markeredgewidth=2,
+            ax.scatter(station_lon_norm, station_lat, marker='^', color='red', s=140,
+                    label='Station', edgecolors='black', linewidths=2,
                     transform=transform, zorder=5)
             if debug:
                 print(f"✓ Station plotted at ({station_lon_norm}, {station_lat})")
         else:
             if projection == 'orthographic':
                 x_st, y_st = _project_to_sphere(station_lat, station_lon_norm, station_lat, station_lon_norm)
-                ax.plot(x_st, y_st, marker='^', color='red', markersize=15,
-                        label='Station', markeredgecolor='black', markeredgewidth=2, zorder=5)
+                ax.scatter(x_st, y_st, marker='^', color='red', s=140,
+                        label='Station', edgecolors='black', linewidths=2, zorder=5)
                 if debug:
                     print(f"✓ Station plotted at sphere coords ({x_st:.3f}, {y_st:.3f})")
             else:
-                ax.plot(station_lon_norm, station_lat, marker='^', color='red', markersize=15,
-                        label='Station', markeredgecolor='black', markeredgewidth=2, zorder=5)
+                ax.scatter(station_lon_norm, station_lat, marker='^', color='red', s=140,
+                        label='Station', edgecolors='black', linewidths=2, zorder=5)
         
         # Plot event if available
         if event_info and 'latitude' in event_info and 'longitude' in event_info:
