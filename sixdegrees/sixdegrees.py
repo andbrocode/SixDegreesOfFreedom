@@ -3360,16 +3360,25 @@ class sixdegrees():
                         velocities = velocity_results['velocity']
                         ccoefs = velocity_results['ccoef']
                         times = velocity_results['time']
+                        n_valid_regressions = velocity_results.get('n_valid_regressions', 0)
+                        n_samples_per_regression = velocity_results.get('n_samples_per_regression', 0)
+                        total_regression_samples = velocity_results.get('total_regression_samples', 0)
                     except Exception as e:
                         if verbose:
                             print(f"    Error computing velocities: {e}")
                         velocities = np.array([np.nan])
                         ccoefs = np.array([np.nan])
                         times = np.array([np.nan])
+                        n_valid_regressions = 0
+                        n_samples_per_regression = 0
+                        total_regression_samples = 0
                 else:
                     velocities = np.array([np.nan])
                     ccoefs = np.array([np.nan])
                     times = np.array([np.nan])
+                    n_valid_regressions = 0
+                    n_samples_per_regression = 0
+                    total_regression_samples = 0
                 
                 # Find KDE peak velocity and deviation for the frequency band
                 if verbose:
@@ -3413,7 +3422,10 @@ class sixdegrees():
                     'kde_peak_velocity': kde_peak_velocity,
                     'kde_deviation': kde_deviation,
                     'kde_stats': kde_stats,
-                    'baz_used': np.nanmedian(baz_for_velocity) if baz_for_velocity is not None and len(baz_for_velocity) > 0 else None
+                    'baz_used': np.nanmedian(baz_for_velocity) if baz_for_velocity is not None and len(baz_for_velocity) > 0 else None,
+                    'n_valid_regressions': n_valid_regressions,
+                    'n_samples_per_regression': n_samples_per_regression,
+                    'total_regression_samples': total_regression_samples,
                 }
                 
                 if verbose:
@@ -3486,6 +3498,9 @@ class sixdegrees():
             velocities = np.zeros(n_windows)
             cc_coeffs = np.zeros(n_windows)
             
+            # Track regression statistics
+            n_valid_regressions = 0
+            
             # Loop through windows
             for i in range(n_windows):
                 i1 = i * step
@@ -3550,6 +3565,9 @@ class sixdegrees():
                         velocities[i] = reg_result['slope']
                     else:
                         raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+                    
+                    # Count this as a valid regression
+                    n_valid_regressions += 1
                 
                     # add central time of window
                     times[i] = (i1 + win_samples/2) / df
@@ -3561,12 +3579,19 @@ class sixdegrees():
                     velocities[i] = np.nan
                     cc_coeffs[i] = abs(cc)
             
+            # Calculate regression sample statistics
+            n_samples_per_regression = win_samples
+            total_regression_samples = n_valid_regressions * n_samples_per_regression
+            
             # Create output dictionary
             results = {
                 'time': times,
                 'velocity': velocities,
                 'ccoef': cc_coeffs,
                 'terr': np.ones_like(times) * win_time_s/2,
+                'n_valid_regressions': n_valid_regressions,
+                'n_samples_per_regression': n_samples_per_regression,
+                'total_regression_samples': total_regression_samples,
             }
             
             return results

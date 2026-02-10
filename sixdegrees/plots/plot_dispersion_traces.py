@@ -134,13 +134,17 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
         else:
             velocity_for_scaling = band.get('kde_peak_velocity', np.nan)
         
-        if np.isnan(velocity_for_scaling):
-            raise ValueError(f"No valid velocity found for frequency band {i+1}")
+        # Flag indicating whether we have a valid velocity for this band
+        velocity_valid = not np.isnan(velocity_for_scaling)
         
         # Convert velocity from m/s to slope units
         # In original regression: slope (from regression) is in units such that slope*1e3 gives m/s
         # So slope = velocity_for_scaling / 1e3
-        slope = velocity_for_scaling / 1e3
+        # If no valid velocity is available, use slope=1.0 so traces are still shown
+        if velocity_valid:
+            slope = velocity_for_scaling / 1e3
+        else:
+            slope = 1.0
         
         # Get velocity deviation for display
         velocity_deviation = band.get('kde_deviation', np.nan)
@@ -195,16 +199,21 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
             ax.set_yticks([])
             ax2.set_yticks([])
             
-            # Show scale factor and backazimuth as text
+            # Show scale factor and backazimuth as text (or message if no velocity)
             text_y_pos = 0.8
             scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
-            # Format scale with velocity deviation if available
-            if not np.isnan(velocity_deviation):
-                ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f}±{velocity_deviation:.0f} {scale_unit}", 
-                        transform=ax.transAxes, fontsize=font-2,
-                        rotation=0, va='center', ha='left')
+            if velocity_valid:
+                # Format scale with velocity deviation if available
+                if not np.isnan(velocity_deviation):
+                    ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f}±{velocity_deviation:.0f} {scale_unit}", 
+                            transform=ax.transAxes, fontsize=font-2,
+                            rotation=0, va='center', ha='left')
+                else:
+                    ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f} {scale_unit}", 
+                            transform=ax.transAxes, fontsize=font-2,
+                            rotation=0, va='center', ha='left')
             else:
-                ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f} {scale_unit}", 
+                ax.text(0.02, text_y_pos, "no velocity found", 
                         transform=ax.transAxes, fontsize=font-2,
                         rotation=0, va='center', ha='left')
             ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
@@ -260,16 +269,21 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
             ax.set_yticks([])
             ax2.set_yticks([])
             
-            # Show scale factor and backazimuth as text
+            # Show scale factor and backazimuth as text (or message if no velocity)
             text_y_pos = 0.8
             scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
-            # Format scale with velocity deviation if available
-            if not np.isnan(velocity_deviation):
-                ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f}±{velocity_deviation:.0f} {scale_unit}", 
-                        transform=ax.transAxes, fontsize=font-2,
-                        rotation=0, va='center', ha='left')
+            if velocity_valid:
+                # Format scale with velocity deviation if available
+                if not np.isnan(velocity_deviation):
+                    ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f}±{velocity_deviation:.0f} {scale_unit}", 
+                            transform=ax.transAxes, fontsize=font-2,
+                            rotation=0, va='center', ha='left')
+                else:
+                    ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f} {scale_unit}", 
+                            transform=ax.transAxes, fontsize=font-2,
+                            rotation=0, va='center', ha='left')
             else:
-                ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f} {scale_unit}", 
+                ax.text(0.02, text_y_pos, "no velocity found", 
                         transform=ax.transAxes, fontsize=font-2,
                         rotation=0, va='center', ha='left')
             ax.text(0.02, abs(1-text_y_pos), f"baz: {baz_used:.1f}°", 
