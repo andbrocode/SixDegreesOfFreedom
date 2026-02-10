@@ -3222,6 +3222,10 @@ class sixdegrees():
         --------
         Dict
             Dictionary containing:
+            - wave_type: wave type analyzed ('love' or 'rayleigh')
+            - frequencies: numpy array of center frequencies (Hz) for easy plotting
+            - velocities: numpy array of KDE peak velocities (m/s) for easy plotting
+            - uncertainties: numpy array of KDE deviations (m/s) for easy plotting
             - frequency_bands: list of frequency band dictionaries, each containing:
                 - f_lower: lower frequency
                 - f_upper: upper frequency
@@ -3236,6 +3240,7 @@ class sixdegrees():
                 - kde_peak_velocity: KDE peak velocity for the frequency band
                 - kde_deviation: KDE deviation for the frequency band
                 - kde_stats: full KDE statistics dictionary
+            - parameters: dictionary of input parameters
         """
         import numpy as np
         from acoustics.octave import Octave
@@ -3718,6 +3723,16 @@ class sixdegrees():
         for band_result in band_results:
             if band_result is not None:
                 results['frequency_bands'].append(band_result)
+        
+        # Extract simplified arrays for easy access
+        frequencies = np.array([band['f_center'] for band in results['frequency_bands']])
+        velocities = np.array([band['kde_peak_velocity'] for band in results['frequency_bands']])
+        uncertainties = np.array([band['kde_deviation'] for band in results['frequency_bands']])
+        
+        # Add simplified arrays to results
+        results['frequencies'] = frequencies
+        results['velocities'] = velocities
+        results['uncertainties'] = uncertainties
         
         if verbose:
             print(f"\nCompleted dispersion curve computation for {wave_type} waves")
