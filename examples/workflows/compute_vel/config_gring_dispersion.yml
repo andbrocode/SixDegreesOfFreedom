@@ -1,4 +1,5 @@
 # Configuration file for G-ring velocity dispersion curve computation
+# Compatible with DEV_compute_dispersion.py (uses compute_dispersion_curve)
 
 # =============================================================================
 # DATA SOURCE CONFIGURATION
@@ -31,7 +32,7 @@ resample_rate: 5  # Resample rate in Hz
 # FREQUENCY BAND CONFIGURATION
 # =============================================================================
 freq_min: 0.1        # Minimum frequency in Hz
-freq_max: 0.5        # Maximum frequency in Hz
+freq_max: 1.0        # Maximum frequency in Hz
 octave_fraction: 3   # Fraction of octave for band division (3 = 1/3 octave)
 
 # =============================================================================
@@ -43,43 +44,33 @@ wave_type: "love"    # 'love' or 'rayleigh'
 # BACKAZIMUTH COMPUTATION PARAMETERS
 # =============================================================================
 cc_method: "max"      # 'max' or 'mid' for backazimuth computation
-baz_range: 180.0      # Search range for backazimuth optimization (±baz_range around baz)
-baz_step: 1.0        # Step size for backazimuth optimization search (degrees)
-# t_win_factor: 8.0    # Window length factor (window = t_win_factor / center_frequency)
-# overlap: 0.25         # Overlap fraction between windows (0-1)
-# cc_threshold: 0.5    # Minimum cross-correlation coefficient threshold for backazimuth computation
+twin_factor: 6.0      # Window length factor (window = twin_factor / center_frequency)
+twin_overlap: 0.5     # Overlap fraction between windows (0-1)
+baz_step: 1           # Step size in degrees for backazimuth search (default: 1)
+use_theoretical_baz: false  # If true, uses theoretical backazimuth instead of computing it
+cc_threshold: 0.6     # Minimum cross-correlation coefficient threshold for velocity computation
 
 # =============================================================================
 # VELOCITY COMPUTATION PARAMETERS
 # =============================================================================
-method: "odr"        # 'odr' or 'ransac' or 'theilsen' for velocity computation
+method: "odr"   # 'odr' or 'ransac' or 'theilsen' for velocity computation
 zero_intercept: true    # Force intercept to be zero if True
 r_squared_threshold: 0.0  # Minimum R-squared value for regression quality (0.0 = no filtering)
 
 # =============================================================================
-# BOOTSTRAP CONFIGURATION
-# =============================================================================
-bootstrap:
-  enabled: true          # Enable bootstrap resampling
-  n_iterations: 100      # Number of bootstrap iterations
-  stat: "mean"           # Statistic to use: 'mean' or 'median'
-  sample_fraction: 0.8    # Fraction of data to use in each bootstrap iteration (0.0 to 1.0)
-  random_seed: 42        # Random seed for reproducibility
-
-# =============================================================================
 # PROCESSING CONFIGURATION
 # =============================================================================
-n_processes: 3        # Number of parallel processes (set to False for auto-detection)
-verbose: true       # Enable verbose output for detailed progress information
+n_processes: 4        # Number of parallel processes for time windows
+n_jobs: null          # Number of parallel jobs for frequency bands within compute_dispersion_curve
+                      # null = disable parallelization, positive int = use that many workers
+hours_per_window: 3    # Subdivide days into time windows of this many hours (default: 3)
+verbose: true         # Enable verbose output for detailed progress information
 
 # =============================================================================
 # OUTPUT CONFIGURATION
 # =============================================================================
-output_dir: ./output
-log_dir: ./logs
+output_dir: ./test/
+log_dir: ./test/logs/
 
 # Optional: Create daily dispersion curve plots
 plot_dispersion: true  # Set to true to generate daily dispersion curve plots
-
-# Data type for translation data processing
-data_type: "acceleration"  # 'acceleration' or 'velocity'

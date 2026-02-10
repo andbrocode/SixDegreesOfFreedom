@@ -3311,16 +3311,15 @@ class sixdegrees():
                             cc_method=cc_method
                         )
                         
-                        if baz_results and 'cc_max_y' in baz_results:
-                            backazimuths = baz_results['cc_max_y']
+                        if cc_method == 'max':
+                            backazimuths = baz_results['baz_max']
+                        elif cc_method == 'mid':
+                            backazimuths = baz_results['baz_mid']
                         else:
-                            backazimuths = np.array([theoretical_baz] if theoretical_baz is not None else [np.nan])
+                            raise ValueError(f"Invalid cc_method: {cc_method}. Use 'max' or 'mid'")
                     except Exception as e:
-                        if verbose:
-                            print(f"    Error computing backazimuth: {e}")
-                        backazimuths = np.array([theoretical_baz] if theoretical_baz is not None else [np.nan])
-                        baz_results = None
-                
+                        raise ValueError(f"Error computing backazimuth: {e}")
+
                 # Compute velocities for each time window
                 if verbose:
                     print(f"    Computing velocities for each time window...")
@@ -3333,28 +3332,11 @@ class sixdegrees():
                 n_samples = len(rot_band[0].data)
                 n_velocity_windows = int((n_samples - win_samples) / step) + 1
                 
-                # Use per-window backazimuths for velocity computation
-                if len(backazimuths) > 0 and not np.all(np.isnan(backazimuths)):
-                    baz_for_velocity = backazimuths  # Use array of backazimuths (one per window)
-                    # Ensure alignment: if backazimuths array is shorter, pad with last value or NaN
-                    if len(baz_for_velocity) < n_velocity_windows:
-                        # Pad with last valid value if available, otherwise NaN
-                        if len(baz_for_velocity) > 0 and not np.all(np.isnan(baz_for_velocity)):
-                            last_valid = baz_for_velocity[~np.isnan(baz_for_velocity)][-1] if np.any(~np.isnan(baz_for_velocity)) else np.nan
-                            baz_for_velocity = np.pad(baz_for_velocity, (0, n_velocity_windows - len(baz_for_velocity)), 
-                                                    mode='constant', constant_values=last_valid)
-                        else:
-                            baz_for_velocity = np.full(n_velocity_windows, np.nan)
-                    elif len(baz_for_velocity) > n_velocity_windows:
-                        # Truncate to match number of velocity windows
-                        baz_for_velocity = baz_for_velocity[:n_velocity_windows]
-                elif theoretical_baz is not None:
-                    # If using theoretical baz, create array with same value for all windows
-                    baz_for_velocity = np.full(n_velocity_windows, theoretical_baz)
-                else:
-                    if verbose:
-                        print(f"    Warning: No valid backazimuth found, skipping velocity computation")
-                    baz_for_velocity = None
+                # Check if the size matches
+                if len(backazimuths) != n_velocity_windows:
+                    raise ValueError(f"Number of backazimuths ({len(backazimuths)}) does not match number of velocity windows ({n_velocity_windows})")
+                
+                baz_for_velocity = backazimuths
                 
                 if baz_for_velocity is not None:
                     # Compute velocities directly from streams without modifying self.st
