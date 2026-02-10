@@ -16,7 +16,9 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
                            markersize: float = 7,
                            linewidth: float = 1.5,
                            title: Optional[str] = None,
-                           show_errors: bool = True) -> Figure:
+                           show_errors: bool = True,
+                           vel_min: float = 0,
+                           vel_max: float = 5000) -> Figure:
     """
     Plot dispersion curves from compute_dispersion_curve output.
     
@@ -49,6 +51,10 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
         Plot title. If None, generates automatic title.
     show_errors : bool, optional
         If True, display error bars using KDE deviations. Default is True.
+    vel_min : float, optional
+        Minimum velocity for y-axis limit. Default is 0.
+    vel_max : float, optional
+        Maximum velocity for y-axis limit. Default is 5000.
         
     Returns:
     --------
@@ -189,6 +195,10 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
     ax.set_ylabel('Phase Velocity (m/s)', fontsize=font)
     ax.grid(True, which='both', alpha=0.3, linestyle='--')
     ax.legend(loc='best', fontsize=font-1)
+    
+    # Set y-axis limits (only for linear scale)
+    if not ylog:
+        ax.set_ylim(vel_min, vel_max)
     
     # Set title
     if title is None:
