@@ -16,7 +16,9 @@ def plot_dispersion_curve(
     markersize: float = 7,
     linewidth: float = 1.5,
     title: Optional[str] = None,
-    show_errors: bool = False
+    show_errors: bool = False,
+    min_vel: float = 0,
+    max_vel: float = 5000
 ) -> Figure:
     """
     Plot dispersion curves for Love and/or Rayleigh waves.
@@ -44,6 +46,10 @@ def plot_dispersion_curve(
     show_errors : bool, optional
         If True, display error bars when 'velocity_errors' are available in results.
         Default is False.
+    min_vel : float, optional
+        Minimum velocity for y-axis limit. Default is 0.
+    max_vel : float, optional
+        Maximum velocity for y-axis limit. Default is 5000.
         
     Returns:
     --------
@@ -166,6 +172,10 @@ def plot_dispersion_curve(
     ax.set_ylabel('Phase Velocity (m/s)', fontsize=font)
     ax.grid(True, which='both', alpha=0.3, linestyle='--')
     ax.legend(loc='best', fontsize=font-1)
+    
+    # Set y-axis limits
+    if not ylog:
+        ax.set_ylim(min_vel, max_vel)
     
     # Set title
     if title is None:

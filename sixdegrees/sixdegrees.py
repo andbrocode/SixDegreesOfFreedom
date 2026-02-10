@@ -3170,7 +3170,7 @@ class sixdegrees():
                                  use_theoretical_baz: bool=False, cc_threshold: float=0.2,
                                  baz_step: int=1, time_window_overlap: float=0.5,
                                  velocity_method: str='odr', zero_intercept: bool=True,
-                                 verbose: bool=False, n_jobs: int=None) -> Dict:
+                                 cc_method: str='max', verbose: bool=False, n_jobs: int=None) -> Dict:
         """
         Compute dispersion curves for Love or Rayleigh waves using octave frequency bands
         with adaptive time windows.
@@ -3209,6 +3209,9 @@ class sixdegrees():
             Regression method for velocity computation ('odr', 'ransac', etc.)
         zero_intercept : bool
             Force intercept to be zero in regression if True (default: True)
+        cc_method : str
+            Cross-correlation method for backazimuth computation ('max', 'mid', or 'both').
+            Default is 'max'.
         verbose : bool
             Print progress information
         n_jobs : int, optional
@@ -3243,7 +3246,7 @@ class sixdegrees():
         def _process_frequency_band(i, fl, fu, fc, rot_original, acc_original, wave_type,
                                     window_factor, use_theoretical_baz, theoretical_baz,
                                     baz_step, time_window_overlap,
-                                    cc_threshold, velocity_method, zero_intercept, sampling_rate, verbose):
+                                    cc_threshold, velocity_method, zero_intercept, cc_method, sampling_rate, verbose):
                 """
                 Process a single frequency band. This is a helper function for parallel processing.
                 
@@ -3300,7 +3303,7 @@ class sixdegrees():
                             translation_data=acc_band,
                             verbose=False,
                             out=True,
-                            cc_method='max'
+                            cc_method=cc_method
                         )
                         
                         if baz_results and 'cc_max_y' in baz_results:
@@ -3672,7 +3675,7 @@ class sixdegrees():
                 i, fl, fu, fc, rot_original, acc_original, wave_type,
                 window_factor, use_theoretical_baz, theoretical_baz,
                 baz_step, time_window_overlap,
-                cc_threshold, velocity_method, zero_intercept, self.sampling_rate, verbose
+                cc_threshold, velocity_method, zero_intercept, cc_method, self.sampling_rate, verbose
             ))
         
         # Process frequency bands (in parallel if n_jobs > 1)
