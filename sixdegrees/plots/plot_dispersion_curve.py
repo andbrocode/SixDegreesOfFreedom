@@ -180,3 +180,4 @@ def plot_dispersion_curve(
     
     plt.tight_layout()
     return fig
+

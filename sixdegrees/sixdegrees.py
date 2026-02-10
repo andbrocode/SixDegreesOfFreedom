@@ -3165,6 +3165,537 @@ class sixdegrees():
         
         return results
 
+    def compute_dispersion_curve(self, wave_type: str="love", fmin: float=None, fmax: float=None,
+                                 octave_fraction: int=3, window_factor: float=1.0,
+                                 use_theoretical_baz: bool=False, cc_threshold: float=0.2,
+                                 baz_step: int=1, time_window_overlap: float=0.5,
+                                 velocity_method: str='odr', zero_intercept: bool=True,
+                                 verbose: bool=False, n_jobs: int=None) -> Dict:
+        """
+        Compute dispersion curves for Love or Rayleigh waves using octave frequency bands
+        with adaptive time windows.
+        
+        For each frequency band:
+        1. Makes a copy of waveforms for love or rayleigh
+        2. Filters the traces for the frequency band
+        3. Applies compute_backazimuth function to find backazimuths for each time window
+           (or uses theoretical backazimuth)
+        4. Applies compute_velocity for each time window (optionally with cc threshold)
+        5. Finds the KDE peak velocity and deviation for the frequency band
+        6. Includes in the output the filtered waveforms, estimated velocities and deviations
+        
+        Parameters:
+        -----------
+        wave_type : str
+            Type of wave to analyze ('love' or 'rayleigh'). 'tangent' is not supported.
+        fmin : float, optional
+            Minimum frequency in Hz. If None, uses self.fmin
+        fmax : float, optional
+            Maximum frequency in Hz. If None, uses self.fmax
+        octave_fraction : int
+            Octave fraction (e.g., 3 for 1/3 octave bands)
+        window_factor : float
+            Factor to multiply 1/fc to determine time window length (default: 1.0)
+        use_theoretical_baz : bool
+            If True, uses theoretical backazimuth instead of computing it
+        cc_threshold : float
+            Minimum cross-correlation coefficient threshold for velocity computation
+        baz_step : int
+            Step size in degrees for backazimuth search (default: 1)
+        time_window_overlap : float
+            Overlap between time windows as fraction (0-1) (default: 0.5).
+            Used for both backazimuth and velocity computation windows.
+        velocity_method : str
+            Regression method for velocity computation ('odr', 'ransac', etc.)
+        zero_intercept : bool
+            Force intercept to be zero in regression if True (default: True)
+        verbose : bool
+            Print progress information
+        n_jobs : int, optional
+            Number of parallel jobs to use for processing frequency bands. 
+            If None, disable parallelization. If negative,  
+            
+        Returns:
+        --------
+        Dict
+            Dictionary containing:
+            - frequency_bands: list of frequency band dictionaries, each containing:
+                - f_lower: lower frequency
+                - f_upper: upper frequency
+                - f_center: center frequency
+                - time_window: time window length in seconds
+                - filtered_rot: filtered rotation stream
+                - filtered_acc: filtered acceleration stream
+                - backazimuths: array of backazimuths for each time window
+                - velocities: array of velocities for each time window
+                - ccoefs: array of cross-correlation coefficients
+                - times: array of time points
+                - kde_peak_velocity: KDE peak velocity for the frequency band
+                - kde_deviation: KDE deviation for the frequency band
+                - kde_stats: full KDE statistics dictionary
+        """
+        import numpy as np
+        from acoustics.octave import Octave
+        from sixdegrees.utils.get_kde_stats_velocity import get_kde_stats_velocity
+        import multiprocessing as mp
+
+        # Helper function for parallel processing
+        def _process_frequency_band(i, fl, fu, fc, rot_original, acc_original, wave_type,
+                                    window_factor, use_theoretical_baz, theoretical_baz,
+                                    baz_step, time_window_overlap,
+                                    cc_threshold, velocity_method, zero_intercept, sampling_rate, verbose):
+                """
+                Process a single frequency band. This is a helper function for parallel processing.
+                
+                Parameters are the same as in the main loop of compute_dispersion_curve.
+                """
+                import numpy as np
+                from sixdegrees.utils.get_kde_stats_velocity import get_kde_stats_velocity
+                
+                if verbose:
+                    print(f"\n  Processing band {i+1}: {fc:.3f} Hz ({fl:.3f}-{fu:.3f} Hz)")
+                
+                # Calculate adaptive time window length
+                time_window_sec = max(window_factor / fc, 1.0)
+                
+                if verbose:
+                    print(f"    Time window: {time_window_sec:.1f} s")
+                
+                # Make copies of waveforms
+                rot_band = rot_original.copy()
+                acc_band = acc_original.copy()
+                
+                # Filter traces for the frequency band
+                rot_band = rot_band.detrend('linear')
+                rot_band = rot_band.detrend('demean')
+                rot_band = rot_band.taper(0.05, type='cosine')
+                rot_band = rot_band.filter('bandpass', freqmin=fl, freqmax=fu, corners=4, zerophase=True)
+                rot_band = rot_band.detrend('demean')
+                rot_band = rot_band.taper(0.05, type='cosine')
+                
+                acc_band = acc_band.detrend('linear')
+                acc_band = acc_band.detrend('demean')
+                acc_band = acc_band.taper(0.05, type='cosine')
+                acc_band = acc_band.filter('bandpass', freqmin=fl, freqmax=fu, corners=4, zerophase=True)
+                acc_band = acc_band.detrend('demean')
+                acc_band = acc_band.taper(0.05, type='cosine')
+                
+                # Compute backazimuth for each time window or use theoretical
+                if use_theoretical_baz:
+                    if verbose:
+                        print(f"    Using theoretical backazimuth: {theoretical_baz:.1f}°")
+                    backazimuths = np.full(int((rot_band[0].stats.npts / rot_band[0].stats.sampling_rate) / time_window_sec) + 1, theoretical_baz)
+                    baz_results = None
+                else:
+                    if verbose:
+                        print(f"    Computing backazimuth for each time window...")
+                    
+                    try:
+                        baz_results = self.compute_backazimuth(
+                            wave_type=wave_type,
+                            baz_step=baz_step,
+                            baz_win_sec=time_window_sec,
+                            baz_win_overlap=time_window_overlap,
+                            rotation_data=rot_band,
+                            translation_data=acc_band,
+                            verbose=False,
+                            out=True,
+                            cc_method='max'
+                        )
+                        
+                        if baz_results and 'cc_max_y' in baz_results:
+                            backazimuths = baz_results['cc_max_y']
+                        else:
+                            backazimuths = np.array([theoretical_baz] if theoretical_baz is not None else [np.nan])
+                    except Exception as e:
+                        if verbose:
+                            print(f"    Error computing backazimuth: {e}")
+                        backazimuths = np.array([theoretical_baz] if theoretical_baz is not None else [np.nan])
+                        baz_results = None
+                
+                # Compute velocities for each time window
+                if verbose:
+                    print(f"    Computing velocities for each time window...")
+                
+                # Calculate number of velocity windows to ensure proper alignment
+                df = sampling_rate
+                win_samples = int(time_window_sec * df)
+                overlap_samples = int(win_samples * time_window_overlap)
+                step = win_samples - overlap_samples
+                n_samples = len(rot_band[0].data)
+                n_velocity_windows = int((n_samples - win_samples) / step) + 1
+                
+                # Use per-window backazimuths for velocity computation
+                if len(backazimuths) > 0 and not np.all(np.isnan(backazimuths)):
+                    baz_for_velocity = backazimuths  # Use array of backazimuths (one per window)
+                    # Ensure alignment: if backazimuths array is shorter, pad with last value or NaN
+                    if len(baz_for_velocity) < n_velocity_windows:
+                        # Pad with last valid value if available, otherwise NaN
+                        if len(baz_for_velocity) > 0 and not np.all(np.isnan(baz_for_velocity)):
+                            last_valid = baz_for_velocity[~np.isnan(baz_for_velocity)][-1] if np.any(~np.isnan(baz_for_velocity)) else np.nan
+                            baz_for_velocity = np.pad(baz_for_velocity, (0, n_velocity_windows - len(baz_for_velocity)), 
+                                                    mode='constant', constant_values=last_valid)
+                        else:
+                            baz_for_velocity = np.full(n_velocity_windows, np.nan)
+                    elif len(baz_for_velocity) > n_velocity_windows:
+                        # Truncate to match number of velocity windows
+                        baz_for_velocity = baz_for_velocity[:n_velocity_windows]
+                elif theoretical_baz is not None:
+                    # If using theoretical baz, create array with same value for all windows
+                    baz_for_velocity = np.full(n_velocity_windows, theoretical_baz)
+                else:
+                    if verbose:
+                        print(f"    Warning: No valid backazimuth found, skipping velocity computation")
+                    baz_for_velocity = None
+                
+                if baz_for_velocity is not None:
+                    # Compute velocities directly from streams without modifying self.st
+                    try:
+                        velocity_results = _compute_velocities_from_streams(
+                            rot_band, acc_band, wave_type, time_window_sec,
+                            time_window_overlap, cc_threshold, baz_for_velocity,
+                            velocity_method, zero_intercept, sampling_rate
+                        )
+                        
+                        velocities = velocity_results['velocity']
+                        ccoefs = velocity_results['ccoef']
+                        times = velocity_results['time']
+                    except Exception as e:
+                        if verbose:
+                            print(f"    Error computing velocities: {e}")
+                        velocities = np.array([np.nan])
+                        ccoefs = np.array([np.nan])
+                        times = np.array([np.nan])
+                else:
+                    velocities = np.array([np.nan])
+                    ccoefs = np.array([np.nan])
+                    times = np.array([np.nan])
+                
+                # Find KDE peak velocity and deviation for the frequency band
+                if verbose:
+                    print(f"    Computing KDE statistics for velocities...")
+                
+                # Filter out NaN values for KDE
+                valid_mask = ~(np.isnan(velocities) | np.isnan(ccoefs))
+                valid_velocities = velocities[valid_mask]
+                valid_ccoefs = ccoefs[valid_mask]
+                
+                if len(valid_velocities) >= 5:
+                    kde_stats = get_kde_stats_velocity(valid_velocities, valid_ccoefs, plot=False)
+                    kde_peak_velocity = kde_stats.get('max', np.nan)
+                    kde_deviation = kde_stats.get('dev', np.nan)
+                else:
+                    if verbose:
+                        print(f"    Warning: Insufficient valid velocity measurements ({len(valid_velocities)}) for KDE")
+                    kde_stats = {
+                        'count': len(valid_velocities),
+                        'max': np.nan,
+                        'dev': np.nan,
+                        'hmhw': np.nan,
+                        'mad': np.nan,
+                        'n_samples': len(valid_velocities)
+                    }
+                    kde_peak_velocity = np.nan
+                    kde_deviation = np.nan
+                
+                # Store results for this frequency band
+                band_result = {
+                    'f_lower': fl,
+                    'f_upper': fu,
+                    'f_center': fc,
+                    'time_window': time_window_sec,
+                    'filtered_rot': rot_band,
+                    'filtered_acc': acc_band,
+                    'backazimuths': backazimuths,
+                    'velocities': velocities,
+                    'ccoefs': ccoefs,
+                    'times': times,
+                    'kde_peak_velocity': kde_peak_velocity,
+                    'kde_deviation': kde_deviation,
+                    'kde_stats': kde_stats,
+                    'baz_used': np.nanmedian(baz_for_velocity) if baz_for_velocity is not None and len(baz_for_velocity) > 0 else None
+                }
+                
+                if verbose:
+                    print(f"    KDE peak velocity: {kde_peak_velocity:.0f} m/s ± {kde_deviation:.0f} m/s")
+                
+                return band_result
+        
+        def _compute_velocities_from_streams(rot_stream, acc_stream, wave_type, 
+                                         win_time_s, overlap, cc_threshold, baz, 
+                                         method, zero_intercept, sampling_rate):
+            """
+            Compute velocities from streams directly without modifying self.st.
+            This is a helper function that extracts the velocity computation logic.
+            
+            Parameters:
+            -----------
+            baz : float or array-like
+                Backazimuth(s) to use for rotation. If array, should have one value per time window.
+                If single value, uses the same backazimuth for all windows.
+            """
+            import numpy as np
+            from obspy.signal.rotate import rotate_ne_rt
+            from obspy.signal.cross_correlation import correlate, xcorr_max
+            
+            # Convert baz to array if it's a single value
+            baz = np.asarray(baz)
+            if baz.ndim == 0:
+                # Single value, will be expanded later
+                baz_is_array = False
+            else:
+                baz_is_array = True
+            
+            # Get Z component and horizontal components (rotation happens per window)
+            if wave_type == 'rayleigh':
+                acc_z = acc_stream.select(channel="*Z")[0].data
+                rot_n = rot_stream.select(channel='*N')[0].data
+                rot_e = rot_stream.select(channel='*E')[0].data
+                n_samples = len(acc_z)
+
+            elif wave_type == 'love':
+                rot_z = rot_stream.select(channel="*Z")[0].data
+                acc_n = acc_stream.select(channel='*N')[0].data
+                acc_e = acc_stream.select(channel='*E')[0].data
+                n_samples = len(rot_z)
+            else:
+                raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+
+            # Calculate window parameters
+            df = sampling_rate
+            win_samples = int(win_time_s * df)
+            overlap_samples = int(win_samples * overlap)
+            step = win_samples - overlap_samples
+
+            n_windows = int((n_samples - win_samples) / step) + 1
+            
+            # Ensure baz array has correct length
+            if baz_is_array:
+                if len(baz) < n_windows:
+                    # Pad with last value or NaN
+                    baz = np.pad(baz, (0, n_windows - len(baz)), mode='edge' if len(baz) > 0 else 'constant', constant_values=np.nan)
+                elif len(baz) > n_windows:
+                    # Truncate to match number of windows
+                    baz = baz[:n_windows]
+            else:
+                # Expand single value to array
+                baz = np.full(n_windows, baz)
+            
+            # Initialize arrays
+            times = np.zeros(n_windows)
+            velocities = np.zeros(n_windows)
+            cc_coeffs = np.zeros(n_windows)
+            
+            # Loop through windows
+            for i in range(n_windows):
+                i1 = i * step
+                i2 = i1 + win_samples
+                
+                # Get backazimuth for this window
+                window_baz = baz[i]
+                
+                # Skip if backazimuth is invalid
+                if np.isnan(window_baz):
+                    times[i] = (i1 + win_samples/2) / df
+                    velocities[i] = np.nan
+                    cc_coeffs[i] = np.nan
+                    continue
+                
+                # Rotate components for this window using its specific backazimuth
+                if wave_type.lower() == 'rayleigh':
+                    # For Rayleigh waves: rotate rotation components
+                    rot_r, rot_t = rotate_ne_rt(
+                        rot_n[i1:i2],
+                        rot_e[i1:i2],
+                        window_baz
+                    )
+                    acc_z_win = acc_z[i1:i2]
+                    
+                    # compute cross-correlation coefficient
+                    cc = xcorr_max(correlate(rot_t, acc_z_win, 0))[1]
+                    
+                elif wave_type.lower() == 'love':
+                    # For Love waves: rotate acceleration components
+                    acc_r, acc_t = rotate_ne_rt(
+                        acc_n[i1:i2],
+                        acc_e[i1:i2],
+                        window_baz
+                    )
+                    rot_z_win = rot_z[i1:i2]
+                    
+                    # compute cross-correlation coefficient
+                    cc = xcorr_max(correlate(rot_z_win, acc_t, 0))[1]
+                else:
+                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+
+                # Compute velocity using amplitude ratio
+                if abs(cc) > cc_threshold:
+                    if wave_type.lower() == 'love':
+                        reg_result = self.regression(
+                            rot_z_win,
+                            0.5*acc_t,
+                            method=method.lower(),
+                            zero_intercept=zero_intercept,
+                            verbose=False
+                        )
+                        velocities[i] = reg_result['slope']
+                    elif wave_type.lower() == 'rayleigh':
+                        reg_result = self.regression(
+                            rot_t,
+                            acc_z_win,
+                            method=method.lower(),
+                            zero_intercept=zero_intercept,
+                            verbose=False
+                        )
+                        velocities[i] = reg_result['slope']
+                    else:
+                        raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+                
+                    # add central time of window
+                    times[i] = (i1 + win_samples/2) / df
+                    
+                    # add cross-correlation coefficient 
+                    cc_coeffs[i] = abs(cc)
+                else:
+                    times[i] = (i1 + win_samples/2) / df
+                    velocities[i] = np.nan
+                    cc_coeffs[i] = abs(cc)
+            
+            # Create output dictionary
+            results = {
+                'time': times,
+                'velocity': velocities,
+                'ccoef': cc_coeffs,
+                'terr': np.ones_like(times) * win_time_s/2,
+            }
+            
+            return results
+
+        # Validate wave_type - reject tangent
+        wave_type = wave_type.lower()
+        if wave_type == 'tangent':
+            raise ValueError("'tangent' wave_type is not supported in compute_dispersion_curve. Use 'love' or 'rayleigh'.")
+        if wave_type not in ['love', 'rayleigh']:
+            raise ValueError(f"wave_type must be 'love' or 'rayleigh', got '{wave_type}'")
+        
+        # Get frequency range
+        if fmin is None:
+            fmin = self.fmin
+        if fmax is None:
+            fmax = self.fmax
+            
+        if fmin is None or fmax is None:
+            raise ValueError("fmin and fmax must be provided or available in self.fmin and self.fmax")
+        
+        # Get theoretical backazimuth if needed
+        theoretical_baz = None
+        if use_theoretical_baz:
+            if hasattr(self, 'baz_theo') and self.baz_theo is not None:
+                theoretical_baz = self.baz_theo
+            elif hasattr(self, 'theoretical_baz') and self.theoretical_baz is not None:
+                theoretical_baz = self.theoretical_baz
+            elif hasattr(self, 'event_info') and self.event_info is not None and 'backazimuth' in self.event_info:
+                theoretical_baz = self.event_info['backazimuth']
+            else:
+                if verbose:
+                    print("Warning: use_theoretical_baz=True but no theoretical backazimuth found. Will compute backazimuth.")
+                use_theoretical_baz = False
+        
+        # Generate octave frequency bands
+        octave = Octave(fraction=octave_fraction, fmin=fmin, fmax=fmax)
+        center_freqs = octave.center
+        lower_freqs = octave.lower
+        upper_freqs = octave.upper
+        
+        if verbose:
+            print(f"Computing {wave_type} dispersion curve with {len(center_freqs)} frequency bands")
+            print(f"  Frequency range: {fmin:.3f} - {fmax:.3f} Hz")
+            print(f"  Octave fraction: 1/{octave_fraction}")
+            print(f"  Window factor: {window_factor}")
+        
+        # Get original streams
+        rot_original = self.get_stream("rotation", raw=True).copy()
+        acc_original = self.get_stream("translation", raw=True).copy()
+        
+        # Determine number of parallel jobs
+        if n_jobs is None:
+            n_jobs = None  # Disable parallelization
+        elif n_jobs <= 0:
+            n_jobs = mp.cpu_count()
+
+        if verbose and n_jobs is not None and n_jobs > 1:
+            print(f"  Using {n_jobs} parallel workers")
+        
+        # Initialize results
+        results = {
+            'wave_type': wave_type,
+            'frequency_bands': [],
+            'parameters': {
+                'fmin': fmin,
+                'fmax': fmax,
+                'octave_fraction': octave_fraction,
+                'window_factor': window_factor,
+                'cc_threshold': cc_threshold,
+                'use_theoretical_baz': use_theoretical_baz,
+            }
+        }
+        
+        # Prepare arguments for parallel processing
+        band_args = []
+        for i, (fl, fu, fc) in enumerate(zip(lower_freqs, upper_freqs, center_freqs)):
+            band_args.append((
+                i, fl, fu, fc, rot_original, acc_original, wave_type,
+                window_factor, use_theoretical_baz, theoretical_baz,
+                baz_step, time_window_overlap,
+                cc_threshold, velocity_method, zero_intercept, self.sampling_rate, verbose
+            ))
+        
+        # Process frequency bands (in parallel if n_jobs > 1)
+        if n_jobs is not None and n_jobs > 1:
+            # Use ThreadPoolExecutor for parallel processing
+            # Threads are used because we need to share the self object
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            
+            band_results = [None] * len(band_args)
+            
+            with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+                # Submit all tasks
+                future_to_index = {
+                    executor.submit(_process_frequency_band, *args): args[0]
+                    for args in band_args
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_index):
+                    idx = future_to_index[future]
+                    try:
+                        band_results[idx] = future.result()
+                    except Exception as e:
+                        if verbose:
+                            print(f"    Error processing band {idx+1}: {e}")
+                        band_results[idx] = None
+        else:
+            # Sequential processing
+            band_results = []
+            for args in band_args:
+                try:
+                    result = _process_frequency_band(*args)
+                    band_results.append(result)
+                except Exception as e:
+                    if verbose:
+                        print(f"    Error processing band: {e}")
+                    band_results.append(None)
+        
+        # Store results in order
+        for band_result in band_results:
+            if band_result is not None:
+                results['frequency_bands'].append(band_result)
+        
+        if verbose:
+            print(f"\nCompleted dispersion curve computation for {wave_type} waves")
+        
+        return results
+
     def compare_backazimuth_methods(self, Twin: float, Toverlap: float, baz_theo: float=None, 
                                   baz_theo_margin: float=10, baz_step: int=1, minors: bool=True,
                                   cc_threshold: float=0, cc_method: str='max', plot: bool=False, output: bool=False,

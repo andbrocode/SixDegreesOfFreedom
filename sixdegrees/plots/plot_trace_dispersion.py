@@ -613,5 +613,3 @@ def plot_trace_dispersion(
         return fig, out
     else:
         return fig
-
-
