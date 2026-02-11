@@ -3352,9 +3352,11 @@ class sixdegrees():
                     
                     if cc_values is not None and len(cc_values) == n_velocity_windows:
                         # Create mask for windows with CC above threshold
-                        window_mask = np.abs(cc_values) > cc_threshold
+                        # window_mask = np.abs(cc_values) > cc_threshold
+                        window_mask = cc_values > cc_threshold  # no absolute value
                         # Store precomputed CC values to avoid recomputation
-                        precomputed_cc_values = np.abs(cc_values)
+                        # precomputed_cc_values = np.abs(cc_values)
+                        precomputed_cc_values = cc_values  # no absolute value
                         if verbose:
                             n_valid = np.sum(window_mask)
                             print(f"    Pre-filtering: {n_valid}/{n_velocity_windows} windows pass CC threshold ({cc_threshold:.2f})")
