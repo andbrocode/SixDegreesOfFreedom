@@ -45,10 +45,10 @@ wave_type: "love"    # 'love' or 'rayleigh'
 # =============================================================================
 cc_method: "max"      # 'max' or 'mid' for backazimuth computation
 twin_factor: 6.0      # Window length factor (window = twin_factor / center_frequency)
-twin_overlap: 0.5     # Overlap fraction between windows (0-1)
+twin_overlap: 0.2     # Overlap fraction between windows (0-1)
 baz_step: 1           # Step size in degrees for backazimuth search (default: 1)
 use_theoretical_baz: false  # If true, uses theoretical backazimuth instead of computing it
-cc_threshold: 0.6     # Minimum cross-correlation coefficient threshold for velocity computation
+cc_threshold: 0.7     # Minimum cross-correlation coefficient threshold for velocity computation
 
 # =============================================================================
 # VELOCITY COMPUTATION PARAMETERS
