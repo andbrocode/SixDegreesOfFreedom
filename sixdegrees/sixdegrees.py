@@ -3338,13 +3338,35 @@ class sixdegrees():
                 
                 baz_for_velocity = backazimuths
                 
+                # Pre-filter windows based on CC from backazimuth computation
+                window_mask = None
+                precomputed_cc_values = None
+                if baz_results is not None and cc_threshold > 0:
+                    # Extract CC values based on cc_method
+                    if cc_method == 'max':
+                        cc_values = baz_results.get('cc_max', None)
+                    elif cc_method == 'mid':
+                        cc_values = baz_results.get('cc_mid', None)
+                    else:
+                        cc_values = None
+                    
+                    if cc_values is not None and len(cc_values) == n_velocity_windows:
+                        # Create mask for windows with CC above threshold
+                        window_mask = np.abs(cc_values) > cc_threshold
+                        # Store precomputed CC values to avoid recomputation
+                        precomputed_cc_values = np.abs(cc_values)
+                        if verbose:
+                            n_valid = np.sum(window_mask)
+                            print(f"    Pre-filtering: {n_valid}/{n_velocity_windows} windows pass CC threshold ({cc_threshold:.2f})")
+                
                 if baz_for_velocity is not None:
                     # Compute velocities directly from streams without modifying self.st
                     try:
                         velocity_results = _compute_velocities_from_streams(
                             rot_band, acc_band, wave_type, time_window_sec,
                             time_window_overlap, cc_threshold, baz_for_velocity,
-                            velocity_method, zero_intercept, sampling_rate
+                            velocity_method, zero_intercept, sampling_rate,
+                            window_mask=window_mask, precomputed_cc=precomputed_cc_values
                         )
                         
                         velocities = velocity_results['velocity']
@@ -3425,7 +3447,8 @@ class sixdegrees():
         
         def _compute_velocities_from_streams(rot_stream, acc_stream, wave_type, 
                                          win_time_s, overlap, cc_threshold, baz, 
-                                         method, zero_intercept, sampling_rate):
+                                         method, zero_intercept, sampling_rate,
+                                         window_mask=None, precomputed_cc=None):
             """
             Compute velocities from streams directly without modifying self.st.
             This is a helper function that extracts the velocity computation logic.
@@ -3435,6 +3458,14 @@ class sixdegrees():
             baz : float or array-like
                 Backazimuth(s) to use for rotation. If array, should have one value per time window.
                 If single value, uses the same backazimuth for all windows.
+            window_mask : array-like of bool, optional
+                Pre-computed mask indicating which windows should be processed.
+                Windows with False will be skipped (set to NaN) without computing regression.
+                If None, all windows are processed (default behavior).
+            precomputed_cc : array-like, optional
+                Pre-computed cross-correlation coefficients from backazimuth computation.
+                If provided, these values will be used instead of recomputing CC.
+                Must have same length as number of windows.
             """
             import numpy as np
             from obspy.signal.rotate import rotate_ne_rt
@@ -3472,21 +3503,33 @@ class sixdegrees():
             n_windows = int((n_samples - win_samples) / step) + 1
             
             # Ensure baz array has correct length
-            if baz_is_array:
-                if len(baz) < n_windows:
-                    # Pad with last value or NaN
-                    baz = np.pad(baz, (0, n_windows - len(baz)), mode='edge' if len(baz) > 0 else 'constant', constant_values=np.nan)
-                elif len(baz) > n_windows:
-                    # Truncate to match number of windows
-                    baz = baz[:n_windows]
-            else:
-                # Expand single value to array
-                baz = np.full(n_windows, baz)
+            # if baz_is_array:
+            #     if len(baz) < n_windows:
+            #         # Pad with last value or NaN
+            #         baz = np.pad(baz, (0, n_windows - len(baz)), mode='edge' if len(baz) > 0 else 'constant', constant_values=np.nan)
+            #     elif len(baz) > n_windows:
+            #         # Truncate to match number of windows
+            #         baz = baz[:n_windows]
+            # else:
+            #     # Expand single value to array
+            #     baz = np.full(n_windows, baz)
             
             # Initialize arrays
             times = np.zeros(n_windows)
-            velocities = np.zeros(n_windows)
-            cc_coeffs = np.zeros(n_windows)
+            velocities = np.full(n_windows, np.nan)  # Initialize with NaN
+            cc_coeffs = np.full(n_windows, np.nan)   # Initialize with NaN
+            
+            # Process window_mask if provided
+            if window_mask is not None:
+                window_mask = np.asarray(window_mask)
+                if len(window_mask) != n_windows:
+                    window_mask = None
+            
+            # Process precomputed_cc if provided
+            if precomputed_cc is not None:
+                precomputed_cc = np.asarray(precomputed_cc)
+                if len(precomputed_cc) != n_windows:
+                    precomputed_cc = None
             
             # Track regression statistics
             n_valid_regressions = 0
@@ -3495,6 +3538,13 @@ class sixdegrees():
             for i in range(n_windows):
                 i1 = i * step
                 i2 = i1 + win_samples
+                
+                # Skip window if pre-filtered by window_mask
+                if window_mask is not None and not window_mask[i]:
+                    times[i] = (i1 + win_samples/2) / df
+                    velocities[i] = np.nan
+                    cc_coeffs[i] = np.nan
+                    continue
                 
                 # Get backazimuth for this window
                 window_baz = baz[i]
@@ -3506,32 +3556,51 @@ class sixdegrees():
                     cc_coeffs[i] = np.nan
                     continue
                 
-                # Rotate components for this window using its specific backazimuth
-                if wave_type.lower() == 'rayleigh':
-                    # For Rayleigh waves: rotate rotation components
-                    rot_r, rot_t = rotate_ne_rt(
-                        rot_n[i1:i2],
-                        rot_e[i1:i2],
-                        window_baz
-                    )
-                    acc_z_win = acc_z[i1:i2]
-                    
-                    # compute cross-correlation coefficient
-                    cc = xcorr_max(correlate(rot_t, acc_z_win, 0))[1]
-                    
-                elif wave_type.lower() == 'love':
-                    # For Love waves: rotate acceleration components
-                    acc_r, acc_t = rotate_ne_rt(
-                        acc_n[i1:i2],
-                        acc_e[i1:i2],
-                        window_baz
-                    )
-                    rot_z_win = rot_z[i1:i2]
-                    
-                    # compute cross-correlation coefficient
-                    cc = xcorr_max(correlate(rot_z_win, acc_t, 0))[1]
+                # Use precomputed CC if available, otherwise compute it
+                if precomputed_cc is not None:
+                    cc = precomputed_cc[i]
+                    # Still need to rotate components for velocity computation
+                    if wave_type.lower() == 'rayleigh':
+                        rot_r, rot_t = rotate_ne_rt(
+                            rot_n[i1:i2],
+                            rot_e[i1:i2],
+                            window_baz
+                        )
+                        acc_z_win = acc_z[i1:i2]
+                    elif wave_type.lower() == 'love':
+                        acc_r, acc_t = rotate_ne_rt(
+                            acc_n[i1:i2],
+                            acc_e[i1:i2],
+                            window_baz
+                        )
+                        rot_z_win = rot_z[i1:i2]
                 else:
-                    raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
+                    # Rotate components for this window using its specific backazimuth
+                    if wave_type.lower() == 'rayleigh':
+                        # For Rayleigh waves: rotate rotation components
+                        rot_r, rot_t = rotate_ne_rt(
+                            rot_n[i1:i2],
+                            rot_e[i1:i2],
+                            window_baz
+                        )
+                        acc_z_win = acc_z[i1:i2]
+                        
+                        # compute cross-correlation coefficient
+                        cc = xcorr_max(correlate(rot_t, acc_z_win, 0))[1]
+                        
+                    elif wave_type.lower() == 'love':
+                        # For Love waves: rotate acceleration components
+                        acc_r, acc_t = rotate_ne_rt(
+                            acc_n[i1:i2],
+                            acc_e[i1:i2],
+                            window_baz
+                        )
+                        rot_z_win = rot_z[i1:i2]
+                        
+                        # compute cross-correlation coefficient
+                        cc = xcorr_max(correlate(rot_z_win, acc_t, 0))[1]
+                    else:
+                        raise ValueError(f"Invalid wave type: {wave_type}. Use 'love' or 'rayleigh'")
 
                 # Compute velocity using amplitude ratio
                 if abs(cc) > cc_threshold:
