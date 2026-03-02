@@ -9,7 +9,8 @@ from obspy.signal.rotate import rotate_ne_rt
 
 def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
                            figsize: Optional[Tuple[float, float]] = None,
-                           title: Optional[str] = None, data_type: str = "acceleration") -> plt.Figure:
+                           title: Optional[str] = None, data_type: str = "acceleration", 
+                           baz_theoretical: Optional[float] = None, show_errors: bool = False) -> plt.Figure:
     """
     Plot filtered traces from compute_dispersion_curve output.
     
@@ -31,7 +32,12 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
     data_type : str
         Type of data: "acceleration" (rotation rate and acceleration) or "velocity" (rotation and velocity).
         Default is "acceleration". This determines units and labels.
-        
+    baz_theoretical : float, optional
+        Theoretical backazimuth in degrees. If None, no theoretical backazimuth will be shown.
+        Default is None.
+    show_errors : bool, optional
+        Show error labels from KDE deviations. Default is False.
+    
     Returns:
     --------
     fig : plt.Figure
@@ -203,8 +209,8 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
             text_y_pos = 0.8
             scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
             if velocity_valid:
-                # Format scale with velocity deviation if available
-                if not np.isnan(velocity_deviation):
+                # Format scale with velocity deviation if available and show_errors is True
+                if not np.isnan(velocity_deviation) and show_errors:
                     ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f}±{velocity_deviation:.0f} {scale_unit}", 
                             transform=ax.transAxes, fontsize=font-2,
                             rotation=0, va='center', ha='left')
@@ -323,10 +329,10 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
         # Generate automatic title
         start_time = acc_filtered[0].stats.starttime
         title = f"{wave_type.capitalize()} waves"
-        if baz_used is not None:
-            title += f" | BAz = {baz_used:.1f}°"
+        if baz_theoretical is not None:
+            title += f" | BAz = {baz_theoretical:.1f}°"
         title += f" | {start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC"
     
-    fig.suptitle(title, fontsize=font+2, y=0.93)
+    fig.suptitle(title, fontsize=font+2, y=0.91)
     
     return fig

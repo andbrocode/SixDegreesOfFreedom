@@ -3819,10 +3819,8 @@ class sixdegrees():
             Whether to create and return plot
         output : bool, optional
             Whether to return results dictionary
-        invert_rot_z : bool, optional
-            Invert vertical rotation component if True
-        invert_acc_z : bool, optional
-            Invert vertical acceleration component if True
+        precomputed : bool, optional
+            Whether to use precomputed backazimuth results if True
         cc_method : str, optional
             Method to use for cross-correlation coefficient thresholding ('max' or 'mid')
         wave_types : list, optional
@@ -3830,6 +3828,7 @@ class sixdegrees():
             Default is None which shows all wave types.
         colorcode_tangent : bool, optional
             Colorcode tangent method if True, otherwise use blue color
+
         Returns:
         --------
         Tuple[Figure, Dict] or Dict
