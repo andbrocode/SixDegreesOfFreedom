@@ -280,7 +280,7 @@ def plot_dispersion_traces(dispersion_results: Dict, unitscale: str = "nano",
             scale_unit = "m/s" if data_type.lower() == "velocity" else "m/s²"
             if velocity_valid:
                 # Format scale with velocity deviation if available
-                if not np.isnan(velocity_deviation):
+                if not np.isnan(velocity_deviation) and show_errors:
                     ax.text(0.02, text_y_pos, f"scale: {velocity_for_scaling:.0f}±{velocity_deviation:.0f} {scale_unit}", 
                             transform=ax.transAxes, fontsize=font-2,
                             rotation=0, va='center', ha='left')
