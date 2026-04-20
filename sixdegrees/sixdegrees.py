@@ -3609,12 +3609,12 @@ class sixdegrees():
                     if wave_type.lower() == 'love':
                         reg_result = self.regression(
                             rot_z_win,
-                            acc_t,
+                            acc_t*0.5,
                             method=method.lower(),
                             zero_intercept=zero_intercept,
                             verbose=False
                         )
-                        velocities[i] = 0.5*reg_result['slope']
+                        velocities[i] = reg_result['slope']
                     elif wave_type.lower() == 'rayleigh':
                         reg_result = self.regression(
                             rot_t,
