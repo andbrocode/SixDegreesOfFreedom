@@ -1144,8 +1144,8 @@ class seismicarray:
         self._validate_array_status(verbose)
         
         # # Trim all traces to same number of samples if requested
-        # if len(self.stream) > 0:
-        #     self.stream = self._trim_to_same_samples(self.stream, self.tbeg, self.tend, verbose)
+        if len(self.stream) > 0:
+            self.stream = self._trim_to_same_samples(self.stream, self.tbeg, self.tend, verbose)
         
         if output:
             return self.stream
