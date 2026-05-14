@@ -72,6 +72,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     from numpy import linspace, ones, array
     from matplotlib.ticker import AutoMinorLocator
     from obspy.core.utcdatetime import UTCDateTime
+    from matplotlib.colors import BoundaryNorm
 
     # Extract streams and parameters from sd_object if provided
     if sd_object is not None:
@@ -299,10 +300,9 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # Discrete colormap spanning -1 to 1 in 0.1 steps (20 bins, 21 edges)
     boundaries = np.round(np.arange(-1.0, 1.0 + 0.1, 0.1), 2)  # [-1.0, -0.9, ..., 0.9, 1.0]
     cmap = plt.get_cmap("coolwarm", len(boundaries) - 1)  # one color per bin -> 20 bins
-    from matplotlib.colors import BoundaryNorm
     norm = BoundaryNorm(boundaries, cmap.N, clip=True)
     # Show only these tick labels on the colorbar
-    cbar_ticks = [-1.0, -0.7, 0.0, 0.7, 1.0]
+    cbar_ticks = [-1.0, -0.7, -0.3, 0.0, 0.3, 0.7, 1.0]
 
     if wave_type == "love":
         ax[0].plot(_rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
