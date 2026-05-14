@@ -296,13 +296,13 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # rot2, acc2, rot2_lbl, acc2_lbl = pol['JZ']*rot_z, pol['HR']*acc_r, f"{pol['JZ']}x ROT-Z", f"{pol['HR']}x ACC-R"
     # tt2, cc2 = _cross_correlation_windows(rot2, acc2, dt, twin_sec, overlap=twin_overlap, lag=0, demean=True)
 
-    # Create colormap with boundaries at 0.2 steps from -1 to 1
-    cmap = plt.get_cmap("coolwarm", 16)
-    boundaries = np.arange(-1.0, 1.2, 0.2)  # Creates: [-1.0, -0.8, -0.6, ..., 0.8, 1.0]
+    # Create colormap with boundaries at 0.1 steps from -1 to 1
+    boundaries = np.round(np.arange(-1.0, 1.0 + 0.1, 0.1), 2)  # [-1.0, -0.9, ..., 0.9, 1.0]
+    cmap = plt.get_cmap("coolwarm", len(boundaries) - 1)  # one color per bin -> 20 bins
     from matplotlib.colors import BoundaryNorm
     norm = BoundaryNorm(boundaries, cmap.N)
-    # Only label specific values on colorbar
-    cbar_ticks = [-1, -0.6, 0, 0.6, 1]
+    # Label colorbar at 0.1 steps
+    cbar_ticks = boundaries
 
     if wave_type == "love":
         ax[0].plot(_rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
@@ -401,6 +401,8 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     sm.set_array([])
     cbar = plt.colorbar(sm, cax=cax, location="bottom", orientation="horizontal", 
                         boundaries=boundaries, ticks=cbar_ticks)
+    cbar.ax.set_xticklabels([f"{t:.1f}" for t in cbar_ticks])
+    cbar.ax.tick_params(labelsize=font-4)
 
     cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-55, color="k")
 

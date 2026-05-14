@@ -478,17 +478,24 @@ class seismicarray:
 
     def _trim_to_same_samples(self, stream: Stream, tbeg: UTCDateTime, tend: UTCDateTime, verbose: bool = False) -> Stream:
         """
-        Trim all traces in stream to have the same number of samples.
-        Computes expected samples for each trace based on the common time window
-        and the trace's sampling rate. Traces with significantly less data than
-        expected are dropped instead of trimming.
-        
+        Synchronize all traces in stream onto a common time grid using linear interpolation.
+
+        Traces with significantly less data than expected (based on the common time window
+        and their sampling rate) are dropped first. The remaining traces are then
+        interpolated onto a shared sample grid: the intersection of their time windows
+        at the highest sampling rate present, using linear interpolation. After
+        interpolation the stream is trimmed so all traces have identical
+        starttime, endtime, sampling_rate, and npts.
+
         Args:
-            stream (Stream): Stream to trim
+            stream (Stream): Stream to synchronize
+            tbeg (UTCDateTime): Nominal start time of the requested window (used for the
+                expected-samples pre-check via self.tbeg/self.tend)
+            tend (UTCDateTime): Nominal end time of the requested window
             verbose (bool): Whether to print verbose output
-            
+
         Returns:
-            Stream: Trimmed stream
+            Stream: Synchronized stream
         """
         if not stream:
             return stream
@@ -527,32 +534,39 @@ class seismicarray:
                 print(" -> no traces remaining after dropping short traces")
             return stream
 
-        # Find trace lengths after dropping
-        trace_lengths = [tr.stats.npts for tr in stream]
-        min_npts = min(trace_lengths)
-        max_npts = max(trace_lengths)
+        # Synchronize remaining traces onto a common time grid via linear interpolation.
+        # Find the time window covered by ALL traces (intersection)
+        sync_starttime = max(tr.stats.starttime for tr in stream)
+        sync_endtime = min(tr.stats.endtime for tr in stream)
+
+        # Pick a common sampling rate
+        # (use max for upsampling, or a specific target like the slowest trace's rate)
+        sync_rate = max(tr.stats.sampling_rate for tr in stream)
 
         if verbose:
-            print("\nTrimming traces to same length:")
-            print(f" -> common time window: {self.tbeg} to {self.tend} (duration: {duration:.2f} s)")
-            print(f" -> shortest trace has {min_npts} samples")
-            print(f" -> longest trace has {max_npts} samples")
+            print("\nSynchronizing traces onto common time grid (linear interpolation):")
+            print(f" -> requested window: {self.tbeg} to {self.tend} (duration: {duration:.2f} s)")
+            print(f" -> intersection window: {sync_starttime} to {sync_endtime} "
+                  f"(duration: {sync_endtime - sync_starttime:.2f} s)")
+            print(f" -> common sampling rate: {sync_rate} Hz")
 
-        # Use shortest trace as target (conservative approach)
-        target_npts = min_npts
+        # Interpolate every trace onto the same time grid (in-place)
+        stream.interpolate(
+            sampling_rate=sync_rate,
+            method="linear",
+            starttime=sync_starttime,
+        )
 
-        # Trim all traces to target length
-        trimmed_count = 0
-        for tr in stream:
-            if tr.stats.npts > target_npts:
-                tr.data = tr.data[:target_npts]
-                tr.stats.npts = target_npts
-                trimmed_count += 1
-        
+        # Trim to the common end so all traces have identical npts
+        stream.trim(starttime=sync_starttime, endtime=sync_endtime, nearest_sample=False)
+
         if verbose:
-            print(f" -> trimmed {trimmed_count} traces to {target_npts} samples")
-            print(f" -> final stream has {len(stream)} traces, all with {target_npts} samples")
-            
+            npts_set = {tr.stats.npts for tr in stream}
+            if len(npts_set) == 1:
+                print(f" -> final stream has {len(stream)} traces, all with {npts_set.pop()} samples")
+            else:
+                print(f" -> WARNING: traces have differing npts after sync: {sorted(npts_set)}")
+
         return stream
 
     def _adjust_channel_prefix_by_sampling_rate(self, stream0: Stream) -> Stream:

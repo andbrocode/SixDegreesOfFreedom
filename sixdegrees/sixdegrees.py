@@ -1275,10 +1275,18 @@ class sixdegrees():
 
     def trim_stream(self, set_common: bool=True, set_interpolate: bool=False):
         '''
-        Trim a stream to common start and end times (and interpolate to common times)
-        '''
+        Trim a stream so all traces share the same number of samples.
 
-        from numpy import interp, arange
+        Args:
+            set_common (bool): If True and trace sample counts differ by more than one,
+                trim to the common (intersection) time window across traces.
+            set_interpolate (bool): If True (requires set_common=True), additionally
+                synchronize all traces onto exactly the same sample grid using linear
+                interpolation. After this, every trace has identical starttime,
+                endtime, sampling_rate, and npts (no sub-sample offsets between
+                channels). The target grid uses the intersection of trace time
+                windows at the highest sampling rate present.
+        '''
 
         def _get_size(st0: Stream) -> List[int]:
             return [tr.stats.npts for tr in st0]
@@ -1291,21 +1299,38 @@ class sixdegrees():
             if self.verbose:
                 print(f" -> stream size inconsistent: {n_samples}")
 
-            # if difference not larger than one -> adjust
+            # if difference larger than one sample -> trim (optionally interpolate)
             if any([abs(x-n_samples[0]) > 1 for x in n_samples]):
 
                 # set to common minimum interval
                 if set_common:
-                    _tbeg = max([tr.stats.starttime for tr in self.st])
-                    _tend = min([tr.stats.endtime for tr in self.st])
-                    self.st = self.st.trim(_tbeg, _tend, nearest_sample=True)
-                    if self.verbose:
-                        print(f"  -> adjusted: {_get_size(self.st)}")
+                    # Find the time window covered by ALL traces (intersection)
+                    _tbeg = max(tr.stats.starttime for tr in self.st)
+                    _tend = min(tr.stats.endtime for tr in self.st)
 
                     if set_interpolate:
-                        _times = arange(0, min(_get_size(self.st)), self.st[0].stats.delta)
-                        for tr in self.st:
-                            tr.data = interp(_times, tr.times(reftime=_tbeg), tr.data)
+                        # Synchronize all traces onto the same time grid (linear interpolation).
+                        # Pick a common sampling rate (use max for upsampling,
+                        # or a specific target like the slowest trace's rate).
+                        _rate = max(tr.stats.sampling_rate for tr in self.st)
+
+                        if self.verbose:
+                            print(f"  -> interpolating to {_tbeg} - {_tend} @ {_rate} Hz (linear)")
+
+                        # Interpolate every trace onto the same time grid (in-place)
+                        self.st.interpolate(
+                            sampling_rate=_rate,
+                            method="linear",
+                            starttime=_tbeg,
+                        )
+
+                        # Trim to the common end so all traces have identical npts
+                        self.st.trim(starttime=_tbeg, endtime=_tend, nearest_sample=False)
+                    else:
+                        self.st = self.st.trim(_tbeg, _tend, nearest_sample=True)
+
+                    if self.verbose:
+                        print(f"  -> adjusted: {_get_size(self.st)}")
             else:
                 # adjust for difference of one sample
                 for tr in self.st:
