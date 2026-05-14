@@ -1273,70 +1273,80 @@ class sixdegrees():
         if output:
             return self.st
 
-    def trim_stream(self, set_common: bool=True, set_interpolate: bool=False):
+    def trim_stream(self, set_common: bool=True, set_interpolate: bool=True):
         '''
-        Trim a stream so all traces share the same number of samples.
+        Synchronize all traces in self.st so they share a common time window
+        and (optionally) the exact same sample axis.
 
         Args:
-            set_common (bool): If True and trace sample counts differ by more than one,
-                trim to the common (intersection) time window across traces.
-            set_interpolate (bool): If True (requires set_common=True), additionally
-                synchronize all traces onto exactly the same sample grid using linear
-                interpolation. After this, every trace has identical starttime,
-                endtime, sampling_rate, and npts (no sub-sample offsets between
-                channels). The target grid uses the intersection of trace time
-                windows at the highest sampling rate present.
+            set_common (bool): If True, trim all traces to the intersection
+                time window and enforce identical npts across traces. Traces
+                will share the same start time, end time, and sample count.
+                Sub-sample offsets between channels can still remain if their
+                original sample grids did not line up.
+            set_interpolate (bool): If True (implies set_common), linearly
+                interpolate every trace onto exactly the same sample axis:
+                same starttime, same sampling rate, identical sample times.
+                The target grid uses the latest starttime and earliest
+                endtime across the stream at the maximum sampling rate
+                present. After this, no sub-sample offsets remain.
+
+        Note:
+            If sampling rates differ across traces, equal npts within a
+            common window is only achievable via interpolation. In that
+            case set_interpolate is enabled automatically.
         '''
+        if len(self.st) == 0 or not (set_common or set_interpolate):
+            return
 
-        def _get_size(st0: Stream) -> List[int]:
-            return [tr.stats.npts for tr in st0]
-
-        # get size of traces
-        n_samples = _get_size(self.st)
-
-        # check if all traces have same amount of samples
-        if not all(x == n_samples[0] for x in n_samples):
+        # Common intersection window across all traces
+        _tbeg = max(tr.stats.starttime for tr in self.st)
+        _tend = min(tr.stats.endtime for tr in self.st)
+        if _tend <= _tbeg:
             if self.verbose:
-                print(f" -> stream size inconsistent: {n_samples}")
+                print(f" -> trim_stream: no overlapping window ({_tbeg} -> {_tend}); skipping")
+            return
 
-            # if difference larger than one sample -> trim (optionally interpolate)
-            if any([abs(x-n_samples[0]) > 1 for x in n_samples]):
+        # If rates differ, equal npts in a common window requires interpolation
+        rates = {tr.stats.sampling_rate for tr in self.st}
+        if len(rates) > 1 and not set_interpolate:
+            if self.verbose:
+                print(f" -> trim_stream: mixed sampling rates {sorted(rates)}; enabling set_interpolate")
+            set_interpolate = True
 
-                # set to common minimum interval
-                if set_common:
-                    # Find the time window covered by ALL traces (intersection)
-                    _tbeg = max(tr.stats.starttime for tr in self.st)
-                    _tend = min(tr.stats.endtime for tr in self.st)
+        if self.verbose:
+            print(f" -> trim_stream: window {_tbeg} -> {_tend}")
+            print(f"    initial npts={[tr.stats.npts for tr in self.st]}, rates={sorted(rates)}")
 
-                    if set_interpolate:
-                        # Synchronize all traces onto the same time grid (linear interpolation).
-                        # Pick a common sampling rate (use max for upsampling,
-                        # or a specific target like the slowest trace's rate).
-                        _rate = max(tr.stats.sampling_rate for tr in self.st)
+        if set_interpolate:
+            # Pick a common sampling rate (max preserves detail; use min if you want to downsample)
+            _rate = max(rates)
+            if self.verbose:
+                print(f"    linear interpolation -> {_rate} Hz, anchored at {_tbeg}")
+            # Lock every trace onto the same sample grid (same starttime + rate).
+            # _tbeg = max(starttimes) guarantees no extrapolation is needed.
+            self.st.interpolate(sampling_rate=_rate, method="linear", starttime=_tbeg)
+            # Trim to common end; all traces now share start/end/grid/npts.
+            self.st.trim(starttime=_tbeg, endtime=_tend, nearest_sample=False)
+        else:
+            # set_common only (uniform rate): trim to intersection, then
+            # truncate to min npts in case nearest_sample rounding produced
+            # a 1-sample difference due to sub-sample starttime offsets.
+            self.st.trim(starttime=_tbeg, endtime=_tend, nearest_sample=True)
+            min_npts = min(tr.stats.npts for tr in self.st)
+            for tr in self.st:
+                if tr.stats.npts > min_npts:
+                    tr.data = tr.data[:min_npts]
 
-                        if self.verbose:
-                            print(f"  -> interpolating to {_tbeg} - {_tend} @ {_rate} Hz (linear)")
-
-                        # Interpolate every trace onto the same time grid (in-place)
-                        self.st.interpolate(
-                            sampling_rate=_rate,
-                            method="linear",
-                            starttime=_tbeg,
-                        )
-
-                        # Trim to the common end so all traces have identical npts
-                        self.st.trim(starttime=_tbeg, endtime=_tend, nearest_sample=False)
-                    else:
-                        self.st = self.st.trim(_tbeg, _tend, nearest_sample=True)
-
-                    if self.verbose:
-                        print(f"  -> adjusted: {_get_size(self.st)}")
-            else:
-                # adjust for difference of one sample
-                for tr in self.st:
-                    tr.data = tr.data[:min(n_samples)]
-                if self.verbose:
-                    print(f"  -> adjusted: {_get_size(self.st)}")
+        if self.verbose:
+            final_starts = {str(tr.stats.starttime) for tr in self.st}
+            final_npts = {tr.stats.npts for tr in self.st}
+            final_rates = {tr.stats.sampling_rate for tr in self.st}
+            print(f"    final: starttimes={final_starts}, npts={final_npts}, rates={final_rates}")
+            if set_interpolate and (len(final_starts) > 1 or len(final_npts) > 1 or len(final_rates) > 1):
+                print(f" -> WARNING: stream not fully synchronized after trim_stream")
+            elif not set_interpolate and len(final_npts) > 1:
+                print(f" -> WARNING: npts mismatch after set_common trim")
 
     def correct_tilt(self, g: float=9.81, raw: bool=False):
         '''
