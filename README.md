@@ -135,9 +135,14 @@ velocities = sd.compute_velocities(
 )
 ```
 
+### Caution
+
+This is research code provided to you "as is" with NO WARRANTIES OF CORRECTNESS. Use at your own risk.
+
 ### Example Usage
 
 The package includes several Jupyter notebooks and workflows in the `examples/` directory:
+
 
 #### Jupyter Notebooks
 - Array-derived rotation computation from the Pinon Flats seismic array
