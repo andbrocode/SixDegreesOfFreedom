@@ -16,7 +16,8 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
                     baz: Optional[float]=None, fmin: Optional[float]=None, fmax: Optional[float]=None, 
                     wave_type: str="both", pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
                     runit: Optional[str]=None, tunit: Optional[str]=None, twin_sec: int=5, twin_overlap: float=0.5, 
-                    unitscale: str="nano", data_type: str="acceleration", t1:UTCDateTime=None, t2:UTCDateTime=None) -> plt.Figure:
+                    unitscale: str="nano", data_type: str="acceleration", t1:UTCDateTime=None, t2:UTCDateTime=None,
+                    scaled: bool=False) -> plt.Figure:
 
     """
     Plot waveform cross-correlation.
@@ -59,6 +60,9 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
         Start time to trim data
     t2 : UTCDateTime or None
         End time to trim data
+    scaled : bool
+        If True, use the same y-limits and tick positions on the translation (left) and
+        rotation (right) axes. Default is False (independent axis limits).
     
     Returns:
     --------
@@ -245,6 +249,8 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # define linewidth and fontsize
     lw = 1
     font = 12
+    rot_color = "tab:red"
+    tra_color = "black"
 
     cc = []
     cc_all = []
@@ -304,71 +310,90 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # Show only these tick labels on the colorbar
     cbar_ticks = [-1.0, -0.7, -0.3, 0.0, 0.3, 0.7, 1.0]
 
+    def _plot_cc_panel(
+        ax,
+        times_tra,
+        tra_data,
+        tra_lbl,
+        tra_max,
+        times_rot,
+        rot_data,
+        rot_lbl,
+        rot_max,
+        tt,
+        cc_vals,
+    ):
+        """Translation on left axis; rotation on right (red) axis."""
+        ax.plot(times_tra, tra_data, label=tra_lbl, color=tra_color, lw=lw)
+        ax_rot = ax.twinx()
+        ax_rot.plot(times_rot, rot_data, label=rot_lbl, color=rot_color, lw=lw, zorder=3)
+        ax_cc = ax.twinx()
+        cm = ax_cc.scatter(
+            tt, ones(len(tt)) * -0.9, c=cc_vals, alpha=abs(cc_vals),
+            cmap=cmap, norm=norm, label="",
+        )
+
+        if scaled:
+            panel_max = max(tra_max, rot_max)
+            if panel_max <= 0:
+                panel_max = 1.0
+            ylim = (-panel_max, panel_max)
+            ax.set_ylim(*ylim)
+            ax_rot.set_ylim(*ylim)
+            ticks = linspace(-panel_max, panel_max, 5)
+            ax.set_yticks(ticks)
+            ax_rot.set_yticks(ticks)
+        else:
+            ax.set_ylim(-tra_max, tra_max)
+            ax_rot.set_ylim(-rot_max, rot_max)
+
+        ax_cc.set_ylim(-1, 1)
+        ax_cc.yaxis.set_visible(False)
+
+        ax_rot.spines["right"].set_color(rot_color)
+        ax_rot.tick_params(axis="y", colors=rot_color)
+        ax_rot.yaxis.label.set_color(rot_color)
+
+        return ax_rot, cm
+
+    twinaxs = []
+    cms = []
+
     if wave_type == "love":
-        ax[0].plot(_rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
-        ax00 = ax[0].twinx()
-        ax00.plot(_acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
-        ax01 = ax[0].twinx()
-        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, label="")
-
-        ax[0].set_ylim(-rot_z_max, rot_z_max)
-        ax00.set_ylim(-acc_t_max, acc_t_max)
-        ax01.set_ylim(-1, 1)
-        ax01.yaxis.set_visible(False)
-
-        twinaxs = [ax00]
+        ax_rot, cm1 = _plot_cc_panel(
+            ax[0],
+            _acc.select(channel="*N")[0].times(), acc0, acc0_lbl, acc_t_max,
+            _rot.select(channel="*Z")[0].times(), rot0, rot0_lbl, rot_z_max,
+            tt0, cc0,
+        )
+        twinaxs = [ax_rot]
         cms = [cm1]
 
     elif wave_type == "rayleigh":
-        ax[0].plot(_rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
-        ax11 = ax[0].twinx()
-        ax11.plot(_acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
-        ax12 = ax[0].twinx()
-        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, label="")
-
-        ax[0].set_ylim(-rot_t_max, rot_t_max)
-        ax11.set_ylim(-acc_z_max, acc_z_max)
-        ax12.set_ylim(-1, 1)
-        ax12.yaxis.set_visible(False)
-
-        twinaxs = [ax11]
+        ax_rot, cm2 = _plot_cc_panel(
+            ax[0],
+            _acc.select(channel="*Z")[0].times(), acc1, acc1_lbl, acc_z_max,
+            _rot.select(channel="*N")[0].times(), rot1, rot1_lbl, rot_t_max,
+            tt1, cc1,
+        )
+        twinaxs = [ax_rot]
         cms = [cm2]
 
     elif wave_type == "both":
-        # First subplot
-        ax[0].plot(_rot.select(channel="*Z")[0].times(), rot0, label=rot0_lbl, color="tab:red", lw=lw, zorder=3)
-        ax00 = ax[0].twinx()
-        ax00.plot(_acc.select(channel="*Z")[0].times(), acc0, label=acc0_lbl, color="black", lw=lw)
-        ax01 = ax[0].twinx()
-        cm1 = ax01.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, label="")
-
-        ax[0].set_ylim(-rot_z_max, rot_z_max)
-        ax00.set_ylim(-acc_t_max, acc_t_max)
-        ax01.set_ylim(-1, 1)
-        ax01.yaxis.set_visible(False)
-
-        # Second subplot
-        ax[1].plot(_rot.select(channel="*N")[0].times(), rot1, label=rot1_lbl, color="tab:red", lw=lw, zorder=3)
-        ax11 = ax[1].twinx()
-        ax11.plot(_acc.select(channel="*Z")[0].times(), acc1, label=acc1_lbl, color="black", lw=lw)
-        ax12 = ax[1].twinx()
-        cm2 = ax12.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, label="")
-
-        ax[1].set_ylim(-rot_t_max, rot_t_max)
-        ax11.set_ylim(-acc_z_max, acc_z_max)
-        ax12.set_ylim(-1, 1)
-        ax12.yaxis.set_visible(False)
-
-        twinaxs = [ax00, ax11]
+        ax_rot0, cm1 = _plot_cc_panel(
+            ax[0],
+            _acc.select(channel="*N")[0].times(), acc0, acc0_lbl, acc_t_max,
+            _rot.select(channel="*Z")[0].times(), rot0, rot0_lbl, rot_z_max,
+            tt0, cc0,
+        )
+        ax_rot1, cm2 = _plot_cc_panel(
+            ax[1],
+            _acc.select(channel="*Z")[0].times(), acc1, acc1_lbl, acc_z_max,
+            _rot.select(channel="*N")[0].times(), rot1, rot1_lbl, rot_t_max,
+            tt1, cc1,
+        )
+        twinaxs = [ax_rot0, ax_rot1]
         cms = [cm1, cm2]
-
-    # Sync twinx axes
-    ax[0].set_yticks(linspace(ax[0].get_yticks()[0], ax[0].get_yticks()[-1], len(ax[0].get_yticks())))
-    twinaxs[0].set_yticks(linspace(twinaxs[0].get_yticks()[0], twinaxs[0].get_yticks()[-1], len(ax[0].get_yticks())))
-
-    if wave_type == "both":
-        ax[1].set_yticks(linspace(ax[1].get_yticks()[0], ax[1].get_yticks()[-1], len(ax[1].get_yticks())))
-        twinaxs[1].set_yticks(linspace(twinaxs[1].get_yticks()[0], twinaxs[1].get_yticks()[-1], len(ax[1].get_yticks())))
 
     # Set labels and grid
     if wave_type == "both":
@@ -379,7 +404,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     for i, wt in zip(range(Nrow), names):
         ax[i].legend(loc=1, ncols=4)
         ax[i].grid(which="both", alpha=0.5)
-        ax[i].set_ylabel(f"{rot_label_symbol} ({rot_unit})", fontsize=font)
+        ax[i].set_ylabel(f"{tra_label_symbol} ({acc_unit})", fontsize=font)
         ax[i].text(
             0.05, 0.9,
             f"{wt.capitalize()}: CC={cc_all[i]:.2f}",
@@ -391,7 +416,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
 
     for _ax in twinaxs:
         _ax.legend(loc=1, bbox_to_anchor=(1, 0.9))
-        _ax.set_ylabel(f"{tra_label_symbol} ({acc_unit})", fontsize=font)
+        _ax.set_ylabel(f"{rot_label_symbol} ({rot_unit})", fontsize=font, color=rot_color)
 
     # Add colorbar
     cax = ax[Nrow-1].inset_axes([0.8, -0.25, 0.2, 0.1], transform=ax[Nrow-1].transAxes)
@@ -420,7 +445,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # Set title
     tbeg = _acc[0].stats.starttime
     title = f"{tbeg.date} {str(tbeg.time).split('.')[0]} UTC"
-    if wave_type is not "both":
+    if wave_type != "both":
         title += f" | {wave_type}"
     if fmin is not None and fmax is not None:
         title += f" | f = {fmin}-{fmax} Hz"

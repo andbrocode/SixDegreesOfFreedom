@@ -13,7 +13,10 @@ from .plot_velocities_win import plot_velocities_win
 from .plot_velocity_comparison import plot_velocity_comparison
 from .plot_velocity_method_comparison import plot_velocity_method_comparison
 from .plot_backazimuth_results import plot_backazimuth_results
-from .plot_dispersion_traces import plot_dispersion_traces
+from .plot_dispersion_traces import (
+    plot_dispersion_traces,
+    plot_dispersion_traces_with_broadband,
+)
 from .plot_dispersion_curves import plot_dispersion_curves
 
 __all__ = [
@@ -29,6 +32,7 @@ __all__ = [
     'plot_velocity_method_comparison',
     'plot_backazimuth_results',
     'plot_dispersion_traces',
+    'plot_dispersion_traces_with_broadband',
     'plot_dispersion_curves',
     'plot_filtered_traces_frequency_bands',
     'plot_filtered_traces_frequency_bands_optimized',
