@@ -251,7 +251,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # define linewidth and fontsize
     lw = 1
     font = 12
-    rot_color = "tab:red"
+    rot_color = "darkred"
     tra_color = "black"
 
     cc = []
@@ -346,14 +346,17 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
             ax.set_yticks(ticks)
             ax_rot.set_yticks(ticks)
         else:
+            ylim_pad = 1.05
             if tra_max <= 0:
                 tra_max = 1.0
             if rot_max <= 0:
                 rot_max = 1.0
-            ax.set_ylim(-tra_max, tra_max)
-            ax_rot.set_ylim(-rot_max, rot_max)
-            ax.set_yticks(linspace(-tra_max, tra_max, 5))
-            ax_rot.set_yticks(linspace(-rot_max, rot_max, 5))
+            tra_lim = tra_max * ylim_pad
+            rot_lim = rot_max * ylim_pad
+            ax.set_ylim(-tra_lim, tra_lim)
+            ax_rot.set_ylim(-rot_lim, rot_lim)
+            ax.set_yticks(linspace(-tra_lim, tra_lim, 5))
+            ax_rot.set_yticks(linspace(-rot_lim, rot_lim, 5))
 
         ax_cc.set_ylim(-1, 1)
         ax_cc.yaxis.set_visible(False)
