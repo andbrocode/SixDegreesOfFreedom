@@ -61,8 +61,10 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     t2 : UTCDateTime or None
         End time to trim data
     scaled : bool
-        If True, use the same y-limits and tick positions on the translation (left) and
-        rotation (right) axes. Default is False (independent axis limits).
+        If True, use the same y-limits and tick values on the translation (left) and
+        rotation (right) axes. If False, each axis keeps its own limits and tick values,
+        but tick positions are chosen at the same relative heights so they align with
+        the grid lines. Default is False.
     
     Returns:
     --------
@@ -344,8 +346,14 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
             ax.set_yticks(ticks)
             ax_rot.set_yticks(ticks)
         else:
+            if tra_max <= 0:
+                tra_max = 1.0
+            if rot_max <= 0:
+                rot_max = 1.0
             ax.set_ylim(-tra_max, tra_max)
             ax_rot.set_ylim(-rot_max, rot_max)
+            ax.set_yticks(linspace(-tra_max, tra_max, 5))
+            ax_rot.set_yticks(linspace(-rot_max, rot_max, 5))
 
         ax_cc.set_ylim(-1, 1)
         ax_cc.yaxis.set_visible(False)
