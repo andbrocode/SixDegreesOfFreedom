@@ -17,7 +17,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
                     wave_type: str="both", pol_dict: Union[None, Dict]=None, distance: Union[None, float]=None, 
                     runit: Optional[str]=None, tunit: Optional[str]=None, twin_sec: int=5, twin_overlap: float=0.5, 
                     unitscale: str="nano", data_type: str="acceleration", t1:UTCDateTime=None, t2:UTCDateTime=None,
-                    scaled: bool=False) -> plt.Figure:
+                    scaled: bool=False, show_p_arrival: bool=False, show_s_arrival: bool=False) -> plt.Figure:
 
     """
     Plot waveform cross-correlation.
@@ -65,6 +65,12 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
         rotation (right) axes. If False, each axis keeps its own limits and tick values,
         but tick positions are chosen at the same relative heights so they align with
         the grid lines. Default is False.
+    show_p_arrival : bool
+        If True, draw a vertical dashed line at the theoretical P arrival time (blue).
+        Requires ``sd_object``. Default is False.
+    show_s_arrival : bool
+        If True, draw a vertical dashed line at the theoretical S arrival time (green).
+        Requires ``sd_object``. Default is False.
     
     Returns:
     --------
@@ -424,6 +430,56 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
             fontsize=font-1,
             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.1)
         )
+
+    if show_p_arrival or show_s_arrival:
+        if sd_object is None:
+            raise ValueError(
+                "show_p_arrival and show_s_arrival require sd_object to compute theoretical arrivals"
+            )
+
+        tbeg = _acc[0].stats.starttime
+        x_max = ax[Nrow - 1].get_xlim()[1]
+        p_arrival_time = None
+        s_arrival_time = None
+
+        if show_p_arrival:
+            try:
+                p_arrival_utc = sd_object.get_theoretical_arrival(phase='P')
+                if p_arrival_utc is not None:
+                    p_arrival_time = UTCDateTime(p_arrival_utc) - UTCDateTime(tbeg)
+            except Exception:
+                try:
+                    p_arrival_utc = sd_object.get_theoretical_arrival(phase='Pdiff')
+                    if p_arrival_utc is not None:
+                        p_arrival_time = UTCDateTime(p_arrival_utc) - UTCDateTime(tbeg)
+                except Exception:
+                    pass
+
+        if show_s_arrival:
+            try:
+                s_arrival_utc = sd_object.get_theoretical_arrival(phase='S')
+                if s_arrival_utc is not None:
+                    s_arrival_time = UTCDateTime(s_arrival_utc) - UTCDateTime(tbeg)
+            except Exception:
+                pass
+
+        def _plot_arrival(axis, arrival_time, label, color):
+            if arrival_time is None or not (0 <= arrival_time <= x_max):
+                return
+            ylim = axis.get_ylim()
+            axis.axvline(
+                x=arrival_time, color=color, linestyle='--', linewidth=2,
+                alpha=0.7, zorder=5,
+            )
+            axis.text(
+                arrival_time, 0.55 * ylim[1], label,
+                fontsize=font, ha='center', va='center', color=color,
+                fontweight='bold', zorder=6,
+            )
+
+        for a in ax:
+            _plot_arrival(a, p_arrival_time, 'P', 'blue')
+            _plot_arrival(a, s_arrival_time, 'S', 'green')
 
     for _ax in twinaxs:
         _ax.legend(loc=1, bbox_to_anchor=(1, 0.9))
