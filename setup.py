@@ -10,14 +10,14 @@ import os
 import re
 
 def get_version():
-    """Read version from sixdegrees/__init__.py"""
-    init_file = os.path.join(os.path.dirname(__file__), 'sixdegrees', '__init__.py')
+    """Read version from src/sixdegrees/__init__.py"""
+    init_file = os.path.join(os.path.dirname(__file__), 'src', 'sixdegrees', '__init__.py')
     with open(init_file, 'r') as f:
         content = f.read()
         match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
         if match:
             return match.group(1)
-    return "0.1.1"
+    return "1.0.0"
 
 # Read README for long description
 def get_long_description():
@@ -39,7 +39,11 @@ setup(
     url="https://github.com/andbrocode/SixDegreesOfFreedom",
     license="GPL-3.0",
     license_files=["LICENSE"],
-    packages=find_packages(exclude=["tests", "tests.*", "examples", "examples.*", "docs", "docs.*", "OLD", "OLD.*"]),
+    package_dir={"": "src"},
+    packages=find_packages(
+        where="src",
+        exclude=["tests", "tests.*", "examples", "examples.*", "docs", "docs.*", "OLD", "OLD.*"],
+    ),
     python_requires=">=3.9",
     install_requires=[
         "numpy>=1.20.0,<2.0.0",
@@ -55,7 +59,7 @@ setup(
         "pyyaml>=6.0,<7.0",
     ],
     classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Physics",
         "Programming Language :: Python :: 3",

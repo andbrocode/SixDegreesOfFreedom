@@ -75,7 +75,7 @@ For a complete list of dependencies, see `docs/environment.yml`.
 ### Project Structure
 
 The project is organized as follows:
-- `sixdegrees/`: Core package code
+- `src/sixdegrees/`: Core package code (src layout)
   - `sixdegrees.py`: Main implementation with comprehensive docstrings
   - `seismicarray.py`: Seismic array processing with full documentation
   - `plots/`: Visualization modules for data analysis and plotting
@@ -161,6 +161,11 @@ The package includes several Jupyter notebooks and workflows in the `examples/` 
 See individual workflow README files for detailed usage instructions.
 
 ## Recent Updates
+
+### Version 1.0.0
+- **Stable release**: First production-ready release of the package
+- **Src layout**: Package source moved from `sixdegrees/` to `src/sixdegrees/` for standard Python packaging
+- **Packaging**: Version and build configuration consolidated in `pyproject.toml` and `setup.py`
 
 ### Version 0.1.1
 - **Enhanced Documentation**: Added comprehensive docstrings to all core functions in `sixdegrees.py`

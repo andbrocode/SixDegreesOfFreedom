@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sixdegrees"
-version = "0.1.1"
+version = "1.0.0"
 description = "A package for 6-DoF seismic data processing"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -13,7 +13,7 @@ authors = [
     {name = "Andreas Brotzer", email = "rotzleffel@tutanota.com"}
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Physics",
     "Programming Language :: Python :: 3",
@@ -70,12 +70,16 @@ test = [
 "Homepage" = "https://github.com/andbrocode/SixDegreesOfFreedom"
 "Bug Tracker" = "https://github.com/andbrocode/SixDegreesOfFreedom/issues"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["sixdegrees", "sixdegrees.*"]
 exclude = ["OLD*", "tests*", "examples*", "docs*", "event_configs*"]
 
 [tool.hatch.version]
-path = "sixdegrees/__init__.py"
+path = "src/sixdegrees/__init__.py"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
