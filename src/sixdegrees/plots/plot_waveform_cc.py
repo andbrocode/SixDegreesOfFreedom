@@ -467,14 +467,16 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
             if arrival_time is None or not (0 <= arrival_time <= x_max):
                 return
             ylim = axis.get_ylim()
-            axis.axvline(
-                x=arrival_time, color=color, linestyle='--', linewidth=2,
+            axis.plot(
+                arrival_time * np.array([1, 1]),
+                [-0.5 * ylim[1], 0.5 * ylim[1]],
+                color=color, linestyle='--', linewidth=2,
                 alpha=0.7, zorder=5,
             )
             axis.text(
                 arrival_time, 0.55 * ylim[1], label,
                 fontsize=font, ha='center', va='center', color=color,
-                fontweight='bold', zorder=6,
+                zorder=6,
             )
 
         for a in ax:
