@@ -3,6 +3,7 @@ Function for plotting a comprehensive event overview combining multiple analysis
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import AutoMinorLocator
 from typing import Dict, Optional, Union
@@ -473,7 +474,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Add crosscorrelation dots at bottom
         ax3 = ax.twinx()
-        cmap = plt.get_cmap("coolwarm", 16)
+        cmap = cm.vik.resampled(16)
         boundaries = np.arange(-1.0, 1.2, 0.2)
         norm = BoundaryNorm(boundaries, cmap.N)
         scatter_cc = ax3.scatter(tt0, ones(len(tt0))*-0.9, c=cc0, alpha=abs(cc0), cmap=cmap, norm=norm, s=20, zorder=4)
@@ -495,7 +496,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         cbar_cc_ax = ax.inset_axes([0.9, 1.07, 0.1, 0.07]) # [left, bottom, width, height]
         boundaries_cbar = np.arange(-1.0, 1.1, 0.1)  # Steps of 0.1 from -1 to 1 (20 bins)
         # Create colormap with enough colors for the boundaries (20 bins need at least 20 colors)
-        cmap_cbar = plt.get_cmap("coolwarm", len(boundaries_cbar)-1)
+        cmap_cbar = cm.vik.resampled(len(boundaries_cbar)-1)
         norm_cbar = BoundaryNorm(boundaries_cbar, cmap_cbar.N)
         sm = plt.cm.ScalarMappable(cmap=cmap_cbar, norm=norm_cbar)
         sm.set_array([])
@@ -540,7 +541,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         
         # Add crosscorrelation dots at bottom
         ax3 = ax.twinx()
-        cmap = plt.get_cmap("coolwarm", 16)
+        cmap = cm.vik.resampled(16)
         boundaries = np.arange(-1.0, 1.2, 0.2)
         norm = BoundaryNorm(boundaries, cmap.N)
         scatter_cc = ax3.scatter(tt1, ones(len(tt1))*-0.9, c=cc1, alpha=abs(cc1), cmap=cmap, norm=norm, s=20, zorder=4)
@@ -562,7 +563,7 @@ def _plot_waveform_comparison(ax, sd, baz, wave_type, unitscale, fmin, fmax,
         cbar_cc_ax = ax.inset_axes([0.9, 1.07, 0.1, 0.07]) # [left, bottom, width, height]
         boundaries_cbar = np.arange(-1.0, 1.1, 0.1)  # Steps of 0.1 from -1 to 1 (20 bins)
         # Create colormap with enough colors for the boundaries (20 bins need at least 20 colors)
-        cmap_cbar = plt.get_cmap("coolwarm", len(boundaries_cbar)-1)
+        cmap_cbar = cm.vik.resampled(len(boundaries_cbar)-1)
         norm_cbar = BoundaryNorm(boundaries_cbar, cmap_cbar.N)
         sm = plt.cm.ScalarMappable(cmap=cmap_cbar, norm=norm_cbar)
         sm.set_array([])
@@ -797,7 +798,7 @@ def _plot_backazimuth_panel(ax_baz, sd, baz_results, wave_type,
         return
     
     # Plot backazimuth estimates
-    cmap = plt.get_cmap("viridis", 10)
+    cmap = cm.imola.resampled(10)
     scatter = ax_baz.scatter(time, baz, c=cc, s=50, cmap=cmap,
                             edgecolors="k", lw=1, vmin=0, vmax=1, zorder=2)
     
@@ -864,7 +865,7 @@ def _plot_velocity_panel(ax_vel, ax_cbar, sd, velocity_results, wave_type,
         return
     
     # Plot velocities
-    cmap = plt.get_cmap("viridis", 10)
+    cmap = cm.imola.resampled(10)
     scatter = ax_vel.scatter(velocity_results['time'][mask],
                            velocity_results['velocity'][mask],
                            c=velocity_results['ccoef'][mask],

@@ -3,6 +3,7 @@ Functions for plotting continuous wavelet transform analysis for a single compon
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from typing import Dict, Union
 from matplotlib.gridspec import GridSpec
 from obspy import Stream
@@ -39,7 +40,7 @@ def plot_cwt(st: Stream, cwt_output: Dict, clog: bool=False,
     # Plot settings
     tscale = 1
     font = 12
-    cmap = plt.get_cmap("viridis")
+    cmap = cm.imola
 
     # decide if rotation or translation data and set units based on data_type
     if "J" in st[0].stats.channel:

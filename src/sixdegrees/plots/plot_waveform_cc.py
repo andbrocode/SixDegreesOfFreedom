@@ -3,6 +3,7 @@ Functions for plotting waveform cross-correlation analysis.
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm as cmcrameri_cm
 from typing import Dict, Optional, Union, Tuple
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import AutoMinorLocator
@@ -313,7 +314,8 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
 
     # Discrete colormap spanning -1 to 1 in 0.1 steps (20 bins, 21 edges)
     boundaries = np.round(np.arange(-1.0, 1.0 + 0.1, 0.1), 2)  # [-1.0, -0.9, ..., 0.9, 1.0]
-    cmap = plt.get_cmap("coolwarm", len(boundaries) - 1)  # one color per bin -> 20 bins
+    # cmap = cmcrameri_cm.vik.resampled(len(boundaries) - 1)  # one color per bin -> 20 bins
+    cmap = cmcrameri_cm.cork.resampled(len(boundaries) - 1)  # one color per bin -> 20 bins
     norm = BoundaryNorm(boundaries, cmap.N, clip=True)
     # Show only these tick labels on the colorbar
     cbar_ticks = [-1.0, -0.7, -0.3, 0.0, 0.3, 0.7, 1.0]
@@ -501,8 +503,8 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     cbar.set_label("Cross-Correlation Value", fontsize=font-1, loc="left", labelpad=-55, color="k")
 
     # Set limits for scatter plots
-    for cm in cms:
-        cm.set_clim(-1, 1)
+    for scatter in cms:
+        scatter.set_clim(-1, 1)
 
     # set subticks for x axis
     for a in ax:

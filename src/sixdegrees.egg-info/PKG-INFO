@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sixdegrees
-Version: 1.0.0
+Version: 1.0.1
 Summary: A package for 6-DoF seismic data processing
 Home-page: https://github.com/andbrocode/SixDegreesOfFreedom
 Author: Andreas Brotzer
@@ -705,6 +705,7 @@ Requires-Dist: tqdm<5.0.0,>=4.65.0
 Requires-Dist: typing-extensions<5.0.0,>=4.5.0
 Requires-Dist: acoustics>=0.2.3
 Requires-Dist: pyyaml<7.0,>=6.0
+Requires-Dist: cmcrameri<2.0,>=1.4
 Provides-Extra: cartopy
 Requires-Dist: cartopy<0.21.0,>=0.20.0; extra == "cartopy"
 Requires-Dist: setuptools>=65.0.0; extra == "cartopy"
@@ -743,6 +744,7 @@ cd SixDegreesOfFreedom/
 ```bash
 conda env create -f docs/environment.yml
 conda activate sixdegrees
+conda install -c conda-forge cmcrameri
 ```
 
 3. Upgrade pip and setuptools (required for editable installs):
@@ -791,6 +793,7 @@ The package requires Python ≥3.9 and the following main dependencies:
 - scikit-learn ≥0.24.0
 - pyyaml ≥6.0
 - acoustics ≥0.2.3
+- cmcrameri ≥1.4 (perceptually uniform colormaps; `conda install -c conda-forge cmcrameri`)
 - cartopy ≥0.20.0 (optional, for map plotting)
 
 For a complete list of dependencies, see `docs/environment.yml`.
@@ -886,6 +889,10 @@ The package includes several Jupyter notebooks and workflows in the `examples/` 
 See individual workflow README files for detailed usage instructions.
 
 ## Recent Updates
+
+### Version 1.0.1
+- **Colormaps**: Integrated [cmcrameri](https://pypi.org/project/cmcrameri/) — sequential plots use `cm.navia`, diverging plots use `cm.vik`
+- **Versioning**: Package version is defined only in `src/sixdegrees/__init__.py`
 
 ### Version 1.0.0
 - **Stable release**: First production-ready release of the package

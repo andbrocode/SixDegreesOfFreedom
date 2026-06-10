@@ -3,6 +3,7 @@ Functions for plotting frequency-dependent backazimuth analysis results.
 """
 import matplotlib.pyplot as plt
 import numpy as np
+from cmcrameri import cm
 from matplotlib.colors import LogNorm
 
 def plot_frequency_backazimuth_analysis(results, event_info=None, vmax_percentile=95,
@@ -69,7 +70,7 @@ def plot_frequency_backazimuth_analysis(results, event_info=None, vmax_percentil
             vmin = 0.01
         
         # Create pcolormesh plot
-        colormap = colors.get(wave_type, 'viridis')
+        colormap = colors.get(wave_type, cm.imola)
         im = ax.pcolormesh(center_freqs, baz_grid, kde_matrix, 
                           cmap=colormap, shading='auto',
                           vmin=vmin, vmax=vmax)

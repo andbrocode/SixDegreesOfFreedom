@@ -4,6 +4,7 @@ Functions for plotting backazimuth estimation results.
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as sts
+from cmcrameri import cm
 from typing import Dict
 from matplotlib.gridspec import GridSpec
 from obspy.signal.rotate import rotate_ne_rt
@@ -193,7 +194,7 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
     
     # Plot backazimuth estimates (only if we have valid data)
     if has_valid_data and len(baz) > 0:
-        cmap = plt.get_cmap("viridis", 10)
+        cmap = cm.imola.resampled(10)
         scatter = ax_baz.scatter(
             time,
             baz,
@@ -216,7 +217,7 @@ def plot_backazimuth_results(sd, baz_results: Dict, wave_type: str='love',
                 pass  # Skip errorbar if parameters are missing
     else:
         # Create a dummy scatter for colorbar (will be empty)
-        cmap = plt.get_cmap("viridis", 10)
+        cmap = cm.imola.resampled(10)
         scatter = ax_baz.scatter([], [], c=[], s=50, cmap=cmap, edgecolors="k", lw=1, vmin=0, vmax=1)
         ax_baz.text(0.5, 0.5, 'No valid backazimuth estimates', 
                    transform=ax_baz.transAxes, ha='center', va='center', 

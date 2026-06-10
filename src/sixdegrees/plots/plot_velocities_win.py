@@ -4,6 +4,7 @@ Functions for plotting velocity and backazimuth estimates in time windows.
 from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 
 def plot_velocities_win(sd, results_velocities: Dict, cc_threshold: float = 0.0, 
                        baz_theo: Union[float, None] = None, 
@@ -52,7 +53,7 @@ def plot_velocities_win(sd, results_velocities: Dict, cc_threshold: float = 0.0,
     sc1 = ax1.scatter(results_velocities['time'][mask], 
                      results_velocities['backazimuth'][mask], 
                      c=results_velocities['ccoef'][mask], 
-                     cmap='viridis', 
+                     cmap=cm.imola, 
                      alpha=1, 
                      label='Estimated BAZ', 
                      zorder=2, 
@@ -69,7 +70,7 @@ def plot_velocities_win(sd, results_velocities: Dict, cc_threshold: float = 0.0,
     sc2 = ax2.scatter(results_velocities['time'][mask], 
                      results_velocities['velocity'][mask], 
                      c=results_velocities['ccoef'][mask], 
-                     cmap='viridis', 
+                     cmap=cm.imola, 
                      alpha=1, 
                      label='Phase Velocity', 
                      zorder=2, 

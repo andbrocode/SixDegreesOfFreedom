@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sixdegrees"
-version = "1.0.0"
+dynamic = ["version"]
 description = "A package for 6-DoF seismic data processing"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -46,6 +46,7 @@ dependencies = [
     "typing-extensions>=4.5.0,<5.0.0",
     "acoustics>=0.2.3",
     "pyyaml>=6.0,<7.0",
+    "cmcrameri>=1.4,<2.0",
 ]
 
 [project.optional-dependencies]
@@ -78,8 +79,8 @@ where = ["src"]
 include = ["sixdegrees", "sixdegrees.*"]
 exclude = ["OLD*", "tests*", "examples*", "docs*", "event_configs*"]
 
-[tool.hatch.version]
-path = "src/sixdegrees/__init__.py"
+[tool.setuptools.dynamic]
+version = {attr = "sixdegrees.__version__"}
 
 [tool.pytest.ini_options]
 minversion = "6.0"

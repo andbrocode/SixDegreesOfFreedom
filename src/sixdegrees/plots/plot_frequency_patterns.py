@@ -7,6 +7,7 @@ minimal and maximal frequencies for different apparent velocities.
 
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from typing import List, Optional
 
 
@@ -45,7 +46,7 @@ def plot_frequency_patterns(azimuth_angles: np.ndarray, min_projections: np.ndar
                                   subplot_kw=dict(projection='polar'))
     
     # Define colors for different velocities
-    colors = plt.cm.viridis(np.linspace(0, 1, len(velocity_range)))
+    colors = cm.imola(np.linspace(0, 1, len(velocity_range)))
     
     # Calculate and plot frequencies for each velocity
     for i, velocity in enumerate(velocity_range):
@@ -155,7 +156,7 @@ def plot_frequency_patterns_simple(azimuth_angles: np.ndarray, min_projections: 
                                   subplot_kw=dict(projection='polar'))
     
     # Define colors for different velocities
-    colors = plt.cm.viridis(np.linspace(0, 1, len(velocity_range)))
+    colors = cm.imola(np.linspace(0, 1, len(velocity_range)))
     
     # Calculate and plot frequencies for each velocity
     for i, velocity in enumerate(velocity_range):

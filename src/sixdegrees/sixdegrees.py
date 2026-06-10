@@ -3870,6 +3870,7 @@ class sixdegrees():
             Figure and results dictionary if plot=True, else just results dictionary
         """
         import matplotlib.pyplot as plt
+        from cmcrameri import cm
         from matplotlib.gridspec import GridSpec
         import scipy.stats as sts
         from numpy import ones, linspace, histogram, concatenate, average
@@ -3912,7 +3913,7 @@ class sixdegrees():
                     axes_dict[wave_type]['hist'].set_axis_off()
             
             # Create color map
-            cmap = plt.get_cmap("viridis", 10)
+            cmap = cm.imola.resampled(10)
         
         # Plot settings
         font = 12

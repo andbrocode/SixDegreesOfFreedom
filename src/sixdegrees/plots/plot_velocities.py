@@ -2,6 +2,7 @@
 Functions for plotting velocity estimation results.
 """
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from matplotlib.gridspec import GridSpec
 from typing import Tuple
 import numpy as np
@@ -171,7 +172,7 @@ def plot_velocities(sd, velocity_results: Dict, vmax: Optional[float]=None,
     sd.sync_twin_axes(ax_wave, ax_wave2)
     
     # Plot velocities
-    cmap = plt.get_cmap("viridis", 10)
+    cmap = cm.imola.resampled(10)
     scatter = ax_vel.scatter(velocity_results['time'][mask], 
                            velocity_results['velocity'][mask],
                            c=velocity_results['ccoef'][mask], 

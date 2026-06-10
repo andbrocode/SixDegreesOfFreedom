@@ -4,6 +4,7 @@ Functions for comparing different velocity estimation methods.
 from typing import Dict, Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
@@ -57,8 +58,8 @@ def plot_velocity_method_comparison(velocities1: Dict, velocities2: Dict,
     vmin, vmax, vstep = 0.5, 1.0, 0.05
     levels = np.arange(vmin, vmax + vstep, vstep)
     n_bins = len(levels) - 1
-    viridis = plt.cm.get_cmap('viridis')
-    colors = viridis(np.linspace(0, 1, n_bins))
+    imola = cm.imola
+    colors = imola(np.linspace(0, 1, n_bins))
     cmap = ListedColormap(colors)
     norm = BoundaryNorm(levels, ncolors=len(levels)-1)
 

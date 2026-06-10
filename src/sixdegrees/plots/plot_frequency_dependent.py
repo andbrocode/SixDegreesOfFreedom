@@ -3,6 +3,7 @@ Functions for plotting frequency-dependent analysis results.
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 
 def plot_frequency_dependent(results_freq, data='vel', figsize=(12, 5), minors=True, fmin=None, fmax=None):
     """
@@ -52,7 +53,7 @@ def plot_frequency_dependent(results_freq, data='vel', figsize=(12, 5), minors=T
     # Create scatter plot with colorbar for CC values
     if data == 'vel':
         scatter = ax.scatter(frequencies, velocities, c=cc_values, 
-                            cmap='viridis', s=100, alpha=1,
+                            cmap=cm.imola, s=100, alpha=1,
                             edgecolor='black', linewidth=1, zorder=5,
                             vmax=1)
         # Add connecting line
@@ -60,7 +61,7 @@ def plot_frequency_dependent(results_freq, data='vel', figsize=(12, 5), minors=T
 
     elif data == 'baz':
         scatter = ax.scatter(frequencies, backazimuths, c=cc_values, 
-                            cmap='viridis', s=100, alpha=1,
+                            cmap=cm.imola, s=100, alpha=1,
                             edgecolor='black', linewidth=1, zorder=5,
                             vmax=1)
         # Add connecting line

@@ -7,6 +7,7 @@ for different apparent velocities based on azimuthal projections.
 
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from typing import List, Optional, Dict, Any
 
 
@@ -97,8 +98,8 @@ def plot_frequency_limits(freq_results: Dict[str, Any],
     if max_fmax > 1e2:
         max_fmax = 1e2
 
-    # Define colors using viridis
-    colors = plt.cm.viridis(np.linspace(0, 1, len(velocity_range)))
+    # Define colors using cmcrameri imola
+    colors = cm.imola(np.linspace(0, 1, len(velocity_range)))
     
     # Plot for each velocity
     for i, vel in enumerate(velocity_range):
@@ -106,7 +107,7 @@ def plot_frequency_limits(freq_results: Dict[str, Any],
         fmin = amplitude_uncertainty * vel / max_projections
         fmax = 0.25 * vel / min_projections
         
-        # Plot on both subplots with viridis colors
+        # Plot on both subplots with imola colors
         ax1.plot(rads, fmin, color=colors[i], linewidth=2, alpha=0.8, label=f'v={vel} m/s')
         ax2.plot(rads, fmax, color=colors[i], linewidth=2, alpha=0.8, label=f'v={vel} m/s')
     

@@ -4,6 +4,7 @@ Functions for plotting optimization results.
 from typing import Dict, Optional
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
@@ -63,8 +64,8 @@ def plot_optimization_results(sd, params: Dict, wave_type: str='love',
     
     # Create discrete colormap
     n_bins = len(levels) - 1
-    viridis = plt.cm.get_cmap('viridis')
-    colors = viridis(np.linspace(0, 1, n_bins))
+    imola = cm.imola
+    colors = imola(np.linspace(0, 1, n_bins))
     cmap = ListedColormap(colors)
     norm = BoundaryNorm(levels, ncolors=cmap.N)
     

@@ -508,6 +508,7 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
         ax_hist1 = fig.add_subplot(gs[0, 1])
         ax_hist2 = fig.add_subplot(gs[1, 1])
         hist_axes = [ax_hist1, ax_hist2]
+
     else:  # 3 wave types
         gs = GridSpec(3, 2, figure=fig, width_ratios=[1, 1], hspace=0.3, wspace=0.3)
         ax_map = _create_map_subplot(fig, gs[:, 0], map_projection, station_coords, event_info)
@@ -595,6 +596,8 @@ def plot_backazimuth_map(results, event_info=None, map_projection='orthographic'
         ax.set_xticks([0, 90, 180, 270, 360])
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         
         # Remove 0.00 tick label from density axis
         yticks = ax.get_yticks()

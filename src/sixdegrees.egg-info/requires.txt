@@ -9,6 +9,7 @@ tqdm<5.0.0,>=4.65.0
 typing-extensions<5.0.0,>=4.5.0
 acoustics>=0.2.3
 pyyaml<7.0,>=6.0
+cmcrameri<2.0,>=1.4
 
 [cartopy]
 cartopy<0.21.0,>=0.20.0

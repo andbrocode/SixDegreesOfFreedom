@@ -18,6 +18,7 @@ cd SixDegreesOfFreedom/
 ```bash
 conda env create -f docs/environment.yml
 conda activate sixdegrees
+conda install -c conda-forge cmcrameri
 ```
 
 3. Upgrade pip and setuptools (required for editable installs):
@@ -66,6 +67,7 @@ The package requires Python ≥3.9 and the following main dependencies:
 - scikit-learn ≥0.24.0
 - pyyaml ≥6.0
 - acoustics ≥0.2.3
+- cmcrameri ≥1.4 (perceptually uniform colormaps; `conda install -c conda-forge cmcrameri`)
 - cartopy ≥0.20.0 (optional, for map plotting)
 
 For a complete list of dependencies, see `docs/environment.yml`.
@@ -161,6 +163,10 @@ The package includes several Jupyter notebooks and workflows in the `examples/` 
 See individual workflow README files for detailed usage instructions.
 
 ## Recent Updates
+
+### Version 1.0.1
+- **Colormaps**: Integrated [cmcrameri](https://pypi.org/project/cmcrameri/) — sequential plots use `cm.imola`, diverging plots use `cm.vik`
+- **Versioning**: Package version is defined only in `src/sixdegrees/__init__.py`
 
 ### Version 1.0.0
 - **Stable release**: First production-ready release of the package

@@ -3,6 +3,7 @@ Functions for plotting frequency vs time maps with adaptive windows.
 """
 import matplotlib.pyplot as plt
 import numpy as np
+from cmcrameri import cm
 
 def plot_frequency_time_map_adaptive(results, plot_type='backazimuth', event_info=None, 
                                    figsize=(12, 8), vmin=None, vmax=None):
@@ -116,7 +117,7 @@ def plot_frequency_time_map_adaptive(results, plot_type='backazimuth', event_inf
     if plot_type == 'backazimuth':
         if event_info and 'backazimuth' in event_info:
             label = 'Backazimuth Deviation (°)'
-            cmap = 'RdBu_r'
+            cmap = cm.vik
             if vmin is None and vmax is None:
                 valid_data = data_grid[~np.isnan(data_grid)]
                 if len(valid_data) > 0:
@@ -131,7 +132,7 @@ def plot_frequency_time_map_adaptive(results, plot_type='backazimuth', event_inf
             if vmax is None: vmax = 360
     else:
         label = 'Cross-Correlation'
-        cmap = 'viridis'
+        cmap = cm.imola
         if vmin is None: vmin = 0
         if vmax is None: 
             valid_data = data_grid[~np.isnan(data_grid)]

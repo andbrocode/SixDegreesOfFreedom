@@ -3,6 +3,7 @@ Functions for plotting continuous wavelet transform analysis.
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from cmcrameri import cm
 from typing import Dict, Union, Optional
 from matplotlib.gridspec import GridSpec
 from obspy import Stream
@@ -69,7 +70,7 @@ def plot_cwt_all(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_obje
     # Plot settings
     tscale = 1
     font = 12
-    cmap = plt.get_cmap("viridis")
+    cmap = cm.imola
     
     # Determine scaling and units based on data_type
     if data_type.lower() == "velocity":

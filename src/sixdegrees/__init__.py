@@ -8,5 +8,5 @@ including array-derived rotation computation, backazimuth analysis, and velocity
 from .sixdegrees import sixdegrees
 from .seismicarray import seismicarray
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __all__ = ['sixdegrees', 'seismicarray', '__version__']

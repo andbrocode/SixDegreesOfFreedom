@@ -17,7 +17,7 @@ def get_version():
         match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
         if match:
             return match.group(1)
-    return "1.0.0"
+    return "0.0.0"
 
 # Read README for long description
 def get_long_description():
@@ -57,6 +57,7 @@ setup(
         "typing-extensions>=4.5.0,<5.0.0",
         "acoustics>=0.2.3",
         "pyyaml>=6.0,<7.0",
+        "cmcrameri>=1.4,<2.0",
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
