@@ -315,7 +315,7 @@ def plot_waveform_cc(rot: Optional[Stream]=None, acc: Optional[Stream]=None, sd_
     # Discrete colormap spanning -1 to 1 in 0.1 steps (20 bins, 21 edges)
     boundaries = np.round(np.arange(-1.0, 1.0 + 0.1, 0.1), 2)  # [-1.0, -0.9, ..., 0.9, 1.0]
     # cmap = cmcrameri_cm.vik.resampled(len(boundaries) - 1)  # one color per bin -> 20 bins
-    cmap = cmcrameri_cm.cork.resampled(len(boundaries) - 1)  # one color per bin -> 20 bins
+    cmap = cmcrameri_cm.bam.resampled(len(boundaries) - 1)  # one color per bin -> 20 bins
     norm = BoundaryNorm(boundaries, cmap.N, clip=True)
     # Show only these tick labels on the colorbar
     cbar_ticks = [-1.0, -0.7, -0.3, 0.0, 0.3, 0.7, 1.0]
