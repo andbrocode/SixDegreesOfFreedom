@@ -891,7 +891,7 @@ See individual workflow README files for detailed usage instructions.
 ## Recent Updates
 
 ### Version 1.0.1
-- **Colormaps**: Integrated [cmcrameri](https://pypi.org/project/cmcrameri/) — sequential plots use `cm.navia`, diverging plots use `cm.vik`
+- **Colormaps**: Integrated [cmcrameri](https://pypi.org/project/cmcrameri/) — sequential plots use `cm.imola`, diverging plots use `cm.vik`
 - **Versioning**: Package version is defined only in `src/sixdegrees/__init__.py`
 
 ### Version 1.0.0
