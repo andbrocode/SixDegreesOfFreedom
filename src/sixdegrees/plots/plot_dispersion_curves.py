@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from typing import Dict, Optional, Tuple
 from matplotlib.figure import Figure
 
+from .plot_dispersion_traces import _band_velocity_uncertainty, _band_velocity_value
+
 
 def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
                            love_results: Optional[Dict] = None,
@@ -17,14 +19,14 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
                            linewidth: float = 1.5,
                            title: Optional[str] = None,
                            show_errors: bool = True,
+                           velocity_stat: str = "kde_peak",
                            vel_min: float = 0,
                            vel_max: float = 5000) -> Figure:
     """
     Plot dispersion curves from compute_dispersion_curve output.
     
     This function takes the output from compute_dispersion_curve and creates
-    a dispersion curve plot showing phase velocity vs frequency, similar to
-    plot_dispersion_curve but using KDE peak velocities and deviations.
+    a dispersion curve plot showing phase velocity vs frequency.
     
     Parameters:
     -----------
@@ -33,10 +35,10 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
         If provided, will extract wave_type and plot accordingly.
     love_results : dict, optional
         Output dictionary from compute_dispersion_curve for Love waves.
-        Must contain 'frequency_bands' key with KDE peak velocities.
+        Must contain 'frequency_bands' key.
     rayleigh_results : dict, optional
         Output dictionary from compute_dispersion_curve for Rayleigh waves.
-        Must contain 'frequency_bands' key with KDE peak velocities.
+        Must contain 'frequency_bands' key.
     figsize : tuple, optional
         Figure size (width, height) in inches. Default is (8, 6).
     xlog : bool, optional
@@ -50,7 +52,11 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
     title : str, optional
         Plot title. If None, generates automatic title.
     show_errors : bool, optional
-        If True, display error bars using KDE deviations. Default is True.
+        If True, display error bars. Default is True.
+    velocity_stat : str, optional
+        Band velocity to plot: ``kde_peak`` (KDE peak) or ``median`` (per-window
+        median). Error bars use KDE deviation or per-window standard deviation,
+        respectively. Default is ``kde_peak``.
     vel_min : float, optional
         Minimum velocity for y-axis limit. Default is 0.
     vel_max : float, optional
@@ -86,7 +92,21 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
     # Validate inputs
     if love_results is None and rayleigh_results is None:
         raise ValueError("At least one of 'dispersion_results', 'love_results', or 'rayleigh_results' must be provided")
-    
+    if velocity_stat not in ("kde_peak", "median"):
+        raise ValueError("velocity_stat must be 'kde_peak' or 'median'")
+
+    def _extract_band_velocities(frequency_bands):
+        freqs = np.array([band["f_center"] for band in frequency_bands])
+        vels = np.array([
+            _band_velocity_value(band, velocity_stat=velocity_stat)[0]
+            for band in frequency_bands
+        ])
+        errs = np.array([
+            _band_velocity_uncertainty(band, velocity_stat=velocity_stat)
+            for band in frequency_bands
+        ])
+        return freqs, vels, errs
+
     # Extract frequencies and velocities from results
     freq_love = None
     vel_love = None
@@ -96,10 +116,9 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
         if 'frequency_bands' not in love_results:
             raise ValueError("love_results must contain 'frequency_bands' key")
         
-        frequency_bands = love_results['frequency_bands']
-        freq_love = np.array([band['f_center'] for band in frequency_bands])
-        vel_love = np.array([band['kde_peak_velocity'] for band in frequency_bands])
-        vel_err_love = np.array([band['kde_deviation'] for band in frequency_bands])
+        freq_love, vel_love, vel_err_love = _extract_band_velocities(
+            love_results["frequency_bands"]
+        )
     
     freq_rayleigh = None
     vel_rayleigh = None
@@ -109,10 +128,9 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
         if 'frequency_bands' not in rayleigh_results:
             raise ValueError("rayleigh_results must contain 'frequency_bands' key")
         
-        frequency_bands = rayleigh_results['frequency_bands']
-        freq_rayleigh = np.array([band['f_center'] for band in frequency_bands])
-        vel_rayleigh = np.array([band['kde_peak_velocity'] for band in frequency_bands])
-        vel_err_rayleigh = np.array([band['kde_deviation'] for band in frequency_bands])
+        freq_rayleigh, vel_rayleigh, vel_err_rayleigh = _extract_band_velocities(
+            rayleigh_results["frequency_bands"]
+        )
     
     # Create figure
     fig, ax = plt.subplots(figsize=figsize)
@@ -207,7 +225,8 @@ def plot_dispersion_curves(dispersion_results: Optional[Dict] = None,
             wave_types.append('Love')
         if freq_rayleigh is not None:
             wave_types.append('Rayleigh')
-        title = f"Dispersion Curves: {', '.join(wave_types)}"
+        stat_label = "KDE peak" if velocity_stat == "kde_peak" else "median"
+        title = f"Dispersion Curves ({stat_label}): {', '.join(wave_types)}"
     
     ax.set_title(title, fontsize=font+1)
     

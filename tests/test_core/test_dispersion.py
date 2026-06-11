@@ -253,6 +253,26 @@ def test_plot_dispersion_curves(love_dispersion_results):
     assert len(fig.axes) >= 1
 
 
+def test_plot_dispersion_curves_velocity_stat(love_dispersion_results):
+    fig_kde = plot_dispersion_curves(
+        dispersion_results=love_dispersion_results,
+        velocity_stat="kde_peak",
+        show_errors=False,
+    )
+    fig_med = plot_dispersion_curves(
+        dispersion_results=love_dispersion_results,
+        velocity_stat="median",
+        show_errors=False,
+    )
+    assert isinstance(fig_kde, Figure)
+    assert isinstance(fig_med, Figure)
+    with pytest.raises(ValueError, match="velocity_stat"):
+        plot_dispersion_curves(
+            dispersion_results=love_dispersion_results,
+            velocity_stat="mean",
+        )
+
+
 def test_plot_dispersion_curves_love_and_rayleigh(dispersion_sd, love_dispersion_results):
     rayleigh = dispersion_sd.compute_dispersion_curve(
         wave_type="rayleigh",
@@ -283,6 +303,23 @@ def test_plot_dispersion_traces(love_dispersion_results):
     assert isinstance(fig, Figure)
     n_bands = len(love_dispersion_results["frequency_bands"])
     assert len(fig.axes) == n_bands
+
+
+def test_plot_dispersion_traces_velocity_stat(love_dispersion_results):
+    fig_med = plot_dispersion_traces(
+        love_dispersion_results,
+        velocity_stat="median",
+        data_type="acceleration",
+        unitscale="nano",
+    )
+    fig_kde = plot_dispersion_traces(
+        love_dispersion_results,
+        velocity_stat="kde_peak",
+        data_type="acceleration",
+        unitscale="nano",
+    )
+    assert isinstance(fig_med, Figure)
+    assert isinstance(fig_kde, Figure)
 
 
 def test_plot_dispersion_traces_requires_frequency_bands():

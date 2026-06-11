@@ -41,19 +41,46 @@ def _global_translation_peak(reference_band: Dict, wave_type: str) -> float:
     return _translation_peak(reference_band, wave_type)
 
 
-def _band_velocity_for_scaling(band: Dict) -> Tuple[float, bool]:
+def _valid_per_window_velocities(band: Dict) -> np.ndarray:
     velocities = band.get("velocities", [])
-    if velocities is not None and len(velocities) > 0:
-        valid = np.asarray(velocities, dtype=float)
-        valid = valid[~np.isnan(valid)]
+    if velocities is None or len(velocities) == 0:
+        return np.array([], dtype=float)
+    valid = np.asarray(velocities, dtype=float)
+    return valid[~np.isnan(valid)]
+
+
+def _band_velocity_value(band: Dict, velocity_stat: str = "median") -> Tuple[float, bool]:
+    """Return band velocity (m/s) and whether it is valid."""
+    if velocity_stat not in ("kde_peak", "median"):
+        raise ValueError("velocity_stat must be 'kde_peak' or 'median'")
+
+    if velocity_stat == "median":
+        valid = _valid_per_window_velocities(band)
         if len(valid) > 0:
             return float(np.nanmedian(valid)), True
+        return np.nan, False
+
     peak = band.get("kde_peak_velocity", np.nan)
     try:
         peak = float(peak)
     except (TypeError, ValueError):
         peak = np.nan
     return peak, not np.isnan(peak)
+
+
+def _band_velocity_uncertainty(band: Dict, velocity_stat: str = "median") -> float:
+    """Uncertainty for annotation/error bars: KDE deviation or per-window std."""
+    if velocity_stat == "kde_peak":
+        return float(band.get("kde_deviation", np.nan))
+
+    valid = _valid_per_window_velocities(band)
+    if len(valid) > 1:
+        return float(np.nanstd(valid))
+    return np.nan
+
+
+def _band_velocity_for_scaling(band: Dict, velocity_stat: str = "median") -> Tuple[float, bool]:
+    return _band_velocity_value(band, velocity_stat=velocity_stat)
 
 
 def _get_unit_scales(unitscale: str, data_type: str) -> Tuple[float, float, str, str, str, str]:
@@ -91,6 +118,7 @@ def _plot_dispersion_trace_panels(
     tra_color: str = "black",
     rot_color: str = "red",
     text_bbox: Optional[Dict] = None,
+    velocity_stat: str = "median",
 ) -> plt.Figure:
     """Shared plotting loop: translation and rotation on one axis per panel."""
     if text_bbox is None:
@@ -144,8 +172,10 @@ def _plot_dispersion_trace_panels(
         else:
             baz_used = float(baz_used)
 
-        velocity_for_scaling, velocity_valid = _band_velocity_for_scaling(band)
-        velocity_deviation = band.get("kde_deviation", np.nan)
+        velocity_for_scaling, velocity_valid = _band_velocity_for_scaling(
+            band, velocity_stat=velocity_stat
+        )
+        velocity_deviation = _band_velocity_uncertainty(band, velocity_stat=velocity_stat)
 
         if wave_type.lower() == "rayleigh":
             tra = acc_filtered.select(channel="*Z")[0].data
@@ -259,6 +289,7 @@ def plot_dispersion_traces(
     tra_color: str = "black",
     rot_color: str = "red",
     text_bbox: Optional[Dict] = None,
+    velocity_stat: str = "median",
 ) -> plt.Figure:
     """
     Plot filtered traces from compute_dispersion_curve output.
@@ -274,6 +305,8 @@ def plot_dispersion_traces(
         ``nano`` or ``micro`` display scaling.
     data_type : str
         ``velocity`` or ``acceleration``.
+    velocity_stat : str
+        ``median`` (per-window median) or ``kde_peak`` (KDE peak velocity).
     global_scaling : bool
         If True, normalize translation traces to the peak of
         ``global_scaling_reference_band`` (default: last frequency band).
@@ -308,6 +341,7 @@ def plot_dispersion_traces(
         tra_color=tra_color,
         rot_color=rot_color,
         text_bbox=text_bbox,
+        velocity_stat=velocity_stat,
     )
 
 
@@ -331,6 +365,7 @@ def plot_dispersion_traces_with_broadband(
     tra_color: str = "black",
     rot_color: str = "red",
     text_bbox: Optional[Dict] = None,
+    velocity_stat: str = "median",
 ) -> plt.Figure:
     """
     Like :func:`plot_dispersion_traces`, with an extra broadband bandpass panel.
@@ -341,6 +376,9 @@ def plot_dispersion_traces_with_broadband(
         Band dict with ``filtered_rot``, ``filtered_acc``, ``f_lower``, ``f_upper``.
     broadband_velocity : float, optional
         Phase velocity (m/s) for rotation scaling on the broadband panel.
+        Overrides ``velocity_stat`` for the broadband panel only.
+    velocity_stat : str
+        ``median`` or ``kde_peak`` for per-band rotation scaling and labels.
     global_scaling : bool
         If True, normalize translation to the broadband translation peak.
     """
@@ -380,4 +418,5 @@ def plot_dispersion_traces_with_broadband(
         tra_color=tra_color,
         rot_color=rot_color,
         text_bbox=text_bbox,
+        velocity_stat=velocity_stat,
     )

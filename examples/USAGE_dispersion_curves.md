@@ -272,8 +272,13 @@ fig = plot_dispersion_traces(
 - **`dispersion_results`**: Single result from `compute_dispersion_curve`
 - **`love_results`**: Love wave results
 - **`rayleigh_results`**: Rayleigh wave results
-- **`show_errors`**: Show error bars from KDE deviations
+- **`show_errors`**: Show error bars (KDE deviation or per-window std)
+- **`velocity_stat`**: `kde_peak` (default) or `median` per frequency band
 - **`xlog`, `ylog`**: Logarithmic axes
+
+### `plot_dispersion_traces`
+
+- **`velocity_stat`**: `median` (default) or `kde_peak` for rotation scaling and panel labels
 
 ## Notes
 
