@@ -26,12 +26,49 @@ conda install -c conda-forge cmcrameri
 pip install --upgrade pip setuptools wheel
 ```
 
-4. Install the package in development mode:
+4. Install the package in development mode (with Jupyter extras):
 ```bash
-pip install -e .
+pip install -e ".[dev]"
 ```
 
+5. Register a Jupyter kernel for this environment (once per machine):
+```bash
+python -m ipykernel install --user --name sixdegrees --display-name "Python (sixdegrees)"
+```
+
+In notebooks under `examples/`, select **Kernel → Change kernel → Python (sixdegrees)**.
+
 **Note**: If you encounter an error about missing 'build_editable' hook, ensure you have setuptools >= 64.0.0 installed. The `setup.py` file is provided as a fallback for older setuptools versions.
+
+### Jupyter: function help and completions
+
+Docstrings and parameter hints in notebooks require an **editable install** and the correct kernel (see steps 4–5 above).
+
+Verify in a notebook cell:
+
+```python
+import sixdegrees
+print(sixdegrees.__file__)  # should point into .../src/sixdegrees/__init__.py
+```
+
+Useful introspection:
+
+- **Shift+Tab** on a function call — parameter list (kernel + jedi)
+- **`?name`** or **`help(name)`** — full docstring in the cell output
+- **`??name`** — docstring plus source (with editable install)
+
+For development, reload code after edits without restarting the kernel:
+
+```python
+%load_ext autoreload
+%autoreload 2
+```
+
+Common imports (plot helpers are re-exported from the top level):
+
+```python
+from sixdegrees import sixdegrees, plot_dispersion_curves, plot_dispersion_traces
+```
 
 ### Uninstallation
 

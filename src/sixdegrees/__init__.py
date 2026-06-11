@@ -7,6 +7,22 @@ including array-derived rotation computation, backazimuth analysis, and velocity
 
 from .sixdegrees import sixdegrees
 from .seismicarray import seismicarray
+from .plots import (
+    plot_backazimuth_results,
+    plot_dispersion_curves,
+    plot_dispersion_traces,
+    plot_velocities,
+    plot_waveform_cc,
+)
 
 __version__ = "1.0.1"
-__all__ = ['sixdegrees', 'seismicarray', '__version__']
+__all__ = [
+    "sixdegrees",
+    "seismicarray",
+    "plot_backazimuth_results",
+    "plot_dispersion_curves",
+    "plot_dispersion_traces",
+    "plot_velocities",
+    "plot_waveform_cc",
+    "__version__",
+]
