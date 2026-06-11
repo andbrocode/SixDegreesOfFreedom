@@ -212,6 +212,37 @@ def test_compute_dispersion_curve_rejects_tangent(dispersion_sd):
         dispersion_sd.compute_dispersion_curve(wave_type="tangent", fmin=0.1, fmax=0.5)
 
 
+def test_compute_dispersion_curve_velocity_threshold(dispersion_sd):
+    kwargs = dict(
+        wave_type="love",
+        fmin=0.1,
+        fmax=0.5,
+        octave_fraction=3,
+        window_factor=1.0,
+        time_window_overlap=0.5,
+        use_theoretical_baz=False,
+        cc_threshold=0.0,
+        cc_method="mid",
+        baz_step=15,
+        verbose=False,
+        n_jobs=1,
+    )
+
+    results_no_limit = dispersion_sd.compute_dispersion_curve(**kwargs, velocity_threshold=None)
+    results_with_limit = dispersion_sd.compute_dispersion_curve(**kwargs, velocity_threshold=3000.0)
+
+    assert results_no_limit["parameters"]["velocity_threshold"] is None
+    assert results_with_limit["parameters"]["velocity_threshold"] == 3000.0
+
+    for band_no, band_lim in zip(
+        results_no_limit["frequency_bands"],
+        results_with_limit["frequency_bands"],
+    ):
+        np.testing.assert_array_equal(band_no["velocities"], band_lim["velocities"])
+        kde_lim = band_lim["kde_peak_velocity"]
+        if not np.isnan(kde_lim):
+            assert kde_lim <= 3000.0
+
 def test_plot_dispersion_curves(love_dispersion_results):
     fig = plot_dispersion_curves(
         dispersion_results=love_dispersion_results,

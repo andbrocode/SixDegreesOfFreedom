@@ -3203,7 +3203,8 @@ class sixdegrees():
     def compute_dispersion_curve(self, wave_type: str="love", fmin: float=None, fmax: float=None,
                                  octave_fraction: int=3, window_factor: float=1.0,
                                  use_theoretical_baz: bool=False, cc_threshold: float=0.2,
-                                 baz_step: int=1, time_window_overlap: float=0.5,
+                                 velocity_threshold: float=None, baz_step: int=1,
+                                 time_window_overlap: float=0.5,
                                  velocity_method: str='odr', zero_intercept: bool=True,
                                  cc_method: str='max', verbose: bool=False, n_jobs: int=None) -> Dict:
         """
@@ -3235,6 +3236,10 @@ class sixdegrees():
             If True, uses theoretical backazimuth instead of computing it
         cc_threshold : float
             Minimum cross-correlation coefficient threshold for velocity computation
+        velocity_threshold : float, optional
+            Maximum velocity in m/s included in KDE estimation. Per-window velocities
+            above this value are excluded from the KDE peak estimate (default: None,
+            no upper limit).
         baz_step : int
             Step size in degrees for backazimuth search (default: 1)
         time_window_overlap : float
@@ -3286,7 +3291,8 @@ class sixdegrees():
         def _process_frequency_band(i, fl, fu, fc, rot_original, acc_original, wave_type,
                                     window_factor, use_theoretical_baz, theoretical_baz,
                                     baz_step, time_window_overlap,
-                                    cc_threshold, velocity_method, zero_intercept, cc_method, sampling_rate, verbose):
+                                    cc_threshold, velocity_threshold, velocity_method,
+                                    zero_intercept, cc_method, sampling_rate, verbose):
                 """
                 Process a single frequency band. This is a helper function for parallel processing.
                 
@@ -3437,6 +3443,17 @@ class sixdegrees():
                 valid_mask = ~(np.isnan(velocities) | np.isnan(ccoefs))
                 valid_velocities = velocities[valid_mask]
                 valid_ccoefs = ccoefs[valid_mask]
+
+                if velocity_threshold is not None:
+                    velocity_mask = valid_velocities <= velocity_threshold
+                    n_rejected = int(np.sum(~velocity_mask))
+                    if verbose and n_rejected > 0:
+                        print(
+                            f"    KDE filtering: {n_rejected}/{len(valid_velocities)} velocities "
+                            f"above {velocity_threshold:.0f} m/s rejected"
+                        )
+                    valid_velocities = valid_velocities[velocity_mask]
+                    valid_ccoefs = valid_ccoefs[velocity_mask]
                 
                 if len(valid_velocities) >= 5:
                     kde_stats = get_kde_stats_velocity(valid_velocities, valid_ccoefs, plot=False)
@@ -3757,6 +3774,7 @@ class sixdegrees():
                 'octave_fraction': octave_fraction,
                 'window_factor': window_factor,
                 'cc_threshold': cc_threshold,
+                'velocity_threshold': velocity_threshold,
                 'use_theoretical_baz': use_theoretical_baz,
             }
         }
@@ -3768,7 +3786,8 @@ class sixdegrees():
                 i, fl, fu, fc, rot_original, acc_original, wave_type,
                 window_factor, use_theoretical_baz, theoretical_baz,
                 baz_step, time_window_overlap,
-                cc_threshold, velocity_method, zero_intercept, cc_method, self.sampling_rate, verbose
+                cc_threshold, velocity_threshold, velocity_method, zero_intercept,
+                cc_method, self.sampling_rate, verbose
             ))
         
         # Process frequency bands (in parallel if n_jobs > 1)

@@ -255,6 +255,7 @@ fig = plot_dispersion_traces(
 - **`window_factor`**: Multiplier for time window length (window = factor / fc)
 - **`use_theoretical_baz`**: Use theoretical backazimuth instead of computing
 - **`cc_threshold`**: Minimum cross-correlation coefficient threshold
+- **`velocity_threshold`**: Maximum velocity (m/s) included in KDE estimation; higher values are excluded from the KDE peak (default: no limit)
 - **`baz_step`**: Backazimuth search step size (degrees)
 - **`velocity_method`**: Regression method (`'odr'`, `'ransac'`, etc.)
 
