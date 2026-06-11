@@ -1348,14 +1348,14 @@ class sixdegrees():
             elif not set_interpolate and len(final_npts) > 1:
                 print(f" -> WARNING: npts mismatch after set_common trim")
 
-    def correct_tilt(self, g: float=9.81, raw: bool=False):
+    def correct_tilt(self, g: float=9.81, raw: bool=False, data_type: str='acceleration'):
         '''
         Correct tilt of horizontal translation components
 
         Args:
             g (float): Acceleration due to gravity in m/s^2. Defaults to 9.81 m/s^2.
             raw (bool): If True, correct the tilt of the raw stream. Defaults to False.
-
+            data_type (str): Type of data for translation components to correct. Defaults to 'acceleration'.
         Returns:
             None: Modifies the stream in place.
 
@@ -1366,12 +1366,21 @@ class sixdegrees():
             >>> # Correct tilt of horizontal translation components for raw stream
             >>> sd.correct_tilt(g=9.81, raw=True)
         '''
-        self.st.select(channel="*HN")[0].data -= -g*self.st.select(channel="*JE")[0].data
-        self.st.select(channel="*HE")[0].data -= g*self.st.select(channel="*JN")[0].data
+
+        tr_je = self.st.select(channel="*JE")[0].copy()
+        tr_jn = self.st.select(channel="*JN")[0].copy()
+
+        if data_type == 'acceleration':
+            # integrate rotation rate to rotation
+            tr_je = tr_je.integrate()
+            tr_jn = tr_jn.integrate()
+
+        self.st.select(channel="*HN")[0].data -= -g*tr_je.data
+        self.st.select(channel="*HE")[0].data -= g*tr_jn.data
 
         if raw:
-            self.st0.select(channel="*HN")[0].data -= -g*self.st0.select(channel="*JE")[0].data
-            self.st0.select(channel="*HE")[0].data -= g*self.st0.select(channel="*JN")[0].data
+            self.st0.select(channel="*HN")[0].data -= -g*tr_je.data
+            self.st0.select(channel="*HE")[0].data -= g*tr_jn.data
 
     def polarity_stream(self, pol_dict: Dict={}, raw: bool=False):
         '''
