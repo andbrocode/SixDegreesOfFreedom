@@ -200,7 +200,10 @@ def _plot_dispersion_trace_panels(
             tra_scaled = tra * acc_scaling
 
         rot_scale = velocity_for_scaling if velocity_valid else 1.0
-        rot_scaled = rot * rot_scaling * rot_scale
+        if wave_type.lower() == "love":
+            rot_scaled = rot * rot_scaling * rot_scale * 2 # times two for velocity scaling (plotting only)
+        elif wave_type.lower() == "rayleigh":
+            rot_scaled = rot * rot_scaling * rot_scale
 
         ax.plot(times, tra_scaled, color=tra_color, lw=lw, label=tra_label_prefix)
         ax.plot(times, rot_scaled, color=rot_color, lw=lw, label=rot_label_prefix)
@@ -227,7 +230,10 @@ def _plot_dispersion_trace_panels(
                     f"±{float(velocity_deviation):.0f} {scale_unit}"
                 )
             else:
-                scale_txt = f"velocity: {velocity_for_scaling:.0f} {scale_unit}"
+                if wave_type.lower() == "love":
+                    scale_txt = f"velocity: {velocity_for_scaling:.0f} {scale_unit} (2x)"
+                elif wave_type.lower() == "rayleigh":
+                    scale_txt = f"velocity: {velocity_for_scaling:.0f} {scale_unit}"
         else:
             scale_txt = "no velocity found"
 
