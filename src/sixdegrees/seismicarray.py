@@ -1063,7 +1063,7 @@ class seismicarray:
                         st.remove_response(
                             inventory=self.inventories[station],
                             output=self.response_output,
-                            water_level=60
+                            water_level=10
                         )
 
                     # rotate to ZNE
