@@ -1,4 +1,7 @@
 
+<p align="center">
+  <img src="docs/logo.png" alt="SixDegrees logo" width="280"/>
+</p>
 
 # SixDegreesOfFreedom
 
