@@ -1,6 +1,7 @@
+# SixDegreesOfFreedom
+
 <img src="docs/logo.png" alt="SixDegrees logo" width="180" align="right"/>
 
-# SixDegreesOfFreedom
 
 **Basic Codes for 6-DoF Analysis**
 
