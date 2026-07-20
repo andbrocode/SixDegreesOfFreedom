@@ -1,18 +1,21 @@
 # Publish sixdegrees to PyPI on GitHub Release (Trusted Publishing / OIDC).
 #
-# One-time PyPI setup (no API token needed):
-#   1. https://pypi.org/manage/account/publishing/  (or project Publishing settings)
-#   2. Add a Trusted Publisher:
-#        Owner:           andbrocode
-#        Repository:      SixDegreesOfFreedom
-#        Workflow:        publish.yml
-#        Environment:     pypi
-#   3. In this GitHub repo: Settings → Environments → create "pypi"
-#      (optional: require reviewers before deploy)
+# --- PyPI Trusted Publisher (exact match required) ---
+# https://pypi.org/manage/account/publishing/   (pending, first release)
+# or project → Publishing settings               (existing project)
+#
+#   PyPI project name:  sixdegrees
+#   Owner:              andbrocode
+#   Repository:         SixDegreesOfFreedom
+#   Workflow name:      publish.yml          ← filename only, not a path
+#   Environment name:   (leave EMPTY)        ← must match this workflow
+#
+# `invalid-publisher` usually means one of those fields does not match
+# the OIDC claims from this job (especially Environment and Workflow).
 #
 # Publish:
-#   - Bump __version__ in src/sixdegrees/__init__.py
-#   - Create a GitHub Release (e.g. tag v1.0.2) → this workflow builds and uploads
+#   1. Bump __version__ in src/sixdegrees/__init__.py
+#   2. Create a GitHub Release (e.g. tag v1.0.2)
 
 name: Publish to PyPI
 
@@ -53,9 +56,6 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/sixdegrees
     permissions:
       id-token: write  # required for Trusted Publishing (OIDC)
 
