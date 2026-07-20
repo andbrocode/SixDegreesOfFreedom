@@ -15,7 +15,7 @@
 #
 # Publish:
 #   1. Bump __version__ in src/sixdegrees/__init__.py
-#   2. Create a GitHub Release (e.g. tag v1.0.2)
+#   2. Create a GitHub Release (e.g. tag v1.0.3)
 
 name: Publish to PyPI
 
