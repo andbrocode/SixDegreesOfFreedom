@@ -1,37 +1,46 @@
+
+
 # SixDegreesOfFreedom
 
-## Basic Codes for 6-DoF Analysis
+**Basic Codes for 6-DoF Analysis**
 
-The codes in this package enable comprehensive seismological processing of 6 degree-of-freedom (DoF) data. A 6-DoF station ideally combines co-located observations of three components of translation and three components of rotation data. The package provides well-documented functions for array-derived rotation computation, backazimuth analysis, velocity estimation, and advanced visualization tools.
+The codes in this package enable comprehensive seismological processing of 6-degree-of-freedom (DoF) data. A 6-DoF station ideally combines co-located observations of three components of translation and three components of rotation data. The package provides well-documented functions for array-derived rotation computation, backazimuth analysis, velocity estimation, and advanced visualization tools.
 
 ## Installation
+
+
 
 ### Using Conda (Recommended)
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/andbrocode/SixDegreesOfFreedom.git
 cd SixDegreesOfFreedom/
 ```
 
-2. Create and activate the conda environment:
+1. Create and activate the conda environment:
+
 ```bash
 conda env create -f docs/environment.yml
 conda activate sixdegrees
 conda install -c conda-forge cmcrameri
 ```
 
-3. Upgrade pip and setuptools (required for editable installs):
+1. Upgrade pip and setuptools (required for editable installs):
+
 ```bash
 pip install --upgrade pip setuptools wheel
 ```
 
-4. Install the package in development mode (with Jupyter extras):
+1. Install the package in development mode (with Jupyter extras):
+
 ```bash
 pip install -e ".[dev]"
 ```
 
-5. Register a Jupyter kernel for this environment (once per machine):
+1. Register a Jupyter kernel for this environment (once per machine):
+
 ```bash
 python -m ipykernel install --user --name sixdegrees --display-name "Python (sixdegrees)"
 ```
@@ -54,8 +63,8 @@ print(sixdegrees.__file__)  # should point into .../src/sixdegrees/__init__.py
 Useful introspection:
 
 - **Shift+Tab** on a function call — parameter list (kernel + jedi)
-- **`?name`** or **`help(name)`** — full docstring in the cell output
-- **`??name`** — docstring plus source (with editable install)
+- `?name` or `help(name)` — full docstring in the cell output
+- `??name` — docstring plus source (with editable install)
 
 For development, reload code after edits without restarting the kernel:
 
@@ -70,22 +79,27 @@ Common imports (plot helpers are re-exported from the top level):
 from sixdegrees import sixdegrees, plot_dispersion_curves, plot_dispersion_traces
 ```
 
+
+
 ### Uninstallation
 
 To uninstall the package:
 
 1. **Uninstall the package** (if installed in development mode):
+
 ```bash
 pip uninstall sixdegrees
 ```
 
-2. **If you want to completely remove the conda environment**:
+1. **If you want to completely remove the conda environment**:
+
 ```bash
 conda deactivate  # Exit the environment first
 conda env remove -n sixdegrees
 ```
 
-3. **To remove the cloned repository** (optional):
+1. **To remove the cloned repository** (optional):
+
 ```bash
 cd ..  # Navigate out of the repository directory
 rm -rf SixDegreesOfFreedom/  # Remove the directory
@@ -96,6 +110,7 @@ rm -rf SixDegreesOfFreedom/  # Remove the directory
 ### Dependencies
 
 The package requires Python ≥3.9 and the following main dependencies:
+
 - numpy ≥1.20.0
 - scipy ≥1.7.0
 - matplotlib ≥3.4.0
@@ -111,9 +126,12 @@ For a complete list of dependencies, see `docs/environment.yml`.
 
 ## Documentation
 
+
+
 ### Project Structure
 
 The project is organized as follows:
+
 - `src/sixdegrees/`: Core package code (src layout)
   - `sixdegrees.py`: Main implementation with comprehensive docstrings
   - `seismicarray.py`: Seismic array processing with full documentation
@@ -127,6 +145,8 @@ The project is organized as follows:
   - Example configuration files and sample data
 - `docs/`: Documentation and environment specifications
 - `tests/`: Comprehensive test suite
+
+
 
 ### Quick Start
 
@@ -174,6 +194,8 @@ velocities = sd.compute_velocities(
 )
 ```
 
+
+
 ### Caution
 
 This is research code provided to you "as is" with NO WARRANTIES OF CORRECTNESS. Use at your own risk.
@@ -182,14 +204,17 @@ This is research code provided to you "as is" with NO WARRANTIES OF CORRECTNESS.
 
 The package includes several Jupyter notebooks and workflows in the `examples/` directory:
 
-
 #### Jupyter Notebooks
+
 - Array-derived rotation computation from the Pinon Flats seismic array
 - Data acquisition examples for G-ring laser and BSPF station
 - Analysis examples for BSPF station, ROMY ring laser, and G-ring laser
 - Backazimuth analysis and visualization demos
 
+
+
 #### Processing Workflows
+
 - **Array-Derived Rotation (ADR)**: `examples/workflows/compute_adr/`
   - Daily continuous 6-DoF data creation from array data
   - SDS format storage and management
@@ -201,25 +226,39 @@ See individual workflow README files for detailed usage instructions.
 
 ## Recent Updates
 
+
+
 ### Version 1.0.1
+
 - **Colormaps**: Integrated [cmcrameri](https://pypi.org/project/cmcrameri/) — sequential plots use `cm.imola`, diverging plots use `cm.vik`
 - **Versioning**: Package version is defined only in `src/sixdegrees/__init__.py`
 
+
+
 ### Version 1.0.0
+
 - **Stable release**: First production-ready release of the package
 - **Src layout**: Package source moved from `sixdegrees/` to `src/sixdegrees/` for standard Python packaging
 - **Packaging**: Version and build configuration consolidated in `pyproject.toml` and `setup.py`
 
+
+
 ### Version 0.1.1
+
 - **Enhanced Documentation**: Added comprehensive docstrings to all core functions in `sixdegrees.py`
 - **Improved Code Quality**: All functions now have proper type hints and detailed parameter descriptions
 - **Better Developer Experience**: Enhanced code readability and maintainability
 
+
+
 ## Testing
+
+
 
 ### Test Structure
 
 The test suite is organized into three main categories:
+
 - `test_core/`: Tests for core functionality
   - Basic initialization
   - Data source handling
@@ -227,6 +266,8 @@ The test suite is organized into three main categories:
   - Time and coordinate validation
 - `test_plots/`: Tests for plotting functions
 - `test_utils/`: Tests for utility functions
+
+
 
 ### Running Tests
 
@@ -245,6 +286,8 @@ pytest tests/test_utils/
 pytest --cov=sixdegrees tests/
 ```
 
+
+
 ## Contributing
 
 1. Fork the repository
@@ -252,6 +295,8 @@ pytest --cov=sixdegrees tests/
 3. Make your changes
 4. Run the test suite
 5. Submit a pull request
+
+
 
 ## License
 
