@@ -1,13 +1,19 @@
-
-<p align="center">
-  <img src="docs/logo.png" alt="SixDegrees logo" width="280"/>
-</p>
+<table>
+<tr>
+<td width="70%" valign="middle">
 
 # SixDegreesOfFreedom
 
 **Basic Codes for 6-DoF Analysis**
 
 The codes in this package enable comprehensive seismological processing of 6-degree-of-freedom (DoF) data. A 6-DoF station ideally combines co-located observations of three components of translation and three components of rotation data. The package provides well-documented functions for array-derived rotation computation, backazimuth analysis, velocity estimation, and advanced visualization tools.
+
+</td>
+<td width="30%" align="right" valign="middle">
+<img src="docs/logo.png" alt="SixDegrees logo" width="180"/>
+</td>
+</tr>
+</table>
 
 ## Installation
 
