@@ -1,0 +1,70 @@
+# Publish sixdegrees to PyPI on GitHub Release (Trusted Publishing / OIDC).
+#
+# One-time PyPI setup (no API token needed):
+#   1. https://pypi.org/manage/account/publishing/  (or project Publishing settings)
+#   2. Add a Trusted Publisher:
+#        Owner:           andbrocode
+#        Repository:      SixDegreesOfFreedom
+#        Workflow:        publish.yml
+#        Environment:     pypi
+#   3. In this GitHub repo: Settings → Environments → create "pypi"
+#      (optional: require reviewers before deploy)
+#
+# Publish:
+#   - Bump __version__ in src/sixdegrees/__init__.py
+#   - Create a GitHub Release (e.g. tag v1.0.2) → this workflow builds and uploads
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/sixdegrees
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
